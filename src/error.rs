@@ -15,6 +15,12 @@ pub enum AppError {
     BadRequest(String),
     #[error("{0}")]
     Conflict(String),
+    #[error("กรุณาเข้าสู่ระบบ")]
+    Unauthorized,
+    #[error("ไม่มีสิทธิ์ดำเนินการนี้")]
+    Forbidden,
+    #[error("{message}")]
+    PaymentRequired { code: &'static str, message: String },
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -40,6 +46,9 @@ impl IntoResponse for AppError {
             AppError::NotFound => StatusCode::NOT_FOUND,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Conflict(_) => StatusCode::CONFLICT,
+            AppError::Unauthorized => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden => StatusCode::FORBIDDEN,
+            AppError::PaymentRequired { .. } => StatusCode::PAYMENT_REQUIRED,
             AppError::Internal(e) => {
                 tracing::error!(error = ?e, "internal error");
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -49,6 +58,10 @@ impl IntoResponse for AppError {
             AppError::Internal(_) => "เกิดข้อผิดพลาดภายในระบบ".to_string(),
             other => other.to_string(),
         };
-        (status, Json(json!({ "error": message }))).into_response()
+        let code = match &self {
+            AppError::PaymentRequired { code, .. } => Some(*code),
+            _ => None,
+        };
+        (status, Json(json!({ "error": message, "code": code }))).into_response()
     }
 }

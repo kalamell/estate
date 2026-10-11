@@ -18,6 +18,98 @@ pub async fn connect(url: &str) -> anyhow::Result<SqlitePool> {
     Ok(pool)
 }
 
+/// แพ็กเกจตั้งต้นเมื่อระบบยังไม่มีแพ็กเกจเลย (แก้ไขได้ในหน้า Super Admin)
+pub async fn seed_packages(db: &SqlitePool) -> anyhow::Result<()> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM packages")
+        .fetch_one(db)
+        .await?;
+    if count > 0 {
+        return Ok(());
+    }
+    let packages = [
+        (
+            "Starter",
+            "เริ่มต้นสำหรับหอพักขนาดเล็ก",
+            0.0,
+            1,
+            20,
+            1,
+            r#"{"ocr":false,"view3d":false,"short_stay":false,"invoices":true}"#,
+            true,
+        ),
+        (
+            "Pro",
+            "สำหรับอพาร์ทเมนต์และหลายโครงการ",
+            990.0,
+            5,
+            200,
+            5,
+            r#"{"ocr":true,"view3d":true,"short_stay":true,"invoices":true}"#,
+            false,
+        ),
+        (
+            "Enterprise",
+            "ไม่จำกัดการใช้งาน พร้อมทีมงานหลายคน",
+            2990.0,
+            100,
+            10000,
+            50,
+            r#"{"ocr":true,"view3d":true,"short_stay":true,"invoices":true}"#,
+            false,
+        ),
+    ];
+    for (i, (name, desc, price, props, units, members, features, is_default)) in
+        packages.into_iter().enumerate()
+    {
+        sqlx::query(
+            "INSERT INTO packages (name, description, price_monthly, max_properties, max_units, max_members,
+                features, is_default, sort_order) VALUES (?,?,?,?,?,?,?,?,?)",
+        )
+        .bind(name)
+        .bind(desc)
+        .bind(price)
+        .bind(props)
+        .bind(units)
+        .bind(members)
+        .bind(features)
+        .bind(is_default)
+        .bind(i as i64)
+        .execute(db)
+        .await?;
+    }
+    Ok(())
+}
+
+/// สร้างผู้ดูแลแพลตฟอร์ม หรือเลื่อนสิทธิ์บัญชีที่มีอยู่ (ไม่เปลี่ยนรหัสผ่านของบัญชีเดิม)
+pub async fn ensure_super_admin(
+    db: &SqlitePool,
+    email: &str,
+    password: &str,
+) -> anyhow::Result<i64> {
+    let email = email.trim().to_lowercase();
+    if let Some(id) = sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE email = ?")
+        .bind(&email)
+        .fetch_optional(db)
+        .await?
+    {
+        sqlx::query("UPDATE users SET is_super_admin = 1, is_active = 1 WHERE id = ?")
+            .bind(id)
+            .execute(db)
+            .await?;
+        return Ok(id);
+    }
+    let hash = crate::auth::hash_password(password).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let id = sqlx::query_scalar(
+        "INSERT INTO users (email, name, password_hash, is_super_admin) VALUES (?, 'Super Admin', ?, 1) RETURNING id",
+    )
+    .bind(&email)
+    .bind(hash)
+    .fetch_one(db)
+    .await?;
+    tracing::info!("สร้างบัญชี Super Admin: {email}");
+    Ok(id)
+}
+
 /// ใส่ข้อมูลตัวอย่างเมื่อฐานข้อมูลยังว่าง
 pub async fn seed_demo(db: &SqlitePool) -> anyhow::Result<()> {
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM properties")
@@ -27,6 +119,24 @@ pub async fn seed_demo(db: &SqlitePool) -> anyhow::Result<()> {
         return Ok(());
     }
     tracing::info!("กำลังสร้างข้อมูลตัวอย่าง");
+    tracing::warn!("บัญชีตัวอย่าง: admin@estate.local / admin1234 (Super Admin), demo@estate.local / demo1234 — ปิดด้วย SEED_DEMO=0 ก่อนใช้งานจริง");
+    ensure_super_admin(db, "admin@estate.local", "admin1234").await?;
+    let owner: i64 = sqlx::query_scalar(
+        "INSERT INTO users (email, name, password_hash) VALUES ('demo@estate.local', 'คุณสมศรี เจ้าของหอ', ?) RETURNING id",
+    )
+    .bind(crate::auth::hash_password("demo1234").map_err(|e| anyhow::anyhow!("{e}"))?)
+    .fetch_one(db)
+    .await?;
+    let org_id: i64 = sqlx::query_scalar(
+        "INSERT INTO organizations (name, package_id, status) VALUES ('สุขใจ พร็อพเพอร์ตี้', (SELECT id FROM packages WHERE name = 'Pro'), 'active') RETURNING id",
+    )
+    .fetch_one(db)
+    .await?;
+    sqlx::query("INSERT INTO org_members (org_id, user_id, role) VALUES (?, ?, 'owner')")
+        .bind(org_id)
+        .bind(owner)
+        .execute(db)
+        .await?;
 
     let props = [
         (
@@ -67,8 +177,9 @@ pub async fn seed_demo(db: &SqlitePool) -> anyhow::Result<()> {
 
     for (name, kind, address, lat, lng, rent, daily) in props {
         let pid: i64 = sqlx::query_scalar(
-            "INSERT INTO properties (name, kind, address, lat, lng, promptpay_id) VALUES (?,?,?,?,?,?) RETURNING id",
+            "INSERT INTO properties (org_id, name, kind, address, lat, lng, promptpay_id) VALUES (?,?,?,?,?,?,?) RETURNING id",
         )
+        .bind(org_id)
         .bind(name)
         .bind(kind)
         .bind(address)
@@ -103,7 +214,8 @@ pub async fn seed_demo(db: &SqlitePool) -> anyhow::Result<()> {
         ("สุดา รักเรียน", "0822222222"),
         ("John Smith", "0833333333"),
     ] {
-        sqlx::query("INSERT INTO tenants (full_name, phone) VALUES (?,?)")
+        sqlx::query("INSERT INTO tenants (org_id, full_name, phone) VALUES (?,?,?)")
+            .bind(org_id)
             .bind(name)
             .bind(phone)
             .execute(db)

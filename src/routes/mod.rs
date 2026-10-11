@@ -1,7 +1,10 @@
+mod admin;
+mod auth;
 mod bookings;
 mod dashboard;
 mod invoices;
 mod meters;
+mod org;
 mod properties;
 mod tenants;
 mod units;
@@ -16,6 +19,33 @@ use crate::AppState;
 
 pub fn api_router() -> Router<AppState> {
     Router::new()
+        .route("/api/auth/register", post(auth::register))
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/logout", post(auth::logout))
+        .route("/api/auth/me", get(auth::me))
+        .route("/api/orgs", post(auth::create_org))
+        .route("/api/org", get(org::get).put(org::update))
+        .route("/api/org/members", get(org::members).post(org::add_member))
+        .route(
+            "/api/org/members/:user_id",
+            axum::routing::put(org::update_member).delete(org::remove_member),
+        )
+        .route("/api/admin/stats", get(admin::stats))
+        .route(
+            "/api/admin/packages",
+            get(admin::packages).post(admin::create_package),
+        )
+        .route(
+            "/api/admin/packages/:id",
+            axum::routing::put(admin::update_package).delete(admin::delete_package),
+        )
+        .route("/api/admin/orgs", get(admin::orgs))
+        .route("/api/admin/orgs/:id", axum::routing::put(admin::update_org))
+        .route("/api/admin/users", get(admin::users))
+        .route(
+            "/api/admin/users/:id",
+            axum::routing::put(admin::update_user),
+        )
         .route("/api/dashboard", get(dashboard::summary))
         .route(
             "/api/properties",

@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use sqlx::SqlitePool;
 
 use crate::{
+    auth::{ensure_property, OrgCtx},
     billing::{self, MeterPair, MonthlyInput},
     error::{AppError, AppResult},
     models::Invoice,
@@ -29,31 +30,40 @@ pub struct Filter {
 
 pub async fn list(
     State(s): State<AppState>,
+    ctx: OrgCtx,
     Query(f): Query<Filter>,
 ) -> AppResult<Json<Vec<Invoice>>> {
     let sql = format!(
-        "{SELECT} WHERE (?1 IS NULL OR p.id = ?1) AND (?2 IS NULL OR i.status = ?2) AND (?3 IS NULL OR i.period = ?3)
+        "{SELECT} WHERE p.org_id = ?4 AND (?1 IS NULL OR p.id = ?1) AND (?2 IS NULL OR i.status = ?2) AND (?3 IS NULL OR i.period = ?3)
          ORDER BY i.period DESC, p.name, u.name"
     );
     let rows = sqlx::query_as(&sql)
         .bind(f.property_id)
         .bind(f.status)
         .bind(f.period)
+        .bind(ctx.org_id)
         .fetch_all(&s.db)
         .await?;
     Ok(Json(rows))
 }
 
-async fn fetch(db: &SqlitePool, id: i64) -> AppResult<Invoice> {
-    Ok(sqlx::query_as(&format!("{SELECT} WHERE i.id = ?"))
-        .bind(id)
-        .fetch_one(db)
-        .await?)
+async fn fetch(db: &SqlitePool, org_id: i64, id: i64) -> AppResult<Invoice> {
+    Ok(
+        sqlx::query_as(&format!("{SELECT} WHERE i.id = ? AND p.org_id = ?"))
+            .bind(id)
+            .bind(org_id)
+            .fetch_one(db)
+            .await?,
+    )
 }
 
 /// ใบแจ้งหนี้พร้อม PromptPay QR payload (ถ้าโครงการตั้งค่าไว้)
-pub async fn get(State(s): State<AppState>, Path(id): Path<i64>) -> AppResult<Json<Value>> {
-    let invoice = fetch(&s.db, id).await?;
+pub async fn get(
+    State(s): State<AppState>,
+    ctx: OrgCtx,
+    Path(id): Path<i64>,
+) -> AppResult<Json<Value>> {
+    let invoice = fetch(&s.db, ctx.org_id, id).await?;
     let pp_id: Option<String> =
         sqlx::query_scalar("SELECT promptpay_id FROM properties WHERE id = ?")
             .bind(invoice.property_id)
@@ -127,8 +137,11 @@ pub struct GenerateResult {
 /// ออกบิลรายเดือนให้ทุกห้องที่มีสัญญาเช่า (lease) ที่ยังมีผลในโครงการ
 pub async fn generate(
     State(s): State<AppState>,
+    ctx: OrgCtx,
     Json(g): Json<GenerateInput>,
 ) -> AppResult<Json<GenerateResult>> {
+    ctx.require_feature(ctx.features.invoices, "การออกบิลอัตโนมัติ")?;
+    ensure_property(&s.db, ctx.org_id, g.property_id).await?;
     let (start, end) = period_bounds(&g.period)?;
     let (e_rate, w_rate): (f64, f64) =
         sqlx::query_as("SELECT electric_rate, water_rate FROM properties WHERE id = ?")
@@ -206,10 +219,11 @@ pub struct PayInput {
 
 pub async fn pay(
     State(s): State<AppState>,
+    ctx: OrgCtx,
     Path(id): Path<i64>,
     Json(p): Json<PayInput>,
 ) -> AppResult<Json<Invoice>> {
-    let invoice = fetch(&s.db, id).await?;
+    let invoice = fetch(&s.db, ctx.org_id, id).await?;
     if invoice.status != "unpaid" {
         return Err(AppError::Conflict("บิลนี้ไม่อยู่ในสถานะรอชำระ".into()));
     }
@@ -237,7 +251,7 @@ pub async fn pay(
             .await?;
     }
     tx.commit().await?;
-    Ok(Json(fetch(&s.db, id).await?))
+    Ok(Json(fetch(&s.db, ctx.org_id, id).await?))
 }
 
 #[cfg(test)]

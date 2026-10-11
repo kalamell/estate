@@ -1,43 +1,56 @@
 use axum::{extract::State, Json};
 use serde_json::{json, Value};
 
-use crate::{error::AppResult, AppState};
+use crate::{auth::OrgCtx, error::AppResult, AppState};
 
-pub async fn summary(State(s): State<AppState>) -> AppResult<Json<Value>> {
-    let units_by_status: Vec<(String, i64)> =
-        sqlx::query_as("SELECT status, COUNT(*) FROM units GROUP BY status")
-            .fetch_all(&s.db)
-            .await?;
+pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<Value>> {
+    let units_by_status: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT u.status, COUNT(*) FROM units u JOIN properties p ON p.id = u.property_id
+             WHERE p.org_id = ? GROUP BY u.status",
+    )
+    .bind(ctx.org_id)
+    .fetch_all(&s.db)
+    .await?;
     let properties: Vec<(i64, String, String, i64, i64)> = sqlx::query_as(
         "SELECT p.id, p.name, p.kind, COUNT(u.id),
                 COALESCE(SUM(CASE WHEN u.status = 'occupied' THEN 1 ELSE 0 END), 0)
-         FROM properties p LEFT JOIN units u ON u.property_id = p.id GROUP BY p.id ORDER BY p.id",
+         FROM properties p LEFT JOIN units u ON u.property_id = p.id WHERE p.org_id = ?
+         GROUP BY p.id ORDER BY p.id",
     )
+    .bind(ctx.org_id)
     .fetch_all(&s.db)
     .await?;
     let revenue_month: f64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0.0) FROM payments WHERE strftime('%Y-%m', paid_at) = strftime('%Y-%m', 'now')",
+        "SELECT COALESCE(SUM(pm.amount), 0.0) FROM payments pm JOIN invoices i ON i.id = pm.invoice_id
+         JOIN units u ON u.id = i.unit_id JOIN properties p ON p.id = u.property_id
+         WHERE p.org_id = ? AND strftime('%Y-%m', pm.paid_at) = strftime('%Y-%m', 'now')",
     )
+    .bind(ctx.org_id)
     .fetch_one(&s.db)
     .await?;
     let (outstanding, outstanding_count): (f64, i64) = sqlx::query_as(
-        "SELECT COALESCE(SUM(total), 0.0), COUNT(*) FROM invoices WHERE status = 'unpaid'",
+        "SELECT COALESCE(SUM(i.total), 0.0), COUNT(*) FROM invoices i JOIN units u ON u.id = i.unit_id
+         JOIN properties p ON p.id = u.property_id WHERE p.org_id = ? AND i.status = 'unpaid'",
     )
+    .bind(ctx.org_id)
     .fetch_one(&s.db)
     .await?;
     let deposits_held: f64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(deposit_amount), 0.0) FROM bookings
-         WHERE deposit_status = 'paid' AND status IN ('reserved','active')",
+        "SELECT COALESCE(SUM(b.deposit_amount), 0.0) FROM bookings b JOIN units u ON u.id = b.unit_id
+         JOIN properties p ON p.id = u.property_id
+         WHERE p.org_id = ? AND b.deposit_status = 'paid' AND b.status IN ('reserved','active')",
     )
+    .bind(ctx.org_id)
     .fetch_one(&s.db)
     .await?;
     let upcoming: Vec<(i64, String, String, String, String)> = sqlx::query_as(
         "SELECT b.id, b.start_date, u.name, p.name, t.full_name FROM bookings b
          JOIN units u ON u.id = b.unit_id JOIN properties p ON p.id = u.property_id
          JOIN tenants t ON t.id = b.tenant_id
-         WHERE b.status = 'reserved' AND b.start_date BETWEEN date('now') AND date('now', '+14 day')
+         WHERE p.org_id = ? AND b.status = 'reserved' AND b.start_date BETWEEN date('now') AND date('now', '+14 day')
          ORDER BY b.start_date LIMIT 10",
     )
+    .bind(ctx.org_id)
     .fetch_all(&s.db)
     .await?;
 

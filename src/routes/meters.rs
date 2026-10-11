@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use super::validate_in;
 use crate::{
+    auth::{ensure_unit, OrgCtx},
     error::{AppError, AppResult},
     models::MeterReading,
     AppState,
@@ -20,14 +21,17 @@ pub struct Filter {
 
 pub async fn list(
     State(s): State<AppState>,
+    ctx: OrgCtx,
     Query(f): Query<Filter>,
 ) -> AppResult<Json<Vec<MeterReading>>> {
     let rows = sqlx::query_as(
-        "SELECT * FROM meter_readings WHERE (?1 IS NULL OR unit_id = ?1) AND (?2 IS NULL OR meter_type = ?2)
-         ORDER BY reading_date DESC, id DESC LIMIT 200",
+        "SELECT m.* FROM meter_readings m JOIN units u ON u.id = m.unit_id JOIN properties p ON p.id = u.property_id
+         WHERE p.org_id = ?3 AND (?1 IS NULL OR m.unit_id = ?1) AND (?2 IS NULL OR m.meter_type = ?2)
+         ORDER BY m.reading_date DESC, m.id DESC LIMIT 200",
     )
     .bind(f.unit_id)
     .bind(f.meter_type)
+    .bind(ctx.org_id)
     .fetch_all(&s.db)
     .await?;
     Ok(Json(rows))
@@ -40,6 +44,7 @@ fn bad(msg: &str) -> AppError {
 /// รับข้อมูลแบบ multipart: unit_id, meter_type, reading_date, value, ocr_raw?, allow_decrease?, photo?
 pub async fn create(
     State(s): State<AppState>,
+    ctx: OrgCtx,
     mut form: Multipart,
 ) -> AppResult<Json<MeterReading>> {
     let (mut unit_id, mut meter_type, mut date, mut value) = (None, None, None, None);
@@ -83,6 +88,7 @@ pub async fn create(
     }
 
     let unit_id = unit_id.ok_or_else(|| bad("กรุณาเลือกห้อง"))?;
+    ensure_unit(&s.db, ctx.org_id, unit_id).await?;
     let meter_type = meter_type.ok_or_else(|| bad("กรุณาเลือกประเภทมิเตอร์"))?;
     validate_in("meter_type", &meter_type, &["electric", "water"])?;
     let date = date.unwrap_or_else(|| chrono::Local::now().date_naive());
@@ -134,7 +140,16 @@ pub async fn create(
     Ok(Json(row))
 }
 
-pub async fn delete(State(s): State<AppState>, Path(id): Path<i64>) -> AppResult<Json<()>> {
+pub async fn delete(
+    State(s): State<AppState>,
+    ctx: OrgCtx,
+    Path(id): Path<i64>,
+) -> AppResult<Json<()>> {
+    let unit_id: i64 = sqlx::query_scalar("SELECT unit_id FROM meter_readings WHERE id = ?")
+        .bind(id)
+        .fetch_one(&s.db)
+        .await?;
+    ensure_unit(&s.db, ctx.org_id, unit_id).await?;
     let photo: Option<String> =
         sqlx::query_scalar("DELETE FROM meter_readings WHERE id = ? RETURNING photo_path")
             .bind(id)

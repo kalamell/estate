@@ -1,6 +1,60 @@
+-- ===== SaaS: ผู้ใช้ แพ็กเกจ องค์กร =====
+CREATE TABLE users (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    name           TEXT NOT NULL,
+    password_hash  TEXT NOT NULL,
+    is_super_admin INTEGER NOT NULL DEFAULT 0,
+    is_active      INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- แพ็กเกจที่เจ้าของแพลตฟอร์มกำหนด
+CREATE TABLE packages (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT NOT NULL,
+    description    TEXT NOT NULL DEFAULT '',
+    price_monthly  REAL NOT NULL DEFAULT 0,
+    max_properties INTEGER NOT NULL DEFAULT 1,
+    max_units      INTEGER NOT NULL DEFAULT 20,
+    max_members    INTEGER NOT NULL DEFAULT 1,
+    features       TEXT NOT NULL DEFAULT '{}', -- JSON: {ocr, view3d, short_stay, invoices}
+    is_active      INTEGER NOT NULL DEFAULT 1,
+    is_default     INTEGER NOT NULL DEFAULT 0, -- แพ็กเกจเริ่มต้นสำหรับผู้สมัครใหม่
+    sort_order     INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- องค์กร (ลูกค้า 1 ราย) มีได้หลายโครงการ
+CREATE TABLE organizations (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    package_id INTEGER NOT NULL REFERENCES packages(id),
+    status     TEXT NOT NULL DEFAULT 'trial' CHECK (status IN ('trial','active','suspended','cancelled')),
+    ends_at    TEXT,                      -- วันหมดอายุทดลอง/สมาชิก (NULL = ไม่หมดอายุ)
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE org_members (
+    org_id     INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL CHECK (role IN ('owner','admin','staff')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (org_id, user_id)
+);
+CREATE INDEX idx_org_members_user ON org_members(user_id);
+
 -- โครงการ / อาคาร (หอพัก อพาร์ทเมนต์ คอนโด บ้าน ห้องพักรายวัน)
 CREATE TABLE properties (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id        INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
     kind          TEXT NOT NULL CHECK (kind IN ('dormitory','apartment','condo','house','short_stay')),
     address       TEXT NOT NULL DEFAULT '',
@@ -13,6 +67,8 @@ CREATE TABLE properties (
 );
 
 -- ห้อง / ยูนิต
+CREATE INDEX idx_properties_org ON properties(org_id);
+
 CREATE TABLE units (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     property_id   INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
@@ -33,6 +89,7 @@ CREATE TABLE units (
 -- ผู้เช่า / แขก
 CREATE TABLE tenants (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id     INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     full_name  TEXT NOT NULL,
     phone      TEXT NOT NULL DEFAULT '',
     email      TEXT NOT NULL DEFAULT '',

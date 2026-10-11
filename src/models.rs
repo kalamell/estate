@@ -174,3 +174,68 @@ pub struct Invoice {
 
 pub const PROPERTY_KINDS: &[&str] = &["dormitory", "apartment", "condo", "house", "short_stay"];
 pub const UNIT_STATUSES: &[&str] = &["vacant", "reserved", "occupied", "maintenance"];
+
+// ===== SaaS =====
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PackageFeatures {
+    #[serde(default)]
+    pub ocr: bool,
+    #[serde(default)]
+    pub view3d: bool,
+    #[serde(default)]
+    pub short_stay: bool,
+    #[serde(default)]
+    pub invoices: bool,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Package {
+    pub id: i64,
+    pub name: String,
+    pub description: String,
+    pub price_monthly: f64,
+    pub max_properties: i64,
+    pub max_units: i64,
+    pub max_members: i64,
+    #[sqlx(json)]
+    pub features: PackageFeatures,
+    pub is_active: bool,
+    pub is_default: bool,
+    pub sort_order: i64,
+    pub org_count: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PackageInput {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub price_monthly: f64,
+    pub max_properties: i64,
+    pub max_units: i64,
+    pub max_members: i64,
+    #[serde(default)]
+    pub features: PackageFeatures,
+    #[serde(default = "yes")]
+    pub is_active: bool,
+    #[serde(default)]
+    pub is_default: bool,
+    #[serde(default)]
+    pub sort_order: i64,
+}
+
+fn yes() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct OrgSummary {
+    pub id: i64,
+    pub name: String,
+    pub role: String,
+    pub status: String,
+    pub package_name: String,
+}
+
+pub const ORG_STATUSES: &[&str] = &["trial", "active", "suspended", "cancelled"];

@@ -8,6 +8,7 @@ use sqlx::SqliteConnection;
 
 use super::validate_in;
 use crate::{
+    auth::{ensure_tenant, ensure_unit, OrgCtx},
     error::{AppError, AppResult},
     models::{Booking, BookingInput, BookingPatch},
     AppState,
@@ -27,10 +28,11 @@ pub struct Filter {
 
 pub async fn list(
     State(s): State<AppState>,
+    ctx: OrgCtx,
     Query(f): Query<Filter>,
 ) -> AppResult<Json<Vec<Booking>>> {
     let sql = format!(
-        "{SELECT} WHERE (?1 IS NULL OR b.unit_id = ?1) AND (?2 IS NULL OR u.property_id = ?2)
+        "{SELECT} WHERE p.org_id = ?4 AND (?1 IS NULL OR b.unit_id = ?1) AND (?2 IS NULL OR u.property_id = ?2)
            AND (?3 IS NULL OR b.status = ?3)
          ORDER BY b.start_date DESC"
     );
@@ -38,6 +40,7 @@ pub async fn list(
         .bind(f.unit_id)
         .bind(f.property_id)
         .bind(f.status)
+        .bind(ctx.org_id)
         .fetch_all(&s.db)
         .await?;
     Ok(Json(rows))
@@ -68,9 +71,15 @@ async fn sync_unit_status(conn: &mut SqliteConnection, unit_id: i64) -> AppResul
 
 pub async fn create(
     State(s): State<AppState>,
+    ctx: OrgCtx,
     Json(b): Json<BookingInput>,
 ) -> AppResult<Json<Booking>> {
     validate_in("kind", &b.kind, &["lease", "short_stay"])?;
+    if b.kind == "short_stay" {
+        ctx.require_feature(ctx.features.short_stay, "การจองรายวัน")?;
+    }
+    ensure_unit(&s.db, ctx.org_id, b.unit_id).await?;
+    ensure_tenant(&s.db, ctx.org_id, b.tenant_id).await?;
     if b.kind == "short_stay" && b.end_date.is_none() {
         return Err(AppError::BadRequest("การจองรายวันต้องระบุวันเช็คเอาท์".into()));
     }
@@ -135,9 +144,15 @@ pub async fn create(
 
 pub async fn patch(
     State(s): State<AppState>,
+    ctx: OrgCtx,
     Path(id): Path<i64>,
     Json(p): Json<BookingPatch>,
 ) -> AppResult<Json<Booking>> {
+    let unit_id: i64 = sqlx::query_scalar("SELECT unit_id FROM bookings WHERE id = ?")
+        .bind(id)
+        .fetch_one(&s.db)
+        .await?;
+    ensure_unit(&s.db, ctx.org_id, unit_id).await?;
     if let Some(st) = &p.status {
         validate_in(
             "status",
