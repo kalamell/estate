@@ -1,0 +1,138 @@
+import { Link, useNavigate } from 'react-router-dom'
+import { useTheme } from '@/components/theme-provider'
+import { ChevronsUpDown, LogOut, Moon, Settings, ShieldCheck } from 'lucide-react'
+import { api, setOrgId, type User } from '@/lib/api'
+import { queryClient } from '@/lib/query'
+import { initials } from '@/lib/format'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Switch } from '@/components/ui/switch'
+
+export function useLogout() {
+  const navigate = useNavigate()
+  return async () => {
+    try {
+      await api.logout()
+    } catch {
+      /* ignore */
+    }
+    setOrgId(null)
+    queryClient.clear()
+    queryClient.setQueryData(['me'], null)
+    navigate('/login', { replace: true })
+  }
+}
+
+function UserAvatar({ user, className }: { user: User; className?: string }) {
+  return (
+    <Avatar className={className ?? 'size-8 rounded-lg'}>
+      <AvatarFallback className="rounded-lg bg-brand text-sm font-semibold text-white">
+        {initials(user.name)}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+/** เนื้อหาเมนูผู้ใช้ — ใช้ร่วมกันระหว่าง sidebar และ admin console */
+function UserMenuContent({
+  user,
+  side = 'bottom',
+  showSettings = true,
+}: {
+  user: User
+  side?: 'bottom' | 'right' | 'top'
+  showSettings?: boolean
+}) {
+  const { resolvedTheme, setTheme } = useTheme()
+  const logout = useLogout()
+  const dark = resolvedTheme === 'dark'
+  return (
+    <DropdownMenuContent className="min-w-60 rounded-lg" side={side} align="end" sideOffset={4}>
+      <DropdownMenuLabel className="p-0 font-normal">
+        <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+          <UserAvatar user={user} />
+          <div className="grid flex-1 leading-tight">
+            <span className="truncate font-medium">{user.name}</span>
+            <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+          </div>
+        </div>
+      </DropdownMenuLabel>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            setTheme(dark ? 'light' : 'dark')
+          }}
+        >
+          <Moon />
+          โหมดมืด
+          <Switch checked={dark} className="ml-auto pointer-events-none" aria-hidden tabIndex={-1} />
+        </DropdownMenuItem>
+        {showSettings && (
+          <DropdownMenuItem asChild>
+            <Link to="/settings">
+              <Settings />
+              ตั้งค่าองค์กร
+            </Link>
+          </DropdownMenuItem>
+        )}
+        {user.is_super_admin && (
+          <DropdownMenuItem asChild>
+            <Link to="/admin">
+              <ShieldCheck />
+              Super Admin Console
+            </Link>
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem variant="destructive" onSelect={() => void logout()}>
+        <LogOut />
+        ออกจากระบบ
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  )
+}
+
+/** ปุ่มผู้ใช้ในส่วนท้าย sidebar */
+export function SidebarUserMenu({ user, isMobile }: { user: User; isMobile: boolean }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 data-[state=open]:bg-sidebar-accent">
+          <UserAvatar user={user} />
+          <div className="grid flex-1 leading-tight">
+            <span className="truncate font-medium text-sidebar-accent-foreground">{user.name}</span>
+            <span className="truncate text-xs opacity-70">{user.email}</span>
+          </div>
+          <ChevronsUpDown className="ml-auto size-4 opacity-60" />
+        </button>
+      </DropdownMenuTrigger>
+      <UserMenuContent user={user} side={isMobile ? 'top' : 'right'} />
+    </DropdownMenu>
+  )
+}
+
+/** ปุ่มผู้ใช้แบบไอคอน (ใช้ใน header ของ admin console) */
+export function CompactUserMenu({ user, showSettings }: { user: User; showSettings?: boolean }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="rounded-full" aria-label="เมนูผู้ใช้">
+          <UserAvatar user={user} className="size-8 rounded-full" />
+        </Button>
+      </DropdownMenuTrigger>
+      <UserMenuContent user={user} showSettings={showSettings} />
+    </DropdownMenu>
+  )
+}

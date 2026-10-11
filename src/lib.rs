@@ -56,8 +56,7 @@ impl Config {
 /// ประกอบ Router ทั้งหมด (API + ไฟล์อัปโหลด + หน้าเว็บ SPA)
 pub fn build_app(state: AppState, static_dir: &std::path::Path) -> axum::Router {
     // SPA: เส้นทางที่ไม่ใช่ไฟล์จริงให้ส่ง index.html แล้วให้ React Router จัดการต่อ
-    let spa =
-        ServeDir::new(static_dir).not_found_service(ServeFile::new(static_dir.join("index.html")));
+    let spa = ServeDir::new(static_dir).fallback(ServeFile::new(static_dir.join("index.html")));
     routes::api_router()
         .nest_service("/uploads", ServeDir::new(&state.upload_dir))
         .fallback_service(spa)
