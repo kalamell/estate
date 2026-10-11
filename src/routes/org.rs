@@ -137,11 +137,13 @@ pub struct Member {
     email: String,
     role: String,
     created_at: String,
+    line_linked: bool,
 }
 
 pub async fn members(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<Vec<Member>>> {
     let rows = sqlx::query_as(
-        "SELECT u.id AS user_id, u.name, u.email, m.role, m.created_at FROM org_members m
+        "SELECT u.id AS user_id, u.name, u.email, m.role, m.created_at, m.line_user_id IS NOT NULL AS line_linked
+         FROM org_members m
          JOIN users u ON u.id = m.user_id WHERE m.org_id = ?
          ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.name",
     )

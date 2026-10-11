@@ -275,3 +275,36 @@ impl Client {
         )
     }
 }
+
+impl Client {
+    /// อัปโหลดรูปแบบมี cookie และ X-Org-Id (สำหรับ endpoint ของทีมงาน)
+    pub async fn upload_photo_auth(&mut self, path: &str) -> (StatusCode, Value) {
+        let boundary = "estate-test-boundary";
+        let mut body: Vec<u8> = Vec::new();
+        body.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"photos\"; filename=\"a.png\"\r\nContent-Type: image/png\r\n\r\n").as_bytes());
+        body.extend(b"\x89PNG fake");
+        body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
+        let mut req = Request::builder().method(Method::POST).uri(path).header(
+            header::CONTENT_TYPE,
+            format!("multipart/form-data; boundary={boundary}"),
+        );
+        if let Some(c) = &self.cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        if let Some(o) = self.org {
+            req = req.header("x-org-id", o.to_string());
+        }
+        let res = self
+            .app
+            .clone()
+            .oneshot(req.body(Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+}

@@ -210,7 +210,8 @@ pub async fn create_request(
         tracing::debug!(%msg, "คำขอจองชนกับช่วงที่ไม่ว่าง");
         return Err(AppError::Conflict("ช่วงวันที่นี้ไม่ว่างแล้ว กรุณาเลือกวันอื่น".into()));
     }
-    let total = crate::billing::round2(unit.rate_daily * nights as f64);
+    let quote = super::pricing::quote_unit(&s.db, unit.id, r.check_in, r.check_out).await?;
+    let total = quote.total;
     let deposit = (total * p.deposit_percent.clamp(0.0, 100.0) / 100.0).round();
     let token = {
         use rand::RngCore;
@@ -230,7 +231,7 @@ pub async fn create_request(
     .bind(r.check_in)
     .bind(r.check_out)
     .bind(nights)
-    .bind(unit.rate_daily)
+    .bind(quote.average_rate)
     .bind(total)
     .bind(deposit)
     .bind(r.guests.clamp(1, 20))
@@ -483,4 +484,58 @@ pub(crate) fn valid_slug(slug: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         && !slug.starts_with('-')
         && !slug.ends_with('-')
+}
+
+#[derive(Deserialize)]
+pub struct QuoteQuery {
+    unit_id: i64,
+    check_in: NaiveDate,
+    check_out: NaiveDate,
+}
+
+/// ราคาตามฤดูกาล + ส่วนลดพักหลายคืน + มัดจำ สำหรับหน้าจองสาธารณะ
+pub async fn quote(
+    State(s): State<AppState>,
+    Path(slug): Path<String>,
+    Query(q): Query<QuoteQuery>,
+) -> AppResult<Json<Value>> {
+    let p = property_by_slug(&s.db, &slug).await?;
+    if !bookable_units(&s.db, p.id)
+        .await?
+        .iter()
+        .any(|u| u.id == q.unit_id)
+    {
+        return Err(AppError::NotFound);
+    }
+    let quote = super::pricing::quote_unit(&s.db, q.unit_id, q.check_in, q.check_out).await?;
+    let deposit = (quote.total * p.deposit_percent.clamp(0.0, 100.0) / 100.0).round();
+    let mut v = serde_json::to_value(quote).map_err(|e| AppError::Internal(e.into()))?;
+    v["deposit_amount"] = json!(deposit);
+    Ok(Json(v))
+}
+
+/// ราคารายคืนของทุกห้อง (แสดงในปฏิทินหน้าจอง)
+pub async fn prices(
+    State(s): State<AppState>,
+    Path(slug): Path<String>,
+    Query(q): Query<RangeQuery>,
+) -> AppResult<Json<Value>> {
+    let p = property_by_slug(&s.db, &slug).await?;
+    let units: Vec<(i64, f64)> = bookable_units(&s.db, p.id)
+        .await?
+        .iter()
+        .map(|u| (u.id, u.rate_daily))
+        .collect();
+    let prices = super::pricing::prices_for(&s.db, &units, p.id, q.from, q.to).await?;
+    let map: serde_json::Map<String, Value> = prices
+        .into_iter()
+        .map(|(id, nights)| {
+            let list: Vec<Value> = nights
+                .into_iter()
+                .map(|n| json!({ "date": n.date, "price": n.price }))
+                .collect();
+            (id.to_string(), Value::Array(list))
+        })
+        .collect();
+    Ok(Json(json!({ "units": map })))
 }

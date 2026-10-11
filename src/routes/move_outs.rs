@@ -350,5 +350,6 @@ pub async fn settle(
     .await?;
     sync_unit_status(&mut tx, unit_id).await?;
     tx.commit().await?;
+    super::housekeeping::on_checkout(&s, m.booking_id).await?;
     Ok(Json(fetch(&s.db, ctx.org_id, id).await?))
 }

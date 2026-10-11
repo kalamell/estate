@@ -90,6 +90,7 @@ pub struct Unit {
     #[sqlx(json)]
     pub extra_charges: Vec<ExtraCharge>,
     pub note: String,
+    pub housekeeping_status: String,
 }
 
 #[derive(Debug, Deserialize)]

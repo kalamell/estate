@@ -76,6 +76,18 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
     .fetch_one(&s.db)
     .await?;
 
+    let hk: (i64, i64, i64) = sqlx::query_as(
+        "SELECT
+            (SELECT COUNT(*) FROM units u JOIN properties p ON p.id = u.property_id
+             WHERE p.org_id = ?1 AND u.housekeeping_status = 'dirty'),
+            (SELECT COUNT(*) FROM units u JOIN properties p ON p.id = u.property_id
+             WHERE p.org_id = ?1 AND u.housekeeping_status = 'in_progress'),
+            (SELECT COUNT(*) FROM housekeeping_tasks WHERE org_id = ?1 AND status IN ('pending','in_progress'))",
+    )
+    .bind(ctx.org_id)
+    .fetch_one(&s.db)
+    .await?;
+
     let total_units: i64 = units_by_status.iter().map(|(_, c)| c).sum();
     let occupied: i64 = units_by_status
         .iter()
@@ -94,6 +106,7 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
         "overdue_count": overdue_count,
         "overdue_amount": overdue_amount,
         "pending_requests": pending_requests,
+        "housekeeping": { "dirty": hk.0, "in_progress": hk.1, "open_tasks": hk.2 },
         "properties": properties.into_iter().map(|(id, name, kind, units, occupied)| json!({
             "id": id, "name": name, "kind": kind, "units": units, "occupied": occupied
         })).collect::<Vec<_>>(),

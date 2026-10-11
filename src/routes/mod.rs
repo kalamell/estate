@@ -3,12 +3,14 @@ mod auth;
 mod bookings;
 mod calendar;
 mod dashboard;
+mod housekeeping;
 mod invoices;
 mod line;
 mod meters;
 mod move_outs;
 mod org;
 mod portal;
+mod pricing;
 mod properties;
 mod receipts;
 mod reports;
@@ -88,6 +90,36 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/booking-requests", get(stay::list_requests))
         .route("/api/booking-requests/:id/approve", post(stay::approve))
         .route("/api/booking-requests/:id/reject", post(stay::reject))
+        .route(
+            "/api/housekeeping/tasks",
+            get(housekeeping::list).post(housekeeping::create),
+        )
+        .route(
+            "/api/housekeeping/tasks/:id",
+            axum::routing::patch(housekeeping::patch).delete(housekeeping::delete),
+        )
+        .route(
+            "/api/housekeeping/tasks/:id/photos",
+            post(housekeeping::add_photos).layer(DefaultBodyLimit::max(40 * 1024 * 1024)),
+        )
+        .route("/api/housekeeping/today", get(housekeeping::today))
+        .route(
+            "/api/units/:id/housekeeping",
+            axum::routing::patch(housekeeping::set_unit),
+        )
+        .route(
+            "/api/org/line/staff-link",
+            post(housekeeping::staff_link).delete(housekeeping::staff_unlink),
+        )
+        .route("/api/rate-rules", get(pricing::list).post(pricing::create))
+        .route(
+            "/api/rate-rules/:id",
+            axum::routing::put(pricing::update).delete(pricing::delete),
+        )
+        .route("/api/units/:id/quote", get(pricing::unit_quote))
+        .route("/api/units/:id/prices", get(pricing::unit_prices))
+        .route("/api/public/stay/:slug/quote", get(stay::quote))
+        .route("/api/public/stay/:slug/prices", get(stay::prices))
         .route("/api/admin/stats", get(admin::stats))
         .route(
             "/api/admin/packages",
@@ -230,6 +262,12 @@ pub(crate) fn validate_in(
     }
 }
 
-pub fn spawn_channel_sync(state: crate::AppState) {
-    calendar::spawn_sync(state);
+pub fn spawn_background(state: crate::AppState) {
+    calendar::spawn_sync(state.clone());
+    housekeeping::spawn_auto_tasks(state);
+}
+
+/// งานแม่บ้านอัตโนมัติ (เปิดให้ test เรียกได้)
+pub async fn run_housekeeping(state: &crate::AppState) -> crate::error::AppResult<usize> {
+    housekeeping::run_auto_tasks(state).await
 }

@@ -41,6 +41,7 @@ pub async fn settings_json(state: &AppState, org_id: i64) -> AppResult<Value> {
         "auto_receipt": org.auto_receipt,
         "auto_ticket_reply": org.auto_ticket,
         "auto_remind": org.auto_remind,
+        "auto_housekeeping": org.auto_housekeeping,
         "linked_tenants": linked,
         "add_friend_url": org.add_friend_url(),
     }))
@@ -63,6 +64,8 @@ pub struct LineInput {
     auto_ticket_reply: bool,
     #[serde(default = "yes")]
     auto_remind: bool,
+    #[serde(default = "yes")]
+    auto_housekeeping: bool,
 }
 
 fn yes() -> bool {
@@ -97,7 +100,7 @@ pub async fn update_settings(
         "UPDATE organizations SET line_enabled = ?, line_channel_id = ?, line_basic_id = ?,
             line_channel_secret = COALESCE(?, line_channel_secret), line_access_token = COALESCE(?, line_access_token),
             line_webhook_key = COALESCE(line_webhook_key, ?), line_auto_invoice = ?, line_auto_receipt = ?,
-            line_auto_ticket = ?, line_auto_remind = ?
+            line_auto_ticket = ?, line_auto_remind = ?, line_auto_housekeeping = ?
          WHERE id = ?",
     )
     .bind(l.enabled)
@@ -110,6 +113,7 @@ pub async fn update_settings(
     .bind(l.auto_receipt)
     .bind(l.auto_ticket_reply)
     .bind(l.auto_remind)
+    .bind(l.auto_housekeeping)
     .bind(ctx.org_id)
     .execute(&s.db)
     .await?;
@@ -360,6 +364,22 @@ async fn answer(
             flex("เชื่อมบัญชีเรียบร้อย", bubble),
             text_with_menu("พิมพ์หรือกดเมนูด้านล่างเพื่อดูข้อมูลได้ตลอดเวลา"),
         ]);
+    }
+
+    // พนักงาน: เชื่อมบัญชี และคำสั่ง "งาน"
+    if let Some(code) = msg.strip_prefix("เชื่อมพนักงาน") {
+        let code = code.trim().to_uppercase();
+        return Ok(vec![match super::housekeeping::link_staff(&s.db, org.org_id, &code, user_id).await? {
+            Some(name) => text_with_menu(format!("เชื่อม LINE ของพนักงาน {name} เรียบร้อย ✅\nจะได้รับแจ้งเมื่อมีงานใหม่ พิมพ์ \"งาน\" เพื่อดูงานวันนี้")),
+            None => text_with_menu("รหัสเชื่อมพนักงานไม่ถูกต้องหรือหมดอายุ กรุณาขอรหัสใหม่จากหน้า ตั้งค่า → สมาชิก"),
+        }]);
+    }
+    if let Some(staff_id) = super::housekeeping::staff_by_line(&s.db, org.org_id, user_id).await? {
+        if msg.contains("งาน") {
+            return Ok(vec![
+                super::housekeeping::staff_tasks_reply(s, org, staff_id).await?,
+            ]);
+        }
     }
 
     let tenants = chat_tenants(s, org.org_id, user_id).await?;

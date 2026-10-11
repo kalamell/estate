@@ -9,6 +9,7 @@ pub mod error;
 pub mod ical;
 pub mod line;
 pub mod models;
+pub mod pricing;
 pub mod promptpay;
 pub mod routes;
 pub mod thai;
@@ -135,7 +136,7 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
         public_url: config.public_url.clone(),
     };
     line::spawn_reminders(state.clone());
-    routes::spawn_channel_sync(state.clone());
+    routes::spawn_background(state.clone());
     let app = build_app(state, &config.static_dir);
 
     tracing::info!("Estate พร้อมใช้งานที่ http://{}", config.bind);

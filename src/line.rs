@@ -142,6 +142,7 @@ pub struct OrgLine {
     pub auto_receipt: bool,
     pub auto_ticket: bool,
     pub auto_remind: bool,
+    pub auto_housekeeping: bool,
 }
 
 impl OrgLine {
@@ -183,7 +184,8 @@ impl OrgLine {
 const ORG_LINE_SELECT: &str = "SELECT id AS org_id, name AS org_name, theme, line_enabled AS enabled,
         line_channel_id AS channel_id, line_basic_id AS basic_id, line_channel_secret AS secret,
         line_access_token AS token, line_webhook_key AS webhook_key, line_auto_invoice AS auto_invoice,
-        line_auto_receipt AS auto_receipt, line_auto_ticket AS auto_ticket, line_auto_remind AS auto_remind
+        line_auto_receipt AS auto_receipt, line_auto_ticket AS auto_ticket, line_auto_remind AS auto_remind,
+        line_auto_housekeeping AS auto_housekeeping
     FROM organizations";
 
 pub async fn load(db: &SqlitePool, org_id: i64) -> AppResult<OrgLine> {

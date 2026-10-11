@@ -108,6 +108,15 @@ pub async fn create(
     }
 
     let is_lease = b.kind == "lease";
+    // รายวัน: ราคาเฉลี่ยต่อคืนตามกฎราคาตามฤดูกาล (ถ้าไม่ได้ระบุราคาเอง)
+    let quoted_rate = match (is_lease, b.price, b.end_date) {
+        (false, None, Some(end)) => Some(
+            super::pricing::quote_unit(&s.db, b.unit_id, b.start_date, end)
+                .await?
+                .average_rate,
+        ),
+        _ => None,
+    };
     let status = if b.start_date <= Local::now().date_naive() {
         "active"
     } else {
@@ -122,7 +131,7 @@ pub async fn create(
     .bind(&b.kind)
     .bind(b.start_date)
     .bind(b.end_date)
-    .bind(b.price.unwrap_or(if is_lease { rent } else { daily }))
+    .bind(b.price.or(quoted_rate).unwrap_or(if is_lease { rent } else { daily }))
     .bind(b.deposit_amount.unwrap_or(if is_lease { deposit } else { 0.0 }))
     .bind(status)
     .bind(b.source.as_deref().unwrap_or("direct"))
@@ -173,5 +182,8 @@ pub async fn patch(
     sync_unit_status(&mut tx, unit_id).await?;
     let booking = fetch(&mut tx, id).await?;
     tx.commit().await?;
+    if p.status.as_deref() == Some("completed") {
+        super::housekeeping::on_checkout(&s, id).await?;
+    }
     Ok(Json(booking))
 }
