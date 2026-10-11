@@ -101,6 +101,32 @@ pub fn short_date(d: chrono::NaiveDate) -> String {
     )
 }
 
+const MONTHS_LONG: [&str; 12] = [
+    "มกราคม",
+    "กุมภาพันธ์",
+    "มีนาคม",
+    "เมษายน",
+    "พฤษภาคม",
+    "มิถุนายน",
+    "กรกฎาคม",
+    "สิงหาคม",
+    "กันยายน",
+    "ตุลาคม",
+    "พฤศจิกายน",
+    "ธันวาคม",
+];
+
+/// เช่น 16 ตุลาคม 2569 (ใช้ในสัญญา)
+pub fn long_date(d: chrono::NaiveDate) -> String {
+    use chrono::Datelike;
+    format!(
+        "{} {} {}",
+        d.day(),
+        MONTHS_LONG[d.month0() as usize],
+        buddhist_year(d.year())
+    )
+}
+
 /// เช่น 1,234.50 (ตัด .00 ออก)
 pub fn money(v: f64) -> String {
     let s = format!("{:.2}", v.abs());

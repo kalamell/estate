@@ -79,7 +79,9 @@ async fn allowed(
         let ok: Option<i64> = sqlx::query_scalar(
             "SELECT tn.id FROM tenants tn WHERE tn.portal_token = ?1 AND tn.org_id = ?2 AND (
                 EXISTS (SELECT 1 FROM parcels pc WHERE pc.tenant_id = tn.id AND pc.photo_url = ?3)
-                OR EXISTS (SELECT 1 FROM payment_notices n WHERE n.tenant_id = tn.id AND n.slip_url = ?3))",
+                OR EXISTS (SELECT 1 FROM payment_notices n WHERE n.tenant_id = tn.id AND n.slip_url = ?3)
+                OR EXISTS (SELECT 1 FROM contracts c WHERE c.tenant_id = tn.id AND c.status != 'draft'
+                           AND (c.tenant_signature_url = ?3 OR c.landlord_signature_url = ?3)))",
         )
         .bind(t)
         .bind(org_id)

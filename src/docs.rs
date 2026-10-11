@@ -10,6 +10,7 @@ pub enum DocType {
     Invoice,
     Receipt,
     DepositSettlement,
+    Contract,
 }
 
 impl DocType {
@@ -18,6 +19,7 @@ impl DocType {
             DocType::Invoice => "INV",
             DocType::Receipt => "RC",
             DocType::DepositSettlement => "DS",
+            DocType::Contract => "CT",
         }
     }
 }

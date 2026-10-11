@@ -2,6 +2,7 @@ mod admin;
 mod auth;
 mod bookings;
 mod calendar;
+mod contracts;
 mod dashboard;
 mod files;
 mod housekeeping;
@@ -156,6 +157,36 @@ pub fn api_router() -> Router<AppState> {
             post(parcels::pickup).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
         )
         .route("/api/parcels/:id/return", post(parcels::mark_returned))
+        .route(
+            "/api/contract-templates",
+            get(contracts::templates).post(contracts::create_template),
+        )
+        .route(
+            "/api/contract-templates/:id",
+            axum::routing::put(contracts::update_template).delete(contracts::delete_template),
+        )
+        .route(
+            "/api/contracts",
+            get(contracts::list).post(contracts::create),
+        )
+        .route(
+            "/api/contracts/:id",
+            get(contracts::get).put(contracts::update),
+        )
+        .route("/api/contracts/:id/send", post(contracts::send))
+        .route(
+            "/api/contracts/:id/landlord-sign",
+            post(contracts::landlord_sign).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
+        .route("/api/contracts/:id/void", post(contracts::void))
+        .route(
+            "/api/portal/:token/contracts/:id",
+            get(contracts::portal_get),
+        )
+        .route(
+            "/api/portal/:token/contracts/:id/sign",
+            post(contracts::portal_sign).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
         .route("/api/tm30", get(tm30::list))
         .route("/api/tm30/export.csv", get(tm30::export))
         .route(
