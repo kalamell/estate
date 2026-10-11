@@ -19,6 +19,11 @@ import { PageSkeleton } from '@/components/page-skeleton'
 
 const LoginPage = lazy(() => import('@/pages/auth/login'))
 const RegisterPage = lazy(() => import('@/pages/auth/register'))
+const ForgotPasswordPage = lazy(() => import('@/pages/auth/forgot'))
+const ResetPasswordPage = lazy(() => import('@/pages/auth/reset'))
+const VerifyEmailPage = lazy(() => import('@/pages/auth/verify-email'))
+const ImportPage = lazy(() => import('@/pages/import'))
+const AdminEmails = lazy(() => import('@/pages/admin/emails'))
 const DashboardPage = lazy(() => import('@/pages/dashboard'))
 const PropertiesPage = lazy(() => import('@/pages/properties'))
 const PricingPage = lazy(() => import('@/pages/properties/pricing'))
@@ -80,6 +85,10 @@ export default function App() {
                 <Routes>
                   <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
                   <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+                  <Route path="/forgot-password" element={<GuestOnly><ForgotPasswordPage /></GuestOnly>} />
+                  {/* ลิงก์จากอีเมล — เปิดได้ทั้งตอนล็อกอินอยู่และยังไม่ล็อกอิน */}
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
+                  <Route path="/verify-email" element={<VerifyEmailPage />} />
                   {/* ข้อกำหนดการใช้งาน / นโยบายความเป็นส่วนตัว — สาธารณะ */}
                   <Route path="/terms" element={<TermsPage />} />
                   <Route path="/privacy" element={<LegalPrivacyPage />} />
@@ -114,6 +123,7 @@ export default function App() {
                       <Route path="users" element={page(<AdminUsers />)} />
                       <Route path="support" element={page(<AdminSupport />)} />
                       <Route path="billing" element={page(<AdminBilling />)} />
+                      <Route path="emails" element={page(<AdminEmails />)} />
                     </Route>
                     <Route element={<RequireOrg><AppShell /></RequireOrg>}>
                       <Route index element={page(<DashboardPage />)} />
@@ -121,6 +131,7 @@ export default function App() {
                       <Route path="properties/:id/pricing" element={page(<PricingPage />)} />
                       <Route path="housekeeping" element={page(<HousekeepingPage />)} />
                       <Route path="units" element={page(<UnitsPage />)} />
+                      <Route path="import" element={page(<ImportPage />)} />
                       <Route path="bookings" element={page(<BookingsPage />)} />
                       <Route path="contracts" element={page(<ContractsPage />)} />
                       <Route path="contracts/:id" element={page(<ContractDetailPage />)} />

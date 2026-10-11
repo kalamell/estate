@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Logo } from '@/components/common'
 
 const FEATURES = [
@@ -43,6 +45,43 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
           <div className="mt-8">{children}</div>
         </div>
       </main>
+    </div>
+  )
+}
+
+/** กล่องแจ้งผลบนหน้า auth (ส่งลิงก์แล้ว / ลิงก์หมดอายุ / ยืนยันสำเร็จ) */
+export function AuthNotice({
+  icon: Icon,
+  tone = 'info',
+  title,
+  children,
+}: {
+  icon: LucideIcon
+  tone?: 'info' | 'success' | 'error'
+  title: ReactNode
+  children?: ReactNode
+}) {
+  return (
+    <div
+      className={cn(
+        'flex gap-3 rounded-lg border p-4 text-sm',
+        tone === 'info' && 'bg-card',
+        tone === 'success' && 'border-success/25 bg-success/[0.06]',
+        tone === 'error' && 'border-destructive/25 bg-destructive/[0.04]',
+      )}
+    >
+      <Icon
+        className={cn(
+          'mt-0.5 size-5 shrink-0',
+          tone === 'info' && 'text-primary',
+          tone === 'success' && 'text-success',
+          tone === 'error' && 'text-destructive',
+        )}
+      />
+      <div className="min-w-0 space-y-1">
+        <p className="font-medium">{title}</p>
+        {children && <div className="text-muted-foreground">{children}</div>}
+      </div>
     </div>
   )
 }

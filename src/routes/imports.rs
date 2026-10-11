@@ -568,7 +568,7 @@ async fn plan(s: &AppState, ctx: &OrgCtx, id: i64, spec: &Spec) -> AppResult<(St
                     }
                     None => {
                         r.unit_action = Some("create");
-                        if rent.is_none() {
+                        if rent.is_none() && get("rent_monthly").is_empty() {
                             r.warnings.push("ไม่มีค่าเช่า — ตั้งเป็น 0 แก้ภายหลังได้".into());
                         }
                         unit_by_key.insert(key, (None, rent.unwrap_or(0.0)));

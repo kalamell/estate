@@ -1,6 +1,6 @@
 import { NavLink, Outlet, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Building2, CreditCard, Inbox, LayoutDashboard, Package, ShieldCheck, Users } from 'lucide-react'
+import { ArrowLeft, Building2, CreditCard, Inbox, LayoutDashboard, Mail, Package, ShieldCheck, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/contexts/session'
@@ -15,6 +15,7 @@ const TABS = [
   { to: '/admin/billing', label: 'ค่าบริการ', icon: CreditCard },
   { to: '/admin/users', label: 'ผู้ใช้', icon: Users },
   { to: '/admin/support', label: 'คำร้องจากลูกค้า', icon: Inbox },
+  { to: '/admin/emails', label: 'อีเมล', icon: Mail },
 ]
 
 export default function AdminLayout() {

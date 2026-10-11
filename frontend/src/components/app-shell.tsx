@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, CalendarClock, CalendarPlus, Clock, ShieldAlert, XCircle } from 'lucide-react'
+import { ArrowRight, CalendarClock, CalendarPlus, Clock, Loader2, MailWarning, ShieldAlert, X, XCircle } from 'lucide-react'
 import { useSession } from '@/contexts/session'
 import { api } from '@/lib/api'
+import { useResendVerification } from '@/lib/account'
+import { queryClient } from '@/lib/query'
 import { BILLING_PATH, billingNotice } from '@/lib/billing'
 import { thDateLong } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -138,13 +140,18 @@ function AppSidebar() {
 }
 
 /** แถบแจ้งเตือนเรื่องแพ็กเกจ: ใกล้หมดอายุ / ช่วงผ่อนผัน / อ่านอย่างเดียว / สลิปถูกตีกลับ */
-function BillingBanner() {
+function useBillingNotice() {
   const { readOnly, orgInfo, canManage } = useSession()
-  const { pathname } = useLocation()
   const n = billingNotice(orgInfo, readOnly)
   if (!n) return null
   // พนักงานไม่ต้องเห็นเรื่องสลิป (เจ้าของจัดการเอง)
   if (!canManage && (n.kind === 'rejected' || n.kind === 'review')) return null
+  return n
+}
+
+function BillingBanner({ n }: { n: NonNullable<ReturnType<typeof useBillingNotice>> }) {
+  const { canManage } = useSession()
+  const { pathname } = useLocation()
 
   let tone: 'calm' | 'warn' | 'alert' = 'warn'
   let icon = CalendarClock
@@ -213,7 +220,7 @@ function BillingBanner() {
     <div
       role="status"
       className={cn(
-        'flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-[13px] lg:px-8',
+        'flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-[13px] lg:px-8',
         tone === 'calm' && 'bg-muted/60 text-foreground',
         tone === 'warn' && 'border-warning/30 bg-warning/10 text-foreground',
         tone === 'alert' && 'border-destructive/20 bg-destructive/[0.06] text-foreground',
@@ -241,6 +248,81 @@ function BillingBanner() {
       ) : (
         <span className="ml-auto whitespace-nowrap text-muted-foreground">ติดต่อเจ้าของบัญชี</span>
       )}
+    </div>
+  )
+}
+
+const verifyDismissKey = (userId: number) => `estate.verifyBanner.${userId}`
+
+/** แถบเตือนให้ยืนยันอีเมล — ปิดได้ (จำไว้เฉพาะเซสชันของแท็บนี้) */
+function VerifyBanner({ compact }: { compact: boolean }) {
+  const { user } = useSession()
+  const resend = useResendVerification(user.email)
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem(verifyDismissKey(user.id)) === '1'
+    } catch {
+      return false
+    }
+  })
+  const pending = user.email_verified === false && !dismissed
+  // ยืนยันจากอีกแท็บแล้วกลับมา → ดึงสถานะใหม่
+  useEffect(() => {
+    if (!pending) return
+    const onFocus = () => void queryClient.invalidateQueries({ queryKey: ['me'] })
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [pending])
+  if (!pending) return null
+  const dismiss = () => {
+    setDismissed(true)
+    try {
+      sessionStorage.setItem(verifyDismissKey(user.id), '1')
+    } catch {
+      /* ignore */
+    }
+  }
+  return (
+    <div
+      role="status"
+      className={cn(
+        'flex items-center gap-x-3 bg-muted/40 pr-2 pl-4 text-foreground lg:pl-8',
+        compact ? 'py-1 text-xs' : 'py-1.5 text-[13px]',
+      )}
+    >
+      <MailWarning className={cn('shrink-0 text-muted-foreground', compact ? 'size-3.5' : 'size-4')} />
+      <span className="min-w-0 flex-1">
+        ยืนยันอีเมล <b className="font-medium break-words">{user.email}</b> เพื่อรับใบแจ้งหนี้และกู้คืนรหัสผ่าน
+      </span>
+      <button
+        type="button"
+        onClick={() => resend.mutate()}
+        disabled={resend.isPending || resend.isSuccess}
+        className="inline-flex shrink-0 items-center gap-1 font-medium whitespace-nowrap text-primary underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline"
+      >
+        {resend.isPending && <Loader2 className="size-3.5 animate-spin" />}
+        {resend.isSuccess ? 'ส่งแล้ว' : 'ส่งลิงก์อีกครั้ง'}
+      </button>
+      <button
+        type="button"
+        onClick={dismiss}
+        className="grid size-7 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label="ซ่อนแถบนี้"
+        title="ซ่อนจนกว่าจะเปิดแอปใหม่"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
+  )
+}
+
+/** แถบแจ้งเตือนใต้ header — รวมเรื่องแพ็กเกจและยืนยันอีเมลไว้ในกล่องเดียว (แถวรองบางลงเมื่อมีสองเรื่อง) */
+function ShellNotices() {
+  const billing = useBillingNotice()
+  return (
+    <div className="divide-y border-b empty:hidden">
+      {billing && <BillingBanner n={billing} />}
+      <VerifyBanner compact={!!billing} />
     </div>
   )
 }
@@ -282,7 +364,7 @@ export function AppShell() {
         <AppSidebar />
         <SidebarInset className="min-w-0">
           <Header />
-          <BillingBanner />
+          <ShellNotices />
           {/* ไม่จำกัดความกว้าง: ย่อเมนูซ้ายแล้วเนื้อหาขยายเต็มพื้นที่ */}
           <main className="w-full flex-1 p-4 pb-24 sm:pb-8 lg:p-8">
             <Outlet key={orgId ?? 'none'} />

@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTheme, type ColorThemePref, type Theme } from '@/components/theme-provider'
-import { ChevronsUpDown, LogOut, Palette, Settings, ShieldCheck } from 'lucide-react'
+import { ChevronsUpDown, LogOut, Palette, Settings, ShieldCheck, UserRound } from 'lucide-react'
 import { COLOR_THEMES, COLOR_THEME_META } from '@/lib/themes'
 import { ThemeSwatch } from '@/components/theme-swatch'
+import { AccountDialog } from '@/components/account-dialog'
+import { useSidebar } from '@/components/ui/sidebar'
 import { api, setOrgId, type User } from '@/lib/api'
 import { queryClient } from '@/lib/query'
 import { initials } from '@/lib/format'
@@ -59,10 +62,12 @@ function UserMenuContent({
   user,
   side = 'bottom',
   showSettings = true,
+  onAccount,
 }: {
   user: User
   side?: 'bottom' | 'right' | 'top'
   showSettings?: boolean
+  onAccount: () => void
 }) {
   const logout = useLogout()
   return (
@@ -78,6 +83,13 @@ function UserMenuContent({
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
+        <DropdownMenuItem onSelect={onAccount}>
+          <UserRound />
+          บัญชีของฉัน
+          {user.email_verified === false && (
+            <span className="ml-auto size-2 rounded-full bg-warning" aria-label="ยังไม่ยืนยันอีเมล" />
+          )}
+        </DropdownMenuItem>
         <ThemeSubmenu />
         {showSettings && (
           <DropdownMenuItem asChild>
@@ -152,33 +164,49 @@ function ThemeSubmenu() {
 
 /** ปุ่มผู้ใช้ในส่วนท้าย sidebar */
 export function SidebarUserMenu({ user, isMobile }: { user: User; isMobile: boolean }) {
+  const [account, setAccount] = useState(false)
+  const { setOpenMobile } = useSidebar()
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 data-[state=open]:bg-sidebar-accent">
-          <UserAvatar user={user} onSidebar />
-          <div className="grid flex-1 leading-tight">
-            <span className="truncate font-medium text-sidebar-accent-foreground">{user.name}</span>
-            <span className="truncate text-xs opacity-70">{user.email}</span>
-          </div>
-          <ChevronsUpDown className="ml-auto size-4 opacity-60" />
-        </button>
-      </DropdownMenuTrigger>
-      <UserMenuContent user={user} side={isMobile ? 'top' : 'right'} />
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 data-[state=open]:bg-sidebar-accent">
+            <UserAvatar user={user} onSidebar />
+            <div className="grid flex-1 leading-tight">
+              <span className="truncate font-medium text-sidebar-accent-foreground">{user.name}</span>
+              <span className="truncate text-xs opacity-70">{user.email}</span>
+            </div>
+            <ChevronsUpDown className="ml-auto size-4 opacity-60" />
+          </button>
+        </DropdownMenuTrigger>
+        <UserMenuContent
+          user={user}
+          side={isMobile ? 'top' : 'right'}
+          onAccount={() => {
+            setOpenMobile(false)
+            setAccount(true)
+          }}
+        />
+      </DropdownMenu>
+      <AccountDialog user={user} open={account} onOpenChange={setAccount} />
+    </>
   )
 }
 
 /** ปุ่มผู้ใช้แบบไอคอน (ใช้ใน header ของ admin console) */
 export function CompactUserMenu({ user, showSettings }: { user: User; showSettings?: boolean }) {
+  const [account, setAccount] = useState(false)
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="rounded-full" aria-label="เมนูผู้ใช้">
-          <UserAvatar user={user} className="size-8 rounded-full" />
-        </Button>
-      </DropdownMenuTrigger>
-      <UserMenuContent user={user} showSettings={showSettings} />
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="rounded-full" aria-label="เมนูผู้ใช้">
+            <UserAvatar user={user} className="size-8 rounded-full" />
+          </Button>
+        </DropdownMenuTrigger>
+        <UserMenuContent user={user} showSettings={showSettings} onAccount={() => setAccount(true)} />
+      </DropdownMenu>
+      <AccountDialog user={user} open={account} onOpenChange={setAccount} />
+    </>
   )
 }

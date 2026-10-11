@@ -17,6 +17,8 @@ export interface User {
   name: string
   email: string
   is_super_admin: boolean
+  /** ยืนยันอีเมลแล้ว (เปิดลิงก์จากอีเมล) */
+  email_verified?: boolean
 }
 
 export interface OrgSummary {
@@ -1454,6 +1456,160 @@ export interface StayRequestStatus {
   org: StayOrg
 }
 
+// ===================== Types: อีเมล (super admin) =====================
+
+export type EmailStatus = 'queued' | 'sent' | 'failed' | 'logged'
+
+export interface OutboxEmail {
+  id: number
+  to_addr: string
+  subject: string
+  kind: string
+  status: EmailStatus
+  attempts: number
+  last_error: string | null
+  created_at: string
+  sent_at: string | null
+}
+
+export interface AdminEmails {
+  smtp_configured: boolean
+  emails: OutboxEmail[]
+}
+
+export interface TestEmailResult {
+  status: EmailStatus
+  error: string | null
+  smtp_configured: boolean
+}
+
+// ===================== Types: นำเข้าข้อมูลจาก Excel/CSV =====================
+
+export type ImportFieldKey =
+  | 'property_name'
+  | 'unit_name'
+  | 'floor'
+  | 'rent_monthly'
+  | 'rate_daily'
+  | 'tenant_name'
+  | 'tenant_phone'
+  | 'tenant_email'
+  | 'tenant_id_card'
+  | 'tenant_address'
+  | 'tenant_nationality'
+  | 'start_date'
+  | 'end_date'
+  | 'lease_rent'
+  | 'deposit'
+  | 'electric_reading'
+  | 'water_reading'
+  | 'reading_date'
+  | 'note'
+
+export interface ImportField {
+  key: ImportFieldKey | string
+  label: string
+  /** ห้อง / ผู้เช่า / สัญญา / มิเตอร์ / อื่น ๆ */
+  group: string
+  kind: string
+}
+
+/** ช่องข้อมูลของเรา → ลำดับคอลัมน์ในไฟล์ (เริ่มที่ 0) */
+export type ImportMapping = Partial<Record<string, number>>
+
+export type DateOrder = 'dmy' | 'mdy' | 'ymd'
+
+export interface ImportOptions {
+  /** ใช้โครงการเดียวกันกับทุกแถว */
+  property_id?: number | null
+  create_properties: boolean
+  property_kind: PropertyKind
+  update_units: boolean
+  date_order: DateOrder
+  deposit_paid: boolean
+}
+
+export interface ImportDescribe {
+  id: number
+  filename: string
+  status: string
+  sheets: { index: number; name: string; rows: number }[]
+  sheet: number
+  /** เริ่มที่ 0 */
+  header_row: number
+  headers: string[]
+  columns: { index: number; letter: string; header: string }[]
+  /** 8 แถวข้อมูลแรก */
+  sample: string[][]
+  /** แถวบนสุดของชีต (รวมหัวตาราง) สำหรับเลือกแถวหัวตาราง */
+  preview_rows: string[][]
+  row_count: number
+  too_many_rows: boolean
+  mapping: ImportMapping
+  mapping_source: { type: 'auto' | 'saved'; name?: string }
+  options: Partial<ImportOptions>
+  fields: ImportField[]
+  properties: { id: number; name: string }[]
+}
+
+export interface ImportSpec {
+  sheet: number
+  header_row: number
+  mapping: ImportMapping
+  options: ImportOptions
+}
+
+export interface ImportSummary {
+  rows: number
+  ok: number
+  warnings: number
+  errors: number
+  properties_create: number
+  units_create: number
+  units_update: number
+  tenants_create: number
+  tenants_existing: number
+  leases_create: number
+  leases_skip: number
+  meters: number
+}
+
+export interface ImportRowPlan {
+  /** เลขแถวในไฟล์ (เริ่มที่ 1) */
+  row: number
+  status: 'ok' | 'warning' | 'error'
+  property: string | null
+  property_action: 'existing' | 'create' | null
+  unit: string | null
+  unit_action: 'create' | 'update' | 'existing' | null
+  tenant: string | null
+  tenant_action: 'create' | 'existing' | null
+  lease_action: 'create' | 'skip' | null
+  lease: string | null
+  meters: number
+  errors: string[]
+  warnings: string[]
+}
+
+export interface ImportPreview {
+  summary: ImportSummary
+  global_errors: string[]
+  rows: ImportRowPlan[]
+}
+
+export interface ImportCommitResult {
+  summary: ImportSummary
+  skipped: { row: number; errors: string[] }[]
+}
+
+export interface SavedImportMapping {
+  id: number
+  name: string
+  /** จำนวนช่องที่จับคู่ */
+  fields: number
+  updated_at: string
+}
+
 // ===================== Client =====================
 
 export class ApiError extends Error {
@@ -1622,6 +1778,14 @@ export const api = {
   login: (b: { email: string; password: string }) => post<Me>('/api/auth/login', b, false),
   logout: () => post<object>('/api/auth/logout', {}, false),
   me: () => get<Me>('/api/auth/me', undefined, false),
+  /** ขอลิงก์ตั้งรหัสผ่านใหม่ — ตอบ ok เสมอ */
+  forgotPassword: (email: string) => post<{ ok: boolean }>('/api/auth/forgot', { email }, false),
+  resetPassword: (b: { token: string; password: string }) => post<{ ok: boolean }>('/api/auth/reset', b, false),
+  verifyEmail: (token: string) => post<{ ok: boolean }>('/api/auth/verify', { token }, false),
+  resendVerification: () => post<{ ok: boolean }>('/api/auth/verify/resend', {}, false),
+  /** เปลี่ยนรหัสผ่าน — คงเซสชันนี้ไว้ ออกจากระบบอุปกรณ์อื่น */
+  changePassword: (b: { current_password: string; new_password: string }) =>
+    post<{ ok: boolean }>('/api/auth/password', b, false),
   createOrg: (name: string) => post<OrgSummary>('/api/orgs', { name }, false),
 
   // org
@@ -1828,6 +1992,17 @@ export const api = {
   reportExportUrl: (type: 'invoices' | 'receipts' | 'payments', from: string, to: string) =>
     '/api/reports/export' + qs({ type, from, to, org_id: currentOrgId }),
 
+  // นำเข้าข้อมูลจาก Excel/CSV (เจ้าของ/ผู้ดูแล)
+  uploadImport: (fd: FormData) => form<ImportDescribe>('/api/imports', fd),
+  inspectImport: (id: number, b: { sheet: number; header_row?: number }) =>
+    post<ImportDescribe>(`/api/imports/${id}/inspect`, b),
+  previewImport: (id: number, spec: ImportSpec) => post<ImportPreview>(`/api/imports/${id}/preview`, spec),
+  commitImport: (id: number, spec: ImportSpec) => post<ImportCommitResult>(`/api/imports/${id}/commit`, spec),
+  importMappings: () => get<SavedImportMapping[]>('/api/import-mappings'),
+  deleteImportMapping: (id: number) => del(`/api/import-mappings/${id}`),
+  /** ไฟล์ตัวอย่าง (ไม่บังคับใช้) */
+  importTemplateUrl: () => '/api/imports/template.csv' + qs({ org_id: currentOrgId }),
+
   // tenant portal (สาธารณะ ไม่ต้องล็อกอิน ไม่ส่ง X-Org-Id)
   portal: {
     home: (token: string) => get<PortalHome>(`/api/portal/${enc(token)}`, undefined, false),
@@ -1920,5 +2095,7 @@ export const api = {
       post<SubPayment>(`/api/admin/billing/invoices/${id}/reject`, { reason }, false),
     voidInvoice: (id: number, reason: string) =>
       post<SubPayment>(`/api/admin/billing/invoices/${id}/void`, { reason }, false),
+    emails: (f: { status?: EmailStatus | '' } = {}) => get<AdminEmails>('/api/admin/emails', f, false),
+    testEmail: (to: string) => post<TestEmailResult>('/api/admin/emails/test', { to }, false),
   },
 }

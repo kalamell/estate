@@ -25,6 +25,7 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState, StatCard, StatCardSkeleton } from '@/components/common'
 import { cn } from '@/lib/utils'
+import { ImportCta } from '@/components/import-cta'
 import { LeafletMap } from '@/components/leaflet-map'
 import { LineIcon } from '@/components/line'
 import { useSession } from '@/contexts/session'
@@ -50,6 +51,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {canManage && d?.total_units === 0 && <ImportCta />}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {!d ? (
           Array.from({ length: 4 }, (_, i) => <StatCardSkeleton key={i} />)

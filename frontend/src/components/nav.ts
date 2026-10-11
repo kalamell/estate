@@ -8,6 +8,7 @@ import {
   CreditCard,
   DoorOpen,
   FileSignature,
+  FileUp,
   Gauge,
   History,
   LayoutDashboard,
@@ -63,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/', label: 'ภาพรวม', icon: LayoutDashboard },
       { to: '/properties', label: 'โครงการ & แผนที่', icon: MapPinned },
       { to: '/units', label: 'ห้องพัก & 3D', icon: Building2 },
+      { to: '/import', label: 'นำเข้าข้อมูล', icon: FileUp, adminOnly: true },
     ],
   },
   {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Box, DoorOpen, LayoutGrid, MousePointerClick, Plus } from 'lucide-react'
+import { Box, DoorOpen, FileSpreadsheet, LayoutGrid, MousePointerClick, Plus } from 'lucide-react'
 import { api, type Unit, type UnitStatus } from '@/lib/api'
 import { UNIT_STATUS, baht } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { EmptyState } from '@/components/common'
+import { ImportCta } from '@/components/import-cta'
 import { HkIndicator } from '@/components/housekeeping-indicator'
 import { LS, readLS, writeLS } from '@/lib/storage'
 import { AddUnitDialog } from './add-unit-dialog'
@@ -85,13 +86,21 @@ export default function UnitsPage() {
 
   if (!properties.data?.length)
     return (
-      <Card>
-        <EmptyState
-          icon={DoorOpen}
-          title="ยังไม่มีโครงการ"
-          description="สร้างโครงการก่อน แล้วจึงเพิ่มห้องพัก"
-        />
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <EmptyState
+            icon={DoorOpen}
+            title="ยังไม่มีโครงการ"
+            description="สร้างโครงการก่อน แล้วจึงเพิ่มห้องพัก — หรือนำเข้าจากไฟล์ ระบบสร้างโครงการให้อัตโนมัติ"
+            action={
+              <Button asChild variant="outline">
+                <Link to="/properties">ไปที่โครงการ</Link>
+              </Button>
+            }
+          />
+        </Card>
+        {canManage && <ImportCta />}
+      </div>
     )
 
   return (
@@ -151,11 +160,19 @@ export default function UnitsPage() {
           <EmptyState
             icon={DoorOpen}
             title="ยังไม่มีห้องในโครงการนี้"
+            description={canManage ? 'เพิ่มทีละห้อง หรือนำเข้าหลายห้องพร้อมผู้เช่าจากไฟล์ Excel/CSV' : undefined}
             action={
               canManage && (
-                <Button onClick={() => setAddOpen(true)} disabled={readOnly}>
-                  <Plus /> เพิ่มห้อง
-                </Button>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button onClick={() => setAddOpen(true)} disabled={readOnly}>
+                    <Plus /> เพิ่มห้อง
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link to="/import">
+                      <FileSpreadsheet /> นำเข้าจาก Excel/CSV
+                    </Link>
+                  </Button>
+                </div>
               )
             }
           />

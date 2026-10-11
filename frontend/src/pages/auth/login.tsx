@@ -7,7 +7,9 @@ import { queryClient } from '@/lib/query'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Field } from '@/components/common'
+import { PasswordInput } from '@/components/password-input'
 import { AuthLayout } from './layout'
 
 export default function LoginPage() {
@@ -54,17 +56,24 @@ export default function LoginPage() {
             className="h-11"
           />
         </Field>
-        <Field label="รหัสผ่าน" htmlFor="password">
-          <Input
+        <div className="grid gap-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <Label htmlFor="password" className="text-xs font-medium text-muted-foreground">
+              รหัสผ่าน
+            </Label>
+            <Link to="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+              ลืมรหัสผ่าน?
+            </Link>
+          </div>
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             className="h-11"
           />
-        </Field>
+        </div>
         <Button type="submit" size="lg" className="h-11" disabled={login.isPending}>
           {login.isPending ? <Loader2 className="animate-spin" /> : <LogIn />}
           เข้าสู่ระบบ
