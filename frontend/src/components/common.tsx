@@ -172,6 +172,15 @@ export function InvoiceStatusBadge({
   return <ToneBadge tone="ink">รอชำระ</ToneBadge>
 }
 
+/** หน้าที่จำกัดเฉพาะเจ้าของ/ผู้ดูแลองค์กร */
+export function AdminOnlyState() {
+  return (
+    <Card>
+      <EmptyState icon={Lock} title="เฉพาะเจ้าของหรือผู้ดูแลองค์กร" description="ขอให้ผู้ดูแลองค์กรเปิดดูหน้านี้" />
+    </Card>
+  )
+}
+
 /** การ์ดชวนอัปเกรดเมื่อฟีเจอร์ไม่อยู่ในแพ็กเกจ */
 export function UpsellCard({ title, description }: { title: string; description: string }) {
   return (

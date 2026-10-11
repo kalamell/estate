@@ -5,6 +5,7 @@ import { ChevronDown, Loader2 } from 'lucide-react'
 import { api, type Tenant, type TenantInput } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -18,7 +19,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Field } from '@/components/common'
 import { cn } from '@/lib/utils'
 
-const EMPTY: TenantInput = {
+type FormState = Required<Omit<TenantInput, 'consent_obtained'>> & { id?: number }
+
+const EMPTY: FormState = {
   full_name: '',
   phone: '',
   email: '',
@@ -29,7 +32,7 @@ const EMPTY: TenantInput = {
   branch_code: '',
 }
 
-const toInput = (t: Tenant): TenantInput & { id: number } => ({
+const toInput = (t: Tenant): FormState => ({
   id: t.id,
   full_name: t.full_name,
   phone: t.phone ?? '',
@@ -51,13 +54,25 @@ function TenantForm({
   tenant?: Tenant | null
   onSaved?: (t: Tenant) => void
 }) {
-  const [form, setForm] = useState<TenantInput & { id?: number }>(() => (tenant ? toInput(tenant) : EMPTY))
+  const [form, setForm] = useState<FormState>(() => (tenant ? toInput(tenant) : EMPTY))
   const [showTax, setShowTax] = useState(() => !!(tenant?.tax_id || tenant?.address || tenant?.branch_code))
+  // PDPA: ถามความยินยอมเฉพาะเมื่อยังไม่มี
+  const askConsent = !tenant?.consent_at
+  const [consent, setConsent] = useState(false)
   const taxDigits = form.tax_id.replace(/\D/g, '')
   const taxInvalid = form.tax_id.trim() !== '' && taxDigits.length !== 13
+  // เลขบัตรอาจถูกปิดบัง (•••1234) สำหรับผู้ใช้ที่ไม่ใช่ผู้ดูแล → ส่งเฉพาะเมื่อแก้ไขจริง
+  const idCardChanged = !tenant || form.id_card !== (tenant.id_card ?? '')
+  const idCardMasked = !!tenant?.id_card && tenant.id_card.includes('•')
 
   const save = useMutation({
-    mutationFn: () => api.saveTenant({ ...form, tax_id: taxDigits }),
+    mutationFn: () => {
+      const { id_card, ...rest } = form
+      const body: TenantInput & { id?: number } = { ...rest, tax_id: taxDigits }
+      if (idCardChanged) body.id_card = id_card
+      if (askConsent) body.consent_obtained = consent
+      return api.saveTenant(body)
+    },
     onSuccess: async (t) => {
       toast.success('บันทึกผู้เช่าแล้ว')
       await invalidate('tenants')
@@ -65,7 +80,7 @@ function TenantForm({
       onOpenChange(false)
     },
   })
-  const set = (k: keyof TenantInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (k: keyof Omit<FormState, 'id'>) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }))
 
   return (
@@ -77,6 +92,7 @@ function TenantForm({
           setShowTax(true)
           return toast.error('เลขประจำตัวผู้เสียภาษีต้องมี 13 หลัก')
         }
+        if (idCardChanged && form.id_card.includes('•')) return toast.error('กรุณาพิมพ์เลขบัตรประชาชนใหม่ทั้งหมด')
         save.mutate()
       }}
     >
@@ -95,8 +111,20 @@ function TenantForm({
           <Input id="t-email" type="email" value={form.email} onChange={set('email')} />
         </Field>
       </div>
-      <Field label="เลขบัตรประชาชน / พาสปอร์ต" htmlFor="t-id">
-        <Input id="t-id" value={form.id_card} onChange={set('id_card')} />
+      <Field
+        label="เลขบัตรประชาชน / พาสปอร์ต"
+        htmlFor="t-id"
+        hint={idCardMasked && !idCardChanged ? 'แสดงบางส่วนเพื่อคุ้มครองข้อมูล — พิมพ์ใหม่ทั้งหมดหากต้องการแก้ไข' : undefined}
+      >
+        <Input
+          id="t-id"
+          value={form.id_card}
+          onChange={set('id_card')}
+          onFocus={(e) => {
+            // ค่าที่ถูกปิดบังแก้ไขบางส่วนไม่ได้ → เลือกทั้งหมดให้พิมพ์ทับ
+            if (idCardMasked && !idCardChanged) e.currentTarget.select()
+          }}
+        />
       </Field>
       <div className="rounded-md border">
         <button
@@ -146,6 +174,23 @@ function TenantForm({
       <Field label="หมายเหตุ" htmlFor="t-note">
         <Textarea id="t-note" rows={2} value={form.note} onChange={set('note')} />
       </Field>
+      {askConsent && (
+        <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+          <Checkbox
+            checked={consent}
+            onCheckedChange={(v) => setConsent(v === true)}
+            className="mt-0.5"
+            aria-describedby="t-consent-hint"
+          />
+          <span className="grid gap-0.5">
+            <span className="font-medium">ได้รับความยินยอมจากผู้เช่าแล้ว</span>
+            <span id="t-consent-hint" className="text-xs text-muted-foreground">
+              ผู้เช่ารับทราบประกาศความเป็นส่วนตัวและยินยอมให้เก็บข้อมูลเพื่อการเช่า (เช่น ลงนามในสัญญา)
+              — หากยังไม่ได้รับ ผู้เช่าจะถูกขอความยินยอมเมื่อเปิดพอร์ทัลครั้งแรก
+            </span>
+          </span>
+        </label>
+      )}
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
           ยกเลิก

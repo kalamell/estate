@@ -1,4 +1,4 @@
-import { ApiError, type OrgInfo, type OrgLegal } from './api'
+import { ApiError, type OrgInfo, type OrgLegal, type OrgPrivacyInput } from './api'
 import { DEFAULT_COLOR_THEME, isColorTheme, type ColorThemeId } from './themes'
 
 /** ลิงก์หน้าพิมพ์เอกสาร (เปิดแท็บใหม่ + สั่งพิมพ์อัตโนมัติ) */
@@ -26,6 +26,19 @@ export function orgLegalOf(info: OrgInfo): OrgLegal {
     vat_rate: o.vat_rate ?? 7,
     receipt_note: o.receipt_note ?? '',
   }
+}
+
+/**
+ * ค่าตั้ง PDPA ปัจจุบัน — ส่งกลับไปพร้อม PUT /api/org จากแท็บอื่นเพื่อไม่ให้ค่าหาย
+ * (ข้อความมาตรฐาน → ส่งค่าว่าง เพื่อให้ยังใช้ข้อความมาตรฐานต่อไป)
+ */
+export function orgPrivacyOf(info: OrgInfo): Partial<OrgPrivacyInput> {
+  const o = info.org
+  const out: Partial<OrgPrivacyInput> = {}
+  if (o.privacy_notice !== undefined) out.privacy_notice = o.privacy_notice_custom ? o.privacy_notice : ''
+  if (o.dpo_contact !== undefined) out.dpo_contact = o.dpo_contact
+  if (o.retention_years !== undefined) out.retention_years = o.retention_years
+  return out
 }
 
 /** ธีมสีขององค์กร (ค่าเริ่มต้น ink) — ส่งกลับไปพร้อม PUT /api/org เพื่อไม่ให้ค่าหาย */

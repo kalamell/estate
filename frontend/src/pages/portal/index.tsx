@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
+  Download,
   FileText,
   Home,
   Loader2,
@@ -17,15 +18,19 @@ import {
   Plus,
   Printer,
   Receipt,
+  Send,
+  ShieldCheck,
+  UserRound,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
-import { ApiError, api, type PortalHome } from '@/lib/api'
+import { ApiError, api, withUploadAccess, type PortalHome, type PrivacyRequestKind } from '@/lib/api'
 import { queryClient } from '@/lib/query'
 import { baht, num, thDate, thDateLong, thPeriod } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -39,13 +44,16 @@ import { timeAgo } from '@/lib/docs'
 import { addFriendUrl } from '@/lib/line'
 import { useForcedColorTheme } from '@/components/theme-provider'
 import { LineIcon } from '@/components/line'
+import { NoticeText } from '@/components/privacy'
+import { PRIVACY_KINDS } from '@/lib/privacy'
 
-type Tab = 'home' | 'bills' | 'repair'
-const TABS: { v: Tab; label: string; icon: LucideIcon }[] = [
+type Tab = 'home' | 'bills' | 'repair' | 'privacy'
+const BASE_TABS: { v: Tab; label: string; icon: LucideIcon }[] = [
   { v: 'home', label: 'หน้าหลัก', icon: Home },
   { v: 'bills', label: 'บิล & ใบเสร็จ', icon: FileText },
   { v: 'repair', label: 'แจ้งซ่อม', icon: Wrench },
 ]
+const PRIVACY_TAB = { v: 'privacy' as Tab, label: 'ความเป็นส่วนตัว', icon: ShieldCheck }
 
 const silent = { meta: { silent: true }, retry: false } as const
 
@@ -56,6 +64,7 @@ const TAB_ALIAS: Record<string, Tab> = {
   receipts: 'bills',
   repair: 'repair',
   tickets: 'repair',
+  privacy: 'privacy',
 }
 
 export default function PortalPage() {
@@ -89,6 +98,11 @@ export default function PortalPage() {
   if (home.error || !home.data) return <PortalError error={home.error} retry={() => home.refetch()} />
 
   const d = home.data
+  // PDPA: ต้องยอมรับประกาศความเป็นส่วนตัวก่อนเข้าใช้งานครั้งแรก
+  if (d.privacy && !d.privacy.consented) return <ConsentGate token={token} d={d} />
+
+  const TABS = d.privacy ? [...BASE_TABS, PRIVACY_TAB] : BASE_TABS
+  const current: Tab = tab === 'privacy' && !d.privacy ? 'home' : tab
   return (
     <div className="min-h-svh bg-background pb-24 sm:pb-10">
       <header className="border-b bg-card">
@@ -116,7 +130,7 @@ export default function PortalPage() {
               onClick={() => setTab(t.v)}
               className={cn(
                 'flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm',
-                tab === t.v ? 'border-primary font-medium' : 'border-transparent text-muted-foreground',
+                current === t.v ? 'border-primary font-medium' : 'border-transparent text-muted-foreground',
               )}
             >
               <t.icon className="size-4" /> {t.label}
@@ -126,13 +140,17 @@ export default function PortalPage() {
       </header>
 
       <main className="mx-auto max-w-lg space-y-4 p-4">
-        {tab === 'home' && <HomeTab token={token} d={d} goBills={() => setTab('bills')} />}
-        {tab === 'bills' && <BillsTab token={token} d={d} focusReceipts={params.get('tab') === 'receipts'} />}
-        {tab === 'repair' && <RepairTab token={token} />}
+        {current === 'home' && <HomeTab token={token} d={d} goBills={() => setTab('bills')} />}
+        {current === 'bills' && <BillsTab token={token} d={d} focusReceipts={params.get('tab') === 'receipts'} />}
+        {current === 'repair' && <RepairTab token={token} />}
+        {current === 'privacy' && d.privacy && <PrivacyTab token={token} d={d} privacy={d.privacy} />}
       </main>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t bg-card pb-[env(safe-area-inset-bottom)] sm:hidden"
+        className={cn(
+          'fixed inset-x-0 bottom-0 z-20 grid border-t bg-card pb-[env(safe-area-inset-bottom)] sm:hidden',
+          TABS.length === 4 ? 'grid-cols-4' : 'grid-cols-3',
+        )}
         aria-label="เมนู"
       >
         {TABS.map((t) => (
@@ -140,10 +158,10 @@ export default function PortalPage() {
             key={t.v}
             onClick={() => setTab(t.v)}
             className={cn(
-              'flex h-16 flex-col items-center justify-center gap-1 text-xs',
-              tab === t.v ? 'font-medium text-primary' : 'text-muted-foreground',
+              'flex h-16 flex-col items-center justify-center gap-1 px-0.5 text-xs leading-tight',
+              current === t.v ? 'font-medium text-primary' : 'text-muted-foreground',
             )}
-            aria-current={tab === t.v ? 'page' : undefined}
+            aria-current={current === t.v ? 'page' : undefined}
           >
             <t.icon className="size-5" />
             {t.label}
@@ -600,6 +618,12 @@ function TicketView({ token, id, onBack }: { token: string; id: number; onBack: 
     onError: (e) => toast.error((e as Error).message || 'ส่งไม่สำเร็จ'),
   })
   const t = q.data?.ticket
+  // ไฟล์แนบต้องแนบโทเคนพอร์ทัลจึงจะเปิดได้
+  const messages = useMemo(
+    () =>
+      (q.data?.messages ?? []).map((m) => ({ ...m, photos: m.photos.map((u) => withUploadAccess(u, { t: token })) })),
+    [q.data?.messages, token],
+  )
   return (
     <div className="space-y-4">
       <button type="button" onClick={onBack} className="flex h-10 items-center gap-1 text-sm text-muted-foreground">
@@ -620,9 +644,9 @@ function TicketView({ token, id, onBack }: { token: string; id: number; onBack: 
           </div>
           <Card className="gap-2 px-4 py-3 text-sm">
             <p className="whitespace-pre-wrap">{t.description || '—'}</p>
-            <PhotoGrid photos={t.photos} />
+            <PhotoGrid photos={t.photos.map((u) => withUploadAccess(u, { t: token }))} />
           </Card>
-          <MessageThread messages={q.data?.messages ?? []} self="tenant" />
+          <MessageThread messages={messages} self="tenant" />
           {t.status !== 'closed' && (
             <ReplyBox onSend={(fd) => reply.mutateAsync(fd)} pending={reply.isPending} large />
           )}
@@ -697,5 +721,251 @@ function PortalLineCard({ token, line }: { token: string; line: PortalHome['line
         </Button>
       </div>
     </Card>
+  )
+}
+
+// ===================== PDPA =====================
+
+/** หน้ายอมรับประกาศความเป็นส่วนตัว (เข้าใช้งานครั้งแรก) */
+function ConsentGate({ token, d }: { token: string; d: PortalHome }) {
+  const privacy = d.privacy!
+  const [checked, setChecked] = useState(false)
+  const accept = useMutation({
+    mutationFn: () => api.portal.consent(token),
+    meta: { silent: true },
+    onSuccess: ({ consent_at }) => {
+      queryClient.setQueryData<PortalHome>(['portal', token], (old) =>
+        old?.privacy ? { ...old, privacy: { ...old.privacy, consented: true, consent_at } } : old,
+      )
+      window.scrollTo({ top: 0 })
+    },
+    onError: (e) => toast.error((e as Error).message || 'บันทึกไม่สำเร็จ กรุณาลองใหม่'),
+  })
+  return (
+    <div className="flex min-h-svh flex-col bg-background">
+      <header className="border-b bg-card">
+        <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
+          <LogoMark />
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate font-semibold">{d.org.name}</div>
+            <div className="truncate text-xs text-muted-foreground">พอร์ทัลผู้เช่า</div>
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col p-4">
+        <Card className="flex-1 gap-0 py-0 sm:flex-none">
+          <div className="space-y-1 border-b px-5 py-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-5 text-primary" />
+              <h1 className="text-lg font-semibold">ประกาศความเป็นส่วนตัว</h1>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              สวัสดีคุณ {d.tenant.full_name} กรุณาอ่านและยอมรับก่อนเข้าใช้งานพอร์ทัล
+            </p>
+          </div>
+          <div
+            className="max-h-[48svh] min-h-40 flex-1 overflow-y-auto overscroll-contain px-5 py-4"
+            tabIndex={0}
+            aria-label="เนื้อหาประกาศความเป็นส่วนตัว"
+          >
+            <NoticeText text={privacy.notice} />
+            {privacy.dpo_contact && (
+              <p className="mt-4 rounded-md bg-muted/60 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">ผู้ติดต่อเรื่องข้อมูลส่วนบุคคล: </span>
+                {privacy.dpo_contact}
+              </p>
+            )}
+          </div>
+          <div className="space-y-4 border-t px-5 py-4">
+            <label className="flex items-start gap-3 text-sm leading-relaxed">
+              <Checkbox
+                checked={checked}
+                onCheckedChange={(v) => setChecked(v === true)}
+                className="mt-0.5 size-5"
+              />
+              <span>
+                ข้าพเจ้าได้อ่านและเข้าใจประกาศความเป็นส่วนตัว และยินยอมให้ {d.org.name}{' '}
+                เก็บและใช้ข้อมูลส่วนบุคคลของข้าพเจ้าตามที่ระบุไว้
+              </span>
+            </label>
+            <Button
+              className="h-12 w-full text-base"
+              disabled={!checked || accept.isPending}
+              onClick={() => accept.mutate()}
+            >
+              {accept.isPending && <Loader2 className="animate-spin" />}
+              ยอมรับและเข้าใช้งาน
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              หากมีข้อสงสัยหรือไม่ประสงค์ให้ความยินยอม กรุณาติดต่อผู้ดูแล
+              {d.org.phone && (
+                <>
+                  {' '}
+                  <a href={`tel:${d.org.phone}`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                    {d.org.phone}
+                  </a>
+                </>
+              )}
+            </p>
+          </div>
+        </Card>
+      </main>
+    </div>
+  )
+}
+
+const KIND_OPTIONS = Object.entries(PRIVACY_KINDS) as [PrivacyRequestKind, (typeof PRIVACY_KINDS)[PrivacyRequestKind]][]
+
+function PrivacyTab({
+  token,
+  d,
+  privacy,
+}: {
+  token: string
+  d: PortalHome
+  privacy: NonNullable<PortalHome['privacy']>
+}) {
+  const [showNotice, setShowNotice] = useState(false)
+  const download = useMutation({
+    mutationFn: () => api.portal.exportData(token),
+    meta: { silent: true },
+    onSuccess: () => toast.success('ดาวน์โหลดข้อมูลแล้ว'),
+    onError: (e) => toast.error((e as Error).message || 'ดาวน์โหลดไม่สำเร็จ'),
+  })
+  return (
+    <>
+      <div>
+        <h1 className="text-xl font-semibold">ความเป็นส่วนตัว</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">ข้อมูลส่วนบุคคลของคุณและสิทธิตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล</p>
+      </div>
+
+      <Card className="gap-0 overflow-hidden py-0">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <CheckCircle2 className="size-5 shrink-0 text-success" />
+          <div className="min-w-0 flex-1 text-sm">
+            <div className="font-medium">ให้ความยินยอมแล้ว</div>
+            {privacy.consent_at && <div className="text-xs text-muted-foreground">เมื่อ {thDateLong(privacy.consent_at)}</div>}
+          </div>
+        </div>
+        <div className="border-t">
+          <button
+            type="button"
+            className="flex min-h-12 w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium"
+            aria-expanded={showNotice}
+            onClick={() => setShowNotice((v) => !v)}
+          >
+            <FileText className="size-4 text-muted-foreground" />
+            ประกาศความเป็นส่วนตัว
+            <ChevronRight className={cn('ml-auto size-4 text-muted-foreground transition-transform', showNotice && 'rotate-90')} />
+          </button>
+          {showNotice && (
+            <div className="max-h-[60svh] overflow-y-auto border-t bg-muted/30 px-4 py-4">
+              <NoticeText text={privacy.notice} />
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <SectionHead icon={UserRound}>ผู้ติดต่อเรื่องข้อมูลส่วนบุคคล</SectionHead>
+      <Card className="gap-1 px-4 py-3 text-sm">
+        <p className="whitespace-pre-wrap">{privacy.dpo_contact || d.org.name}</p>
+        {d.org.phone && (
+          <a href={`tel:${d.org.phone}`} className="inline-flex w-fit items-center gap-1.5 text-primary hover:underline">
+            <Phone className="size-3.5" /> {d.org.phone}
+          </a>
+        )}
+      </Card>
+
+      <SectionHead icon={Download}>ข้อมูลของฉัน</SectionHead>
+      <Card className="gap-3 px-4 py-4">
+        <p className="text-sm text-muted-foreground">
+          ดาวน์โหลดข้อมูลส่วนบุคคล สัญญา บิล และใบเสร็จของคุณเป็นไฟล์ JSON
+        </p>
+        <Button variant="outline" className="h-11" onClick={() => download.mutate()} disabled={download.isPending}>
+          {download.isPending ? <Loader2 className="animate-spin" /> : <Download />}
+          ดาวน์โหลดข้อมูลของฉัน
+        </Button>
+      </Card>
+
+      <SectionHead icon={Send}>ยื่นคำขอใช้สิทธิ์</SectionHead>
+      <PrivacyRequestForm token={token} />
+    </>
+  )
+}
+
+function PrivacyRequestForm({ token }: { token: string }) {
+  const [kind, setKind] = useState<PrivacyRequestKind>('access')
+  const [note, setNote] = useState('')
+  const [sent, setSent] = useState<PrivacyRequestKind | null>(null)
+  const submit = useMutation({
+    mutationFn: () => api.portal.privacyRequest(token, { kind, note: note.trim() }),
+    meta: { silent: true },
+    onSuccess: () => {
+      setSent(kind)
+      setNote('')
+    },
+    onError: (e) => toast.error((e as Error).message || 'ส่งคำขอไม่สำเร็จ'),
+  })
+
+  if (sent)
+    return (
+      <Card className="items-center gap-3 px-5 py-6 text-center">
+        <CheckCircle2 className="size-8 text-success" />
+        <div>
+          <div className="font-semibold">ส่งคำขอแล้ว</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {PRIVACY_KINDS[sent].label} — ผู้ดูแลจะพิจารณาและแจ้งผลภายใน 30 วัน
+          </p>
+        </div>
+        <Button variant="outline" className="h-11" onClick={() => setSent(null)}>
+          ส่งคำขออื่น
+        </Button>
+      </Card>
+    )
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault()
+        submit.mutate()
+      }}
+    >
+      <Field label="ประเภทคำขอ" htmlFor="pv-kind" hint={PRIVACY_KINDS[kind].hint}>
+        <Select value={kind} onValueChange={(v) => setKind(v as PrivacyRequestKind)}>
+          <SelectTrigger id="pv-kind" className="h-11 w-full bg-card">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {KIND_OPTIONS.map(([k, v]) => (
+              <SelectItem key={k} value={k} className="py-2.5">
+                {v.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="รายละเอียด" htmlFor="pv-note">
+        <Textarea
+          id="pv-note"
+          rows={3}
+          className="bg-card"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={kind === 'correction' ? 'ระบุข้อมูลที่ต้องการแก้ไข และข้อมูลที่ถูกต้อง' : 'รายละเอียดเพิ่มเติม (ถ้ามี)'}
+          required={kind === 'correction'}
+        />
+      </Field>
+      {kind === 'deletion' && (
+        <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          ผู้ให้เช่าอาจต้องเก็บใบแจ้งหนี้และใบเสร็จไว้ตามกฎหมายภาษีและบัญชี แม้ข้อมูลส่วนบุคคลอื่นจะถูกลบแล้ว
+          และจะลบไม่ได้ระหว่างที่ยังมีสัญญาเช่าอยู่
+        </p>
+      )}
+      <Button type="submit" className="h-12 w-full text-base" disabled={submit.isPending}>
+        {submit.isPending ? <Loader2 className="animate-spin" /> : <Send />}
+        ส่งคำขอ
+      </Button>
+    </form>
   )
 }

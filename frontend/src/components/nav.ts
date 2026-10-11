@@ -6,11 +6,13 @@ import {
   CalendarRange,
   DoorOpen,
   Gauge,
+  History,
   LayoutDashboard,
   LifeBuoy,
   MapPinned,
   ReceiptText,
   Settings,
+  ShieldCheck,
   Users,
   Wrench,
   type LucideIcon,
@@ -23,9 +25,16 @@ export interface NavItem {
   icon: LucideIcon
   /** แสดงตัวเลขจาก dashboard */
   badge?: NavBadge
+  /** เฉพาะเจ้าของ/ผู้ดูแล */
+  adminOnly?: boolean
 }
 
-export type NavBadge = 'open_tickets' | 'overdue_count' | 'pending_requests' | 'hk_open_tasks'
+export type NavBadge =
+  | 'open_tickets'
+  | 'overdue_count'
+  | 'pending_requests'
+  | 'hk_open_tasks'
+  | 'open_privacy_requests'
 
 /** ตัวเลขบนเมนูจากข้อมูล dashboard */
 export function navBadgeCount(d: Dashboard | undefined, badge: NavBadge): number {
@@ -34,7 +43,12 @@ export function navBadgeCount(d: Dashboard | undefined, badge: NavBadge): number
   return d[badge] ?? 0
 }
 
-export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+export interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
+export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'ภาพรวม',
     items: [
@@ -60,7 +74,27 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'วิเคราะห์',
     items: [{ to: '/reports', label: 'รายงาน', icon: BarChart3 }],
   },
+  {
+    label: 'กำกับดูแล',
+    items: [
+      {
+        to: '/privacy-requests',
+        label: 'คำขอ PDPA',
+        icon: ShieldCheck,
+        badge: 'open_privacy_requests',
+        adminOnly: true,
+      },
+      { to: '/audit-logs', label: 'ประวัติการใช้งาน', icon: History, adminOnly: true },
+    ],
+  },
 ]
+
+/** เมนูที่ผู้ใช้เห็นตามบทบาท (ซ่อนกลุ่มที่ไม่มีรายการ) */
+export function navGroupsFor(canManage: boolean): NavGroup[] {
+  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => canManage || !n.adminOnly) })).filter(
+    (g) => g.items.length > 0,
+  )
+}
 
 export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items)
 

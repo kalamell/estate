@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Logo } from '@/components/common'
 import { BookingDialogProvider, useBookingDialog } from '@/components/booking-dialog'
-import { NAV_GROUPS, SETTINGS_NAV, SUPPORT_NAV, navBadgeCount, titleFor, type NavItem } from '@/components/nav'
+import { SETTINGS_NAV, SUPPORT_NAV, navBadgeCount, navGroupsFor, titleFor, type NavItem } from '@/components/nav'
 import { OrgSwitcher } from '@/components/org-switcher'
 import { SidebarUserMenu } from '@/components/user-menu'
 
@@ -62,7 +62,9 @@ function NavLinks({ items }: { items: NavItem[] }) {
             {count > 0 && (
               <SidebarMenuBadge
                 className={
-                  n.badge === 'overdue_count' || n.badge === 'pending_requests'
+                  n.badge === 'overdue_count' ||
+                  n.badge === 'pending_requests' ||
+                  n.badge === 'open_privacy_requests'
                     ? 'rounded-sm bg-warning/20 text-warning'
                     : 'rounded-sm bg-sidebar-accent text-sidebar-foreground'
                 }
@@ -71,7 +73,9 @@ function NavLinks({ items }: { items: NavItem[] }) {
                     ? 'คำขอจองออนไลน์รอตอบ'
                     : n.badge === 'hk_open_tasks'
                       ? 'งานแม่บ้านที่ยังไม่เสร็จ'
-                      : undefined
+                      : n.badge === 'open_privacy_requests'
+                        ? 'คำขอใช้สิทธิ์ PDPA ที่ยังไม่ปิด'
+                        : undefined
                 }
               >
                 {count}
@@ -85,7 +89,7 @@ function NavLinks({ items }: { items: NavItem[] }) {
 }
 
 function AppSidebar() {
-  const { user } = useSession()
+  const { user, canManage } = useSession()
   const { isMobile } = useSidebar()
   return (
     <Sidebar collapsible="offcanvas" className="border-r-0">
@@ -97,7 +101,7 @@ function AppSidebar() {
         <OrgSwitcher />
       </SidebarHeader>
       <SidebarContent>
-        {NAV_GROUPS.map((g) => (
+        {navGroupsFor(canManage).map((g) => (
           <SidebarGroup key={g.label} className="py-1">
             <SidebarGroupLabel className="text-[11px] tracking-wide text-sidebar-muted">{g.label}</SidebarGroupLabel>
             <SidebarGroupContent>

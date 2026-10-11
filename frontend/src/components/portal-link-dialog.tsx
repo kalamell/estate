@@ -44,7 +44,7 @@ function PortalLink({ tenant }: { tenant: Tenant }) {
   })
 
   const url = token ? portalUrl(token) : ''
-  const message = `สวัสดีคุณ${tenant.full_name} ดูบิล ใบเสร็จ และแจ้งซ่อมกับ ${org?.name ?? 'เรา'} ได้ที่ลิงก์นี้`
+  const message = `สวัสดีคุณ ${tenant.full_name} ดูบิล ใบเสร็จ และแจ้งซ่อมกับ ${org?.name ?? 'เรา'} ได้ที่ลิงก์นี้`
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url)

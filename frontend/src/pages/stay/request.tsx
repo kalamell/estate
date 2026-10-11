@@ -21,7 +21,7 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
-import { ApiError, api, type StayRequestStatus } from '@/lib/api'
+import { ApiError, api, withUploadAccess, type StayRequestStatus } from '@/lib/api'
 import { queryClient } from '@/lib/query'
 import { baht, thDateLong, thDayShort } from '@/lib/format'
 import { dateTime } from '@/lib/docs'
@@ -303,7 +303,7 @@ function PaySection({ token, d }: { token: string; d: StayRequestStatus }) {
         </div>
         {(preview || r.slip_url) && (
           <img
-            src={preview ?? r.slip_url!}
+            src={preview ?? withUploadAccess(r.slip_url!, { r: token })}
             alt="สลิปการโอน"
             className="max-h-72 w-full rounded-md border bg-muted object-contain"
           />

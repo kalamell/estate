@@ -2,6 +2,7 @@
 // - ใช้คุกกี้ HttpOnly ที่เซิร์ฟเวอร์ตั้งให้ (same-origin, credentials: 'include')
 // - ทุกคำขอที่ผูกกับองค์กรจะส่ง header X-Org-Id
 
+import { toast } from 'sonner'
 import type { ColorThemeId } from './themes'
 export type { ColorThemeId } from './themes'
 
@@ -62,9 +63,25 @@ export interface OrgProfile extends Partial<OrgLegal> {
   theme?: ColorThemeId | string
   /** การตั้งค่า LINE Official Account */
   line?: LineSettings
+  /** ประกาศความเป็นส่วนตัว (ข้อความที่ใช้จริง — ค่าเริ่มต้นสร้างโดยเซิร์ฟเวอร์) */
+  privacy_notice?: string
+  /** true = องค์กรแก้ไขข้อความเอง */
+  privacy_notice_custom?: boolean
+  /** ผู้ติดต่อเรื่องข้อมูลส่วนบุคคล (DPO) */
+  dpo_contact?: string
+  /** ระยะเวลาเก็บข้อมูลหลังสิ้นสุดความสัมพันธ์ (ปี) */
+  retention_years?: number
 }
 
-export type OrgUpdate = { name: string; theme?: ColorThemeId } & OrgLegal
+/** ตั้งค่า PDPA — privacy_notice ว่าง = กลับไปใช้ข้อความมาตรฐาน */
+export interface OrgPrivacyInput {
+  privacy_notice: string
+  dpo_contact: string
+  /** 1–20 */
+  retention_years: number
+}
+
+export type OrgUpdate = { name: string; theme?: ColorThemeId } & OrgLegal & Partial<OrgPrivacyInput>
 
 // ----- LINE OA -----
 export interface LineSettings {
@@ -304,11 +321,14 @@ export interface ExtraCharge {
 
 export type UnitInput = Partial<Omit<Unit, 'id'>> & { property_id: number; name: string }
 
+export type ConsentSource = 'portal' | 'staff' | 'online_booking'
+
 export interface Tenant {
   id: number
   full_name: string
   phone: string
   email: string
+  /** ผู้ใช้ที่ไม่ใช่ผู้ดูแลจะได้ค่าที่ปิดบัง เช่น "•••••••••1234" */
   id_card: string
   note: string
   tax_id: string
@@ -319,12 +339,68 @@ export interface Tenant {
   line_linked?: boolean
   line_display_name?: string | null
   line_linked_at?: string | null
+  /** PDPA: เวลาที่ได้รับความยินยอม */
+  consent_at?: string | null
+  consent_source?: ConsentSource | null
+  /** ลบข้อมูลส่วนบุคคล (ทำให้ไม่ระบุตัวตน) แล้ว */
+  anonymized_at?: string | null
 }
 
 export type TenantInput = Pick<
   Tenant,
-  'full_name' | 'phone' | 'email' | 'id_card' | 'note' | 'tax_id' | 'address' | 'branch_code'
->
+  'full_name' | 'phone' | 'email' | 'note' | 'tax_id' | 'address' | 'branch_code'
+> & {
+  /** ไม่ส่ง = ใช้ค่าเดิม (กันการส่งค่าที่ถูกปิดบังกลับไป) */
+  id_card?: string
+  /** เจ้าหน้าที่ยืนยันว่าได้รับความยินยอมจากผู้เช่าแล้ว */
+  consent_obtained?: boolean
+}
+
+// ----- PDPA -----
+export type PrivacyRequestKind = 'access' | 'correction' | 'deletion' | 'objection' | 'withdraw_consent'
+export type PrivacyRequestStatus = 'open' | 'done' | 'rejected'
+
+export interface PrivacyRequest {
+  id: number
+  tenant_id: number
+  tenant_name: string
+  kind: PrivacyRequestKind
+  note: string
+  status: PrivacyRequestStatus
+  response: string
+  /** YYYY-MM-DD (30 วันนับจากวันที่ยื่น) */
+  due_date: string
+  created_at: string
+  resolved_at: string | null
+}
+
+export interface RetentionDue {
+  tenant_id: number
+  tenant_name: string
+  last_activity: string
+  /** ปีที่ผ่านไปนับจากกิจกรรมล่าสุด */
+  years: number
+}
+
+export interface PortalPrivacy {
+  notice: string
+  dpo_contact: string
+  consented: boolean
+  consent_at: string | null
+}
+
+// ----- Audit log -----
+export interface AuditLog {
+  id: number
+  user_id: number | null
+  user_name: string | null
+  action: string
+  entity: string
+  entity_id: number | null
+  detail: Record<string, unknown> | null
+  ip: string | null
+  created_at: string
+}
 
 export interface Booking {
   id: number
@@ -634,6 +710,8 @@ export interface PortalHome {
   }[]
   receipts: { id: number; doc_no: string; issue_date: string; total: number; status: 'issued' | 'void' }[]
   features: { portal: boolean }
+  /** PDPA — ประกาศความเป็นส่วนตัวและสถานะความยินยอม */
+  privacy?: PortalPrivacy
 }
 
 export interface Dashboard {
@@ -659,6 +737,8 @@ export interface Dashboard {
   pending_requests?: number
   /** งานแม่บ้าน */
   housekeeping?: { dirty: number; in_progress: number; open_tasks: number }
+  /** คำขอใช้สิทธิ์ตาม PDPA ที่ยังไม่ปิด */
+  open_privacy_requests?: number
 }
 
 // ----- Housekeeping (งานแม่บ้าน) -----
@@ -911,6 +991,8 @@ export interface StayRequestInput {
   phone: string
   email: string
   note: string
+  /** ยินยอมให้ใช้ข้อมูลเพื่อการจอง (บังคับ true) */
+  consent: true
 }
 
 export interface StayRequestStatus {
@@ -1018,19 +1100,69 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     throw new ApiError(0, 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่')
   }
   const text = await res.text()
-  let data: unknown = null
-  if (text) {
-    try {
-      data = JSON.parse(text)
-    } catch {
-      data = null
-    }
-  }
-  if (!res.ok) {
-    const err = (data ?? {}) as { error?: string; code?: string }
-    throw new ApiError(res.status, err.error || `HTTP ${res.status}`, err.code)
-  }
+  const data = parseJson(text)
+  if (!res.ok) throw toApiError(res.status, data)
   return data as T
+}
+
+function parseJson(text: string): unknown {
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+const RATE_LIMIT_TEXT = 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่'
+
+/** แปลงคำตอบที่ผิดพลาดเป็น ApiError — 429 (ถูกจำกัดอัตรา) แจ้งเตือนทันที */
+function toApiError(status: number, data: unknown) {
+  const err = (data ?? {}) as { error?: string; code?: string }
+  if (status === 429) {
+    const msg = err.error || RATE_LIMIT_TEXT
+    // id เดียวกัน → ไม่ซ้อนกันเมื่อหลายคำขอโดนพร้อมกัน
+    toast.error(msg, { id: 'rate-limit' })
+    return new ApiError(status, msg, err.code ?? 'rate_limited')
+  }
+  return new ApiError(status, err.error || `HTTP ${status}`, err.code)
+}
+
+/** ดาวน์โหลดไฟล์จาก API (ใช้คุกกี้ + X-Org-Id) แล้วบันทึกเป็นไฟล์ในเครื่อง */
+export async function downloadFile(path: string, filename: string, org = true) {
+  const headers: Record<string, string> = {}
+  if (org && currentOrgId != null) headers['X-Org-Id'] = String(currentOrgId)
+  let res: Response
+  try {
+    res = await fetch(path, { headers, credentials: 'include' })
+  } catch {
+    throw new ApiError(0, 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่')
+  }
+  if (!res.ok) throw toApiError(res.status, parseJson(await res.text()))
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/**
+ * ไฟล์ที่อัปโหลด (/uploads/...) ถูกควบคุมสิทธิ์ — หน้าเจ้าหน้าที่ใช้คุกกี้ได้เลย
+ * ส่วนหน้าสาธารณะต้องแนบโทเคน: พอร์ทัลผู้เช่า `t`, หน้าสถานะคำขอจอง `r`
+ */
+export function withUploadAccess(url: string, access: { t?: string; r?: string }): string
+export function withUploadAccess(url: string | null, access: { t?: string; r?: string }): string | null
+export function withUploadAccess(url: string | null, access: { t?: string; r?: string }) {
+  if (!url || !/^(https?:\/\/[^/]+)?\/uploads\//.test(url)) return url
+  const params = Object.entries(access).filter((e): e is [string, string] => !!e[1])
+  if (!params.length) return url
+  const [base, hash = ''] = url.split('#')
+  const extra = params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')
+  return `${base}${base.includes('?') ? '&' : '?'}${extra}${hash ? `#${hash}` : ''}`
 }
 
 const get = <T>(path: string, query?: Query, org = true) => request<T>(path, { query, org })
@@ -1047,7 +1179,7 @@ const enc = encodeURIComponent
 
 export const api = {
   // auth
-  register: (b: { name: string; email: string; password: string; org_name: string }) =>
+  register: (b: { name: string; email: string; password: string; org_name: string; accept_terms: true }) =>
     post<Me>('/api/auth/register', b, false),
   login: (b: { email: string; password: string }) => post<Me>('/api/auth/login', b, false),
   logout: () => post<object>('/api/auth/logout', {}, false),
@@ -1113,6 +1245,19 @@ export const api = {
   tenantLineLink: (id: number) => post<LineLinkCode>(`/api/tenants/${id}/line-link`),
   unlinkTenantLine: (id: number) => del(`/api/tenants/${id}/line`),
   sendTenantPortalLine: (id: number) => post<{ sent: boolean }>(`/api/tenants/${id}/line/send-portal`),
+
+  // PDPA
+  exportTenant: (id: number) => downloadFile(`/api/tenants/${id}/export`, `tenant-${id}.json`),
+  anonymizeTenant: (id: number) => post<Tenant>(`/api/tenants/${id}/anonymize`, { confirm: 'ลบข้อมูล' }),
+  privacyRequests: (f: { status?: PrivacyRequestStatus | '' } = {}) =>
+    get<PrivacyRequest[]>('/api/privacy-requests', f),
+  patchPrivacyRequest: (id: number, b: { status: PrivacyRequestStatus; response: string }) =>
+    patch<PrivacyRequest>(`/api/privacy-requests/${id}`, b),
+  privacyRetention: () => get<RetentionDue[]>('/api/privacy/retention'),
+
+  // ประวัติการใช้งาน
+  auditLogs: (f: { entity?: string; user_id?: number | ''; limit?: number; before_id?: number } = {}) =>
+    get<AuditLog[]>('/api/audit-logs', f),
 
   bookings: (f: { unit_id?: number; property_id?: number; status?: string } = {}) =>
     get<Booking[]>('/api/bookings', f),
@@ -1207,6 +1352,10 @@ export const api = {
     reply: (token: string, id: number, fd: FormData) =>
       form<unknown>(`/api/portal/${enc(token)}/tickets/${id}/messages`, fd, false),
     lineLink: (token: string) => post<LineLinkCode>(`/api/portal/${enc(token)}/line-link`, {}, false),
+    consent: (token: string) => post<{ consent_at: string }>(`/api/portal/${enc(token)}/consent`, {}, false),
+    privacyRequest: (token: string, b: { kind: PrivacyRequestKind; note: string }) =>
+      post<PrivacyRequest>(`/api/portal/${enc(token)}/privacy-requests`, b, false),
+    exportData: (token: string) => downloadFile(`/api/portal/${enc(token)}/export`, 'my-data.json', false),
   },
 
   // หน้าจองออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน ไม่ส่ง X-Org-Id)

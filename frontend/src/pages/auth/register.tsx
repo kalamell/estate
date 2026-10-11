@@ -6,6 +6,7 @@ import { api, setOrgId } from '@/lib/api'
 import { queryClient } from '@/lib/query'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/common'
 import { AuthLayout } from './layout'
@@ -13,11 +14,13 @@ import { AuthLayout } from './layout'
 export default function RegisterPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: '', email: '', password: '', org_name: '' })
+  const [accepted, setAccepted] = useState(false)
+  const [acceptError, setAcceptError] = useState(false)
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }))
 
   const register = useMutation({
-    mutationFn: () => api.register({ ...form, email: form.email.trim() }),
+    mutationFn: () => api.register({ ...form, email: form.email.trim(), accept_terms: true }),
     meta: { silent: true },
     onSuccess: (me) => {
       setOrgId(me.orgs[0]?.id ?? null)
@@ -33,6 +36,7 @@ export default function RegisterPage() {
         className="grid gap-4"
         onSubmit={(e) => {
           e.preventDefault()
+          if (!accepted) return setAcceptError(true)
           register.mutate()
         }}
       >
@@ -68,6 +72,36 @@ export default function RegisterPage() {
         <Field label="ชื่อองค์กร / ธุรกิจ" htmlFor="org" hint="เช่น ชื่อหอพักหรือบริษัท — เปลี่ยนภายหลังได้">
           <Input id="org" value={form.org_name} onChange={set('org_name')} required className="h-11" />
         </Field>
+        <div className="grid gap-1.5">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="accept"
+              checked={accepted}
+              onCheckedChange={(v) => {
+                setAccepted(v === true)
+                setAcceptError(false)
+              }}
+              aria-invalid={acceptError || undefined}
+              aria-describedby={acceptError ? 'accept-error' : undefined}
+              className="mt-0.5"
+            />
+            <label htmlFor="accept" className="text-sm leading-relaxed text-muted-foreground">
+              ฉันยอมรับ{' '}
+              <Link to="/terms" target="_blank" className="font-medium text-primary hover:underline">
+                ข้อกำหนดการใช้งาน
+              </Link>{' '}
+              และ{' '}
+              <Link to="/privacy" target="_blank" className="font-medium text-primary hover:underline">
+                นโยบายความเป็นส่วนตัว
+              </Link>
+            </label>
+          </div>
+          {acceptError && (
+            <p id="accept-error" className="pl-7 text-xs text-destructive">
+              กรุณายอมรับข้อกำหนดการใช้งานและนโยบายความเป็นส่วนตัว
+            </p>
+          )}
+        </div>
         <Button type="submit" size="lg" className="mt-2 h-11" disabled={register.isPending}>
           {register.isPending ? <Loader2 className="animate-spin" /> : <Rocket />}
           สร้างบัญชีและองค์กร

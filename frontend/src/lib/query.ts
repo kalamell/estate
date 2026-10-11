@@ -22,6 +22,8 @@ export function handleApiError(err: unknown) {
     queryClient.setQueryData(['me'], null)
     return
   }
+  // 429 แจ้งเตือนแล้วใน request()
+  if (e?.status === 429) return
   const msg = e?.status === 403 ? 'ไม่มีสิทธิ์' : (err as Error)?.message || 'เกิดข้อผิดพลาด'
   // กันข้อความซ้ำจากหลาย query พร้อมกัน
   const now = Date.now()

@@ -16,6 +16,7 @@ import {
   Moon,
   Ruler,
   Send,
+  ShieldCheck,
   X,
 } from 'lucide-react'
 import { ApiError, api, type Property, type PublicQuote, type StayBusy, type StayInfo } from '@/lib/api'
@@ -24,6 +25,15 @@ import { readLS, stayRequestKey, writeLS } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Field, ToneBadge } from '@/components/common'
@@ -63,6 +73,8 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
   const [unitId, setUnitId] = useState<number | null>(d.units.length === 1 ? d.units[0].id : null)
   const [guest, setGuest] = useState<Guest>({ guest_name: '', phone: '', email: '', guests: '1', note: '' })
   const [formError, setFormError] = useState<string | null>(null)
+  const [consent, setConsent] = useState(false)
+  const [noticeOpen, setNoticeOpen] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
   const prevToken = readLS(stayRequestKey(slug))
 
@@ -169,6 +181,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
         phone: guest.phone.trim(),
         email: guest.email.trim(),
         note: guest.note.trim(),
+        consent: true,
       }),
     meta: { silent: true },
     onSuccess: ({ token }) => {
@@ -425,6 +438,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                 if (tooShort) return setFormError(`ขั้นต่ำ ${minNights} คืน`)
                 if (!unitFree) return setFormError('ช่วงวันที่ไม่ว่าง กรุณาเลือกวันหรือห้องอื่น')
                 if (guest.phone.replace(/\D/g, '').length < 9) return setFormError('กรุณากรอกเบอร์โทรให้ถูกต้อง')
+                if (!consent) return setFormError('กรุณายอมรับการใช้ข้อมูลส่วนบุคคลเพื่อการจอง')
                 submit.mutate()
               }}
             >
@@ -484,6 +498,31 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                   onChange={(e) => setG('note', e.target.value)}
                 />
               </Field>
+              <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-3">
+                <Checkbox
+                  id="g-consent"
+                  checked={consent}
+                  onCheckedChange={(v) => {
+                    setFormError(null)
+                    setConsent(v === true)
+                  }}
+                  className="mt-0.5"
+                  aria-required
+                />
+                <div className="text-sm leading-relaxed">
+                  <label htmlFor="g-consent">
+                    ข้าพเจ้ายินยอมให้ {d.org.name} เก็บและใช้ข้อมูลส่วนบุคคลข้างต้นตาม
+                  </label>{' '}
+                  <button
+                    type="button"
+                    onClick={() => setNoticeOpen(true)}
+                    className="font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    ประกาศความเป็นส่วนตัว
+                  </button>
+                  <p className="mt-0.5 text-xs text-muted-foreground">ข้อมูลของท่านใช้เพื่อการจองและติดต่อเท่านั้น</p>
+                </div>
+              </div>
               {formError && (
                 <div
                   role="alert"
@@ -498,7 +537,6 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                 ส่งคำขอจอง
               </Button>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                การส่งคำขอถือว่าคุณยินยอมให้ {d.org.name} ใช้ชื่อและข้อมูลติดต่อเพื่อยืนยันการจองเท่านั้น
                 การจองจะสมบูรณ์เมื่อที่พักยืนยันหลังได้รับมัดจำ
               </p>
             </form>
@@ -507,6 +545,17 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
       </main>
 
       <StayFooter />
+      <StayPrivacyDialog
+        open={noticeOpen}
+        onOpenChange={setNoticeOpen}
+        orgName={d.org.name}
+        phone={d.org.phone}
+        onAccept={() => {
+          setFormError(null)
+          setConsent(true)
+          setNoticeOpen(false)
+        }}
+      />
 
       {/* แถบล่างบนมือถือ */}
       {ready && (
@@ -531,6 +580,65 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
         </div>
       )}
     </div>
+  )
+}
+
+/** ประกาศความเป็นส่วนตัวแบบย่อสำหรับหน้าจอง (API สาธารณะไม่ส่งประกาศขององค์กรมา) */
+function StayPrivacyDialog({
+  open,
+  onOpenChange,
+  orgName,
+  phone,
+  onAccept,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  orgName: string
+  phone: string
+  onAccept: () => void
+}) {
+  const items: [string, string][] = [
+    ['ข้อมูลที่เก็บ', 'ชื่อ-นามสกุล เบอร์โทร อีเมล จำนวนผู้เข้าพัก หมายเหตุ และสลิปการโอนมัดจำ'],
+    ['วัตถุประสงค์', 'ยืนยันการจอง ติดต่อเรื่องการเข้าพัก และออกหลักฐานการชำระเงิน'],
+    ['การเปิดเผย', 'ไม่ขายหรือเปิดเผยแก่บุคคลภายนอก เว้นแต่กฎหมายกำหนด'],
+    ['ระยะเวลาเก็บ', 'เท่าที่จำเป็นต่อการเข้าพัก ส่วนหลักฐานการชำระเงินเก็บตามที่กฎหมายกำหนด'],
+    [
+      'สิทธิของท่าน',
+      `ขอเข้าถึง แก้ไข ลบ หรือถอนความยินยอมได้ โดยติดต่อ ${orgName}${phone ? ` โทร ${phone}` : ''}`,
+    ],
+  ]
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldCheck className="size-5 text-primary" /> ประกาศความเป็นส่วนตัว
+          </DialogTitle>
+          <DialogDescription>
+            {orgName} · ข้อมูลของท่านใช้เพื่อการจองและติดต่อเท่านั้น
+          </DialogDescription>
+        </DialogHeader>
+        <dl className="divide-y rounded-md border text-sm">
+          {items.map(([k, v]) => (
+            <div key={k} className="grid gap-0.5 px-3 py-2.5">
+              <dt className="text-xs font-medium text-muted-foreground">{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          เป็นไปตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 — สอบถามประกาศฉบับเต็มได้ที่ที่พัก
+        </p>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            ปิด
+          </Button>
+          <Button type="button" onClick={onAccept}>
+            ยอมรับ
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

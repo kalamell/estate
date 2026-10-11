@@ -208,7 +208,7 @@ function LineLinkBody({ initial, onClose }: { initial: Tenant; onClose: () => vo
   const basicId = line?.basic_id
   const shareText = code
     ? [
-        `สวัสดีคุณ${tenant.full_name} รับบิลและการแจ้งเตือนจาก ${org?.name ?? 'เรา'} ทาง LINE ได้ง่ายๆ`,
+        `สวัสดีคุณ ${tenant.full_name} รับบิลและการแจ้งเตือนจาก ${org?.name ?? 'เรา'} ทาง LINE ได้ง่ายๆ`,
         friendUrl ? `1) แอดเพื่อน: ${friendUrl}` : basicId ? `1) แอดเพื่อน LINE: ${basicId}` : '',
         `2) เชื่อมบัญชี (กดแล้วกดส่งข้อความ): ${code.link_url}`,
         `หรือพิมพ์ "เชื่อมบัญชี ${code.code}" ในแชท`,

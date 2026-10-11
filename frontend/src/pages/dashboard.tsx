@@ -9,6 +9,7 @@ import {
   HandCoins,
   Inbox,
   PiggyBank,
+  ShieldCheck,
   TrendingUp,
   Wallet,
   Wrench,
@@ -26,10 +27,11 @@ import { LineIcon } from '@/components/line'
 import { useSession } from '@/contexts/session'
 
 export default function DashboardPage() {
-  const { features } = useSession()
+  const { features, canManage } = useSession()
   const dash = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
   const properties = useQuery({ queryKey: ['properties'], queryFn: api.properties })
   const d = dash.data
+  const openPdpa = canManage ? (d?.open_privacy_requests ?? 0) : 0
 
   return (
     <div className="space-y-6">
@@ -69,6 +71,19 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {openPdpa > 0 && (
+        <AttentionRow
+          to="/privacy-requests"
+          icon={ShieldCheck}
+          tone="warning"
+          title="คำขอใช้สิทธิ์ตาม PDPA รอดำเนินการ"
+          loading={false}
+          count={openPdpa}
+          detail={`${openPdpa} คำขอ · ต้องตอบผู้เช่าภายใน 30 วันนับจากวันที่ยื่น`}
+          empty=""
+        />
+      )}
 
       <div className={cn('grid gap-4 sm:grid-cols-2', features.short_stay ? 'lg:grid-cols-3' : 'xl:grid-cols-4')}>
         <AttentionRow

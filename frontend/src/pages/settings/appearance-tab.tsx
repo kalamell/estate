@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { Check, Info, Loader2, Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
 import { api } from '@/lib/api'
 import { invalidate } from '@/lib/query'
-import { orgLegalOf, orgThemeOf } from '@/lib/docs'
+import { orgLegalOf, orgPrivacyOf, orgThemeOf } from '@/lib/docs'
 import { COLOR_THEMES, COLOR_THEME_META, type ColorThemeId } from '@/lib/themes'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/contexts/session'
@@ -29,7 +29,7 @@ export function AppearanceTab() {
 
   const save = useMutation({
     mutationFn: (id: ColorThemeId) =>
-      api.updateOrg({ ...orgLegalOf(orgInfo!), name: orgInfo!.org.name, theme: id }),
+      api.updateOrg({ ...orgLegalOf(orgInfo!), ...orgPrivacyOf(orgInfo!), name: orgInfo!.org.name, theme: id }),
     onSuccess: async (_r, id) => {
       toast.success(`ตั้งธีมองค์กรเป็น "${COLOR_THEME_META[id].label}" แล้ว`)
       await invalidate('org-info')

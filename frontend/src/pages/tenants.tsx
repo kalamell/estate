@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Building,
+  FileJson,
   IdCard,
   Link2,
   Loader2,
@@ -15,6 +17,7 @@ import {
   Send,
   Trash2,
   Unlink,
+  UserX,
   Users,
 } from 'lucide-react'
 import { api, type Tenant } from '@/lib/api'
@@ -40,6 +43,8 @@ import { useConfirm } from '@/components/confirm'
 import { TenantDialog } from '@/components/tenant-dialog'
 import { PortalLinkDialog } from '@/components/portal-link-dialog'
 import { LineIcon, LineLinkDialog, LineSetupHint, TenantLineBadge, useTenantLineActions } from '@/components/line'
+import { AnonymizeDialog, ConsentBadge, type AnonymizeTarget } from '@/components/privacy'
+import { useExportTenant } from '@/lib/privacy'
 
 type LineFilter = 'all' | 'linked' | 'unlinked'
 const LINE_FILTERS: { v: LineFilter; label: string }[] = [
@@ -49,7 +54,10 @@ const LINE_FILTERS: { v: LineFilter; label: string }[] = [
 ]
 
 export default function TenantsPage() {
-  const { readOnly, features, line, lineReady } = useSession()
+  const { readOnly, features, line, lineReady, canManage } = useSession()
+  const [params] = useSearchParams()
+  const [anonFor, setAnonFor] = useState<AnonymizeTarget | null>(null)
+  const exportTenant = useExportTenant()
   const [portalFor, setPortalFor] = useState<Tenant | null>(null)
   const [lineFor, setLineFor] = useState<Tenant | null>(null)
   const [lineFilter, setLineFilter] = useState<LineFilter>('all')
@@ -58,7 +66,7 @@ export default function TenantsPage() {
   const { data: tenants, isLoading } = useQuery({ queryKey: ['tenants'], queryFn: api.tenants })
   const [editing, setEditing] = useState<Tenant | null>(null)
   const [open, setOpen] = useState(false)
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(() => params.get('q') ?? '')
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -72,7 +80,7 @@ export default function TenantsPage() {
     )
   }, [tenants, q, lineFilter])
   const linkedCount = useMemo(() => (tenants ?? []).filter((t) => t.line_linked).length, [tenants])
-  const total = tenants?.length ?? 0
+  const total = useMemo(() => (tenants ?? []).filter((t) => !t.anonymized_at).length, [tenants])
 
   const remove = useMutation({
     mutationFn: (id: number) => api.deleteTenant(id),
@@ -157,150 +165,182 @@ export default function TenantsPage() {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((t) => (
-            <Card key={t.id} className="gap-0 overflow-hidden py-0">
-              <div className="flex items-start gap-4 p-4">
-                <Avatar className="size-11 rounded-md">
-                  <AvatarFallback className="rounded-md bg-muted text-lg font-semibold text-muted-foreground">
-                    {initials(t.full_name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="truncate font-medium">{t.full_name}</div>
-                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <Phone className="size-3.5" />
-                    {t.phone ? (
-                      <a href={`tel:${t.phone}`} className="hover:text-foreground hover:underline">
-                        {t.phone}
-                      </a>
-                    ) : (
-                      '—'
+          {filtered.map((t) => {
+            const anonymized = !!t.anonymized_at
+            return (
+              <Card
+                key={t.id}
+                className={cn('gap-0 overflow-hidden py-0', anonymized && 'bg-muted/40 text-muted-foreground shadow-none')}
+              >
+                <div className={cn('flex items-start gap-4 p-4', anonymized && 'opacity-80')}>
+                  <Avatar className="size-11 rounded-md">
+                    <AvatarFallback className="rounded-md bg-muted text-lg font-semibold text-muted-foreground">
+                      {initials(t.full_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="truncate font-medium">{t.full_name}</div>
+                    {!anonymized && (
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Phone className="size-3.5" />
+                        {t.phone ? (
+                          <a href={`tel:${t.phone}`} className="hover:text-foreground hover:underline">
+                            {t.phone}
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </div>
                     )}
+                    {t.email && (
+                      <div className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                        <Mail className="size-3.5 shrink-0" />
+                        <span className="truncate">{t.email}</span>
+                      </div>
+                    )}
+                    {t.id_card && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <IdCard className="size-3.5" />
+                        {t.id_card}
+                      </div>
+                    )}
+                    {t.tax_id && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Building className="size-3.5" />
+                        เลขผู้เสียภาษี {t.tax_id}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {!anonymized && <TenantLineBadge tenant={t} />}
+                      <ConsentBadge tenant={t} />
+                    </div>
                   </div>
-                  {t.email && (
-                    <div className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                      <Mail className="size-3.5 shrink-0" />
-                      <span className="truncate">{t.email}</span>
-                    </div>
-                  )}
-                  {t.id_card && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <IdCard className="size-3.5" />
-                      {t.id_card}
-                    </div>
-                  )}
-                  {t.tax_id && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Building className="size-3.5" />
-                      เลขผู้เสียภาษี {t.tax_id}
-                    </div>
-                  )}
-                  <div className="pt-1">
-                    <TenantLineBadge tenant={t} />
-                  </div>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" aria-label="ตัวเลือก" disabled={readOnly}>
-                      <MoreHorizontal />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => edit(t)}>
-                      <Pencil /> แก้ไข
-                    </DropdownMenuItem>
-                    {features.portal && (
-                      <DropdownMenuItem onSelect={() => setPortalFor(t)}>
-                        <Link2 /> ลิงก์พอร์ทัล (ส่งเอง)
-                      </DropdownMenuItem>
-                    )}
-                    {t.line_linked && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => setLineFor(t)}>
-                          <LineIcon /> จัดการ LINE
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label="ตัวเลือก" disabled={readOnly}>
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {!anonymized && (
+                        <DropdownMenuItem onSelect={() => edit(t)}>
+                          <Pencil /> แก้ไข
                         </DropdownMenuItem>
-                        <DropdownMenuItem variant="destructive" onSelect={() => void askUnlink(t)}>
-                          <Unlink /> ยกเลิกการเชื่อม LINE
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={async () => {
-                        if (
-                          await confirm({
-                            title: `ลบ ${t.full_name}?`,
-                            description: 'การลบไม่สามารถย้อนกลับได้',
-                            confirmText: 'ลบ',
-                            destructive: true,
-                          })
-                        )
-                          remove.mutate(t.id)
-                      }}
-                    >
-                      <Trash2 /> ลบ
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <div className="mt-auto flex flex-wrap gap-2 border-t bg-muted/30 px-4 py-2.5">
-                {t.line_linked ? (
-                  features.portal && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 bg-card text-xs"
-                      disabled={readOnly || !lineReady || (sendPortal.isPending && sendPortal.variables?.id === t.id)}
-                      onClick={() => sendPortal.mutate(t)}
-                    >
-                      {sendPortal.isPending && sendPortal.variables?.id === t.id ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <Send />
                       )}
-                      ส่งลิงก์พอร์ทัลทาง LINE
-                    </Button>
-                  )
+                      {features.portal && !anonymized && (
+                        <DropdownMenuItem onSelect={() => setPortalFor(t)}>
+                          <Link2 /> ลิงก์พอร์ทัล (ส่งเอง)
+                        </DropdownMenuItem>
+                      )}
+                      {t.line_linked && !anonymized && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onSelect={() => setLineFor(t)}>
+                            <LineIcon /> จัดการ LINE
+                          </DropdownMenuItem>
+                          <DropdownMenuItem variant="destructive" onSelect={() => void askUnlink(t)}>
+                            <Unlink /> ยกเลิกการเชื่อม LINE
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {canManage && !anonymized && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onSelect={() => exportTenant.mutate(t.id)}>
+                            <FileJson /> ส่งออกข้อมูล (JSON)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={() => setAnonFor({ id: t.id, name: t.full_name })}
+                          >
+                            <UserX /> ลบข้อมูลส่วนบุคคล
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {!anonymized && <DropdownMenuSeparator />}
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={async () => {
+                          if (
+                            await confirm({
+                              title: `ลบ ${t.full_name}?`,
+                              description: 'การลบไม่สามารถย้อนกลับได้',
+                              confirmText: 'ลบ',
+                              destructive: true,
+                            })
+                          )
+                            remove.mutate(t.id)
+                        }}
+                      >
+                        <Trash2 /> ลบ
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                {anonymized ? (
+                  <div className="mt-auto border-t px-4 py-2.5 text-xs">
+                    ข้อมูลส่วนบุคคลถูกลบแล้ว — เอกสารการเงินยังเก็บไว้ตามกฎหมาย
+                  </div>
                 ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 bg-card text-xs"
-                    disabled={readOnly || !lineReady}
-                    title={!lineReady ? 'ยังไม่ได้ตั้งค่า LINE OA' : undefined}
-                    onClick={() => setLineFor(t)}
-                  >
-                    <LineIcon /> เชื่อม LINE
-                  </Button>
+                  <div className="mt-auto flex flex-wrap gap-2 border-t bg-muted/30 px-4 py-2.5">
+                    {t.line_linked ? (
+                      features.portal && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 bg-card text-xs"
+                          disabled={readOnly || !lineReady || (sendPortal.isPending && sendPortal.variables?.id === t.id)}
+                          onClick={() => sendPortal.mutate(t)}
+                        >
+                          {sendPortal.isPending && sendPortal.variables?.id === t.id ? (
+                            <Loader2 className="animate-spin" />
+                          ) : (
+                            <Send />
+                          )}
+                          ส่งลิงก์พอร์ทัลทาง LINE
+                        </Button>
+                      )
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 bg-card text-xs"
+                        disabled={readOnly || !lineReady}
+                        title={!lineReady ? 'ยังไม่ได้ตั้งค่า LINE OA' : undefined}
+                        onClick={() => setLineFor(t)}
+                      >
+                        <LineIcon /> เชื่อม LINE
+                      </Button>
+                    )}
+                    {features.portal &&
+                      (t.line_linked ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="ml-auto"
+                          aria-label="ลิงก์พอร์ทัล (ส่งเอง)"
+                          title="ลิงก์พอร์ทัล (ส่งเอง)"
+                          onClick={() => setPortalFor(t)}
+                        >
+                          <Link2 />
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setPortalFor(t)}>
+                          <Link2 /> ลิงก์พอร์ทัล (ส่งเอง)
+                        </Button>
+                      ))}
+                  </div>
                 )}
-                {features.portal &&
-                  (t.line_linked ? (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="ml-auto"
-                      aria-label="ลิงก์พอร์ทัล (ส่งเอง)"
-                      title="ลิงก์พอร์ทัล (ส่งเอง)"
-                      onClick={() => setPortalFor(t)}
-                    >
-                      <Link2 />
-                    </Button>
-                  ) : (
-                    <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setPortalFor(t)}>
-                      <Link2 /> ลิงก์พอร์ทัล (ส่งเอง)
-                    </Button>
-                  ))}
-              </div>
-            </Card>
-          ))}
+              </Card>
+            )
+          })}
         </div>
       )}
 
       <TenantDialog open={open} onOpenChange={setOpen} tenant={editing} />
       <PortalLinkDialog tenant={portalFor} onClose={() => setPortalFor(null)} />
       <LineLinkDialog tenant={lineFor} onClose={() => setLineFor(null)} />
+      <AnonymizeDialog target={anonFor} onClose={() => setAnonFor(null)} />
     </div>
   )
 }

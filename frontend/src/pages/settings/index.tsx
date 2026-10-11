@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import { Building2, FileText, MessageCircle, Package, Palette, Users } from 'lucide-react'
+import { Building2, FileText, MessageCircle, Package, Palette, ShieldCheck, Users } from 'lucide-react'
 import { useSession } from '@/contexts/session'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrgTab } from './org-tab'
@@ -8,15 +8,17 @@ import { MembersTab } from './members-tab'
 import { IssuerTab } from './issuer-tab'
 import { AppearanceTab } from './appearance-tab'
 import { LineTab } from './line-tab'
+import { PrivacyTab } from './privacy-tab'
 
-const TABS = ['org', 'issuer', 'appearance', 'line', 'package', 'members'] as const
+const TABS = ['org', 'issuer', 'appearance', 'line', 'privacy', 'package', 'members'] as const
+const ADMIN_TABS: readonly Tab[] = ['line', 'privacy']
 type Tab = (typeof TABS)[number]
 
 export default function SettingsPage() {
   const { canManage } = useSession()
   const [params, setParams] = useSearchParams()
   const raw = params.get('tab')
-  const allowed = TABS.filter((t) => t !== 'line' || canManage)
+  const allowed = TABS.filter((t) => canManage || !ADMIN_TABS.includes(t))
   const tab: Tab = (allowed as readonly string[]).includes(raw ?? '') ? (raw as Tab) : 'org'
   return (
     <Tabs value={tab} onValueChange={(v) => setParams({ tab: v }, { replace: true })} className="gap-6">
@@ -33,6 +35,11 @@ export default function SettingsPage() {
         {canManage && (
           <TabsTrigger value="line" className="px-3">
             <MessageCircle /> LINE OA
+          </TabsTrigger>
+        )}
+        {canManage && (
+          <TabsTrigger value="privacy" className="px-3">
+            <ShieldCheck /> ความเป็นส่วนตัว (PDPA)
           </TabsTrigger>
         )}
         <TabsTrigger value="package" className="px-3">
@@ -54,6 +61,11 @@ export default function SettingsPage() {
       {canManage && (
         <TabsContent value="line">
           <LineTab />
+        </TabsContent>
+      )}
+      {canManage && (
+        <TabsContent value="privacy">
+          <PrivacyTab />
         </TabsContent>
       )}
       <TabsContent value="package">

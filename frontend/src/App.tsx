@@ -49,6 +49,10 @@ const StaffReceiptPrint = lazy(() => import('@/pages/print/receipt').then((m) =>
 const PortalReceiptPrint = lazy(() => import('@/pages/print/receipt').then((m) => ({ default: m.PortalReceiptPrint })))
 const StaffMoveOutPrint = lazy(() => import('@/pages/print/move-out').then((m) => ({ default: m.StaffMoveOutPrint })))
 const NotFoundPage = lazy(() => import('@/pages/not-found'))
+const TermsPage = lazy(() => import('@/pages/legal').then((m) => ({ default: m.TermsPage })))
+const LegalPrivacyPage = lazy(() => import('@/pages/legal').then((m) => ({ default: m.PrivacyPage })))
+const PrivacyRequestsPage = lazy(() => import('@/pages/privacy-requests'))
+const AuditLogsPage = lazy(() => import('@/pages/audit-logs'))
 
 const page = (el: ReactNode) => <Suspense fallback={<PageSkeleton />}>{el}</Suspense>
 
@@ -64,6 +68,9 @@ export default function App() {
                 <Routes>
                   <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
                   <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+                  {/* ข้อกำหนดการใช้งาน / นโยบายความเป็นส่วนตัว — สาธารณะ */}
+                  <Route path="/terms" element={<TermsPage />} />
+                  <Route path="/privacy" element={<LegalPrivacyPage />} />
                   {/* พอร์ทัลผู้เช่า — สาธารณะ ไม่ต้องล็อกอิน */}
                   <Route path="/p/:token" element={<PortalPage />} />
                   <Route path="/p/:token/print/invoice/:id" element={<PortalInvoicePrint />} />
@@ -101,6 +108,8 @@ export default function App() {
                       <Route path="reports" element={page(<ReportsPage />)} />
                       <Route path="support" element={page(<SupportPage />)} />
                       <Route path="settings" element={page(<SettingsPage />)} />
+                      <Route path="privacy-requests" element={page(<PrivacyRequestsPage />)} />
+                      <Route path="audit-logs" element={page(<AuditLogsPage />)} />
                       <Route path="*" element={page(<NotFoundPage />)} />
                     </Route>
                   </Route>
