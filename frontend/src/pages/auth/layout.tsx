@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/common'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 
 // สิ่งที่ระบบทำจริง — เขียนเป็นข้อเท็จจริงสั้นๆ ไม่ใช่สโลแกน
 const FACTS = [
@@ -23,6 +24,7 @@ export function AuthLayout({
   subtitle: ReactNode
   children: ReactNode
 }) {
+  useDocumentTitle(`${title} · Estate`)
   return (
     <div className="grid min-h-svh lg:grid-cols-[1fr_1fr]">
       <aside className="hidden flex-col bg-sidebar p-12 text-sidebar-accent-foreground lg:flex">

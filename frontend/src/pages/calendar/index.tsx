@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -73,7 +73,13 @@ export default function CalendarPage() {
   const [view, setViewState] = useState<View>(() => (readLS(LS_VIEW) === 'month' ? 'month' : 'timeline'))
   const [property, setPropertyState] = useState(() => readLS(LS_PROPERTY) || ALL)
   const [conflictsOnly, setConflictsOnly] = useState(false)
-  const [channelsOpen, setChannelsOpen] = useState(false)
+  // ?channels=1 (ลิงก์จากหน้าการเชื่อมต่อ) → เปิดแผงช่องทางขายทันที
+  const [params, setParams] = useSearchParams()
+  const [channelsOpen, setChannelsOpenState] = useState(() => params.get('channels') === '1')
+  const setChannelsOpen = (o: boolean) => {
+    setChannelsOpenState(o)
+    if (!o && params.has('channels')) setParams((p) => (p.delete('channels'), p), { replace: true })
+  }
 
   const setSpan = (v: Span) => {
     setSpanState(v)

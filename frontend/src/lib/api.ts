@@ -1702,6 +1702,80 @@ export interface SavedImportMapping {
   updated_at: string
 }
 
+// ===================== Types: หน้าแนะนำระบบ / ผู้สนใจ / การเชื่อมต่อ =====================
+
+export interface PublicPackage {
+  id: number
+  name: string
+  description: string
+  price_monthly: number
+  /** ราคารายปีจริง (คำนวณจาก ราคารายเดือน × yearly_months แล้วถ้าไม่ได้กำหนด) */
+  price_yearly: number
+  max_properties: number
+  max_units: number
+  max_members: number
+  features: Features
+  /** แพ็กเกจที่องค์กรใหม่ได้ตอนสมัคร */
+  is_default: boolean
+}
+
+/** GET /api/public/site — ข้อมูลสาธารณะสำหรับหน้าแนะนำระบบ */
+export interface PublicSite {
+  company: { name: string; phone: string; email: string }
+  /** จำนวนเดือนที่จ่ายเมื่อชำระรายปี (ค่าเริ่มต้น 10) */
+  yearly_months: number
+  packages: PublicPackage[]
+}
+
+export interface ContactInput {
+  name: string
+  phone: string
+  email: string
+  business: string
+  units?: number | null
+  message: string
+  consent: boolean
+  /** ช่องดักบอท — ต้องว่าง */
+  website: string
+}
+
+export type LeadStatus = 'new' | 'contacted' | 'won' | 'lost'
+
+export interface Lead {
+  id: number
+  name: string
+  phone: string
+  email: string
+  business: string
+  units: number | null
+  message: string
+  status: LeadStatus
+  note: string
+  /** UTC "YYYY-MM-DD HH:MM:SS" */
+  created_at: string
+}
+
+/** GET /api/integrations — สรุปสถานะการเชื่อมต่อขององค์กร (เจ้าของ/ผู้ดูแล) */
+export interface IntegrationsStatus {
+  line: {
+    enabled: boolean
+    /** เปิดใช้และมี access token */
+    ready: boolean
+    basic_id: string
+    linked_tenants: number
+    linked_staff: number
+    auto_on: number
+    auto_total: number
+  }
+  channels: { source: ChannelSource | string; feeds: number; errors: number; last_synced_at: string | null }[]
+  ical_export: { short_stay_units: number; exported_units: number }
+  booking_pages: { property_id: number; name: string; url: string }[]
+  promptpay: { properties: number; configured: number }
+  slip: { provider: 'none' | 'easyslip' | 'slipok' | string; has_key: boolean; auto_approve: boolean }
+  email: { platform_smtp: boolean }
+  public_url: string
+}
+
 // ===================== Client =====================
 
 export class ApiError extends Error {
@@ -2149,6 +2223,14 @@ export const api = {
       form<PortalContractView>(`/api/portal/${enc(token)}/contracts/${id}/sign`, fd, false),
   },
 
+  // หน้าแนะนำระบบ (สาธารณะ)
+  publicSite: () => get<PublicSite>('/api/public/site', undefined, false),
+  /** ฟอร์มติดต่อ/แสดงความสนใจ — จำกัด 5 ครั้ง/ชม. ต่อ IP */
+  contact: (b: ContactInput) => post<{ ok: boolean }>('/api/public/contact', b, false),
+
+  // ศูนย์รวมการเชื่อมต่อ (เจ้าของ/ผู้ดูแล)
+  integrations: () => get<IntegrationsStatus>('/api/integrations'),
+
   // หน้าจองออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน ไม่ส่ง X-Org-Id)
   stay: {
     info: (slug: string) => get<StayInfo>(`/api/public/stay/${enc(slug)}`, undefined, false),
@@ -2213,5 +2295,9 @@ export const api = {
       post<SubPayment>(`/api/admin/billing/invoices/${id}/void`, { reason }, false),
     emails: (f: { status?: EmailStatus | '' } = {}) => get<AdminEmails>('/api/admin/emails', f, false),
     testEmail: (to: string) => post<TestEmailResult>('/api/admin/emails/test', { to }, false),
+    leads: (f: { status?: LeadStatus | '' } = {}) =>
+      get<{ leads: Lead[]; new: number }>('/api/admin/leads', f, false),
+    updateLead: (id: number, b: { status?: LeadStatus; note?: string }) =>
+      patch<Lead>(`/api/admin/leads/${id}`, b, false),
   },
 }

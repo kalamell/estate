@@ -1,5 +1,5 @@
-import { Navigate, useSearchParams } from 'react-router-dom'
-import { Building2, FileText, MessageCircle, Palette, ScanLine, ShieldCheck, Users } from 'lucide-react'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
+import { ArrowRight, Building2, Cable, FileText, MessageCircle, Palette, ScanLine, ShieldCheck, Users } from 'lucide-react'
 import { useSession } from '@/contexts/session'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrgTab } from './org-tab'
@@ -24,6 +24,19 @@ export default function SettingsPage() {
   const tab: Tab = (allowed as readonly string[]).includes(raw ?? '') ? (raw as Tab) : 'org'
   return (
     <Tabs value={tab} onValueChange={(v) => setParams({ tab: v }, { replace: true })} className="gap-6">
+      {canManage && (
+        <Link
+          to="/integrations"
+          className="flex items-center gap-3 rounded-md border bg-card px-4 py-3 text-sm transition-colors hover:bg-muted/50"
+        >
+          <Cable className="size-4 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1">
+            <span className="font-medium">การเชื่อมต่อ</span>
+            <span className="text-muted-foreground"> — ดูสถานะ LINE OA ตรวจสลิป พร้อมเพย์ และปฏิทิน OTA ในหน้าเดียว</span>
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+        </Link>
+      )}
       <TabsList className="h-10 w-full justify-start overflow-x-auto sm:w-fit">
         <TabsTrigger value="org" className="px-3">
           <Building2 /> องค์กร

@@ -9,6 +9,7 @@ import { queryClient } from '@/lib/query'
 import { BILLING_PATH, billingNotice } from '@/lib/billing'
 import { thDateLong } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -31,9 +32,7 @@ import {
 import { Logo } from '@/components/common'
 import { BookingDialogProvider, useBookingDialog } from '@/components/booking-dialog'
 import {
-  BILLING_NAV,
-  SETTINGS_NAV,
-  SUPPORT_NAV,
+  footerNavFor,
   navBadgeCount,
   navGroupsFor,
   titleFor,
@@ -128,7 +127,7 @@ function AppSidebar() {
         ))}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
-            <NavLinks items={[SUPPORT_NAV, BILLING_NAV, SETTINGS_NAV]} />
+            <NavLinks items={footerNavFor(canManage)} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -331,11 +330,13 @@ function Header() {
   const { pathname } = useLocation()
   const { openBooking } = useBookingDialog()
   const { readOnly } = useSession()
+  const title = titleFor(pathname)
+  useDocumentTitle(title === 'Estate' ? 'Estate' : `${title} · Estate`)
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4 lg:px-8">
       <SidebarTrigger className="-ml-1" aria-label="เมนู" />
       <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5" />
-      <h1 className="truncate text-[17px] font-semibold tracking-tight">{titleFor(pathname)}</h1>
+      <h1 className="truncate text-[17px] font-semibold tracking-tight">{title}</h1>
       <div className="ml-auto flex items-center gap-2">
         <Button onClick={() => openBooking()} disabled={readOnly}>
           <CalendarPlus />

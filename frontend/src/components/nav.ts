@@ -6,6 +6,7 @@ import {
   Building2,
   CalendarDays,
   CalendarRange,
+  Cable,
   CreditCard,
   DoorOpen,
   FileSignature,
@@ -118,10 +119,16 @@ export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items)
 export const SUPPORT_NAV: NavItem = { to: '/support', label: 'ติดต่อผู้ให้บริการ', icon: LifeBuoy }
 export const BILLING_NAV: NavItem = { to: '/billing', label: 'แพ็กเกจ & การชำระเงิน', icon: CreditCard }
 export const SETTINGS_NAV: NavItem = { to: '/settings', label: 'ตั้งค่าองค์กร', icon: Settings }
+export const INTEGRATIONS_NAV: NavItem = { to: '/integrations', label: 'การเชื่อมต่อ', icon: Cable, adminOnly: true }
+
+/** เมนูท้ายแถบซ้าย (ติดต่อผู้ให้บริการ แพ็กเกจ การเชื่อมต่อ ตั้งค่า) ตามบทบาท */
+export function footerNavFor(canManage: boolean): NavItem[] {
+  return [SUPPORT_NAV, BILLING_NAV, INTEGRATIONS_NAV, SETTINGS_NAV].filter((n) => canManage || !n.adminOnly)
+}
 
 export function titleFor(pathname: string) {
   if (/^\/properties\/\d+\/pricing/.test(pathname)) return 'ราคาตามฤดูกาล'
-  const all = [...NAV, SUPPORT_NAV, BILLING_NAV, SETTINGS_NAV]
+  const all = [...NAV, SUPPORT_NAV, BILLING_NAV, INTEGRATIONS_NAV, SETTINGS_NAV]
   return (
     all.find((n) => (n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)))?.label ?? 'Estate'
   )

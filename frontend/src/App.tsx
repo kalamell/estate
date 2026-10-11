@@ -1,22 +1,28 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@/components/theme-provider'
+import { getOrgId } from '@/lib/api'
+import { useMe } from '@/lib/me'
 import { queryClient } from '@/lib/query'
 import { Toaster } from '@/components/ui/sonner'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import { ConfirmProvider } from '@/components/confirm'
-import { AppShell } from '@/components/app-shell'
-import { FullScreenLoader } from '@/components/common'
-import {
-  GuestOnly,
-  NavigatorBridge,
-  RequireAuth,
-  RequireOrg,
-  RequireSuperAdmin,
-} from '@/components/guards'
+import { FullScreenLoader } from '@/components/brand'
+import { NavigatorBridge } from '@/components/navigator-bridge'
 import { PageSkeleton } from '@/components/page-skeleton'
 
+// ไฟล์นี้อยู่ใน bundle แรกของทุกหน้า — import เฉพาะของเล็ก ส่วนที่เหลือ (guard, AppShell, provider ของแอป) โหลดแบบ lazy
+// เพื่อให้หน้าแนะนำระบบ (/ ตอนยังไม่ล็อกอิน) โหลดเร็ว
+const loadLanding = () => import('@/pages/landing')
+const LandingPage = lazy(loadLanding)
+// ผู้เยี่ยมชมใหม่ (ยังไม่เคยเลือกองค์กร) ที่เปิดหน้าแรก → เริ่มโหลดหน้าแนะนำระบบคู่กับการเช็กเซสชัน
+if (['/', '/pricing'].includes(window.location.pathname) && getOrgId() == null) void loadLanding()
+
+const AppProviders = lazy(() => import('@/components/app-providers'))
+const RequireAuth = lazy(() => import('@/components/guards').then((m) => ({ default: m.RequireAuth })))
+const GuestOnly = lazy(() => import('@/components/guards').then((m) => ({ default: m.GuestOnly })))
+const RequireOrg = lazy(() => import('@/components/guards').then((m) => ({ default: m.RequireOrg })))
+const RequireSuperAdmin = lazy(() => import('@/components/guards').then((m) => ({ default: m.RequireSuperAdmin })))
+const AppShell = lazy(() => import('@/components/app-shell').then((m) => ({ default: m.AppShell })))
 const LoginPage = lazy(() => import('@/pages/auth/login'))
 const RegisterPage = lazy(() => import('@/pages/auth/register'))
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/forgot'))
@@ -24,6 +30,8 @@ const ResetPasswordPage = lazy(() => import('@/pages/auth/reset'))
 const VerifyEmailPage = lazy(() => import('@/pages/auth/verify-email'))
 const ImportPage = lazy(() => import('@/pages/import'))
 const AdminEmails = lazy(() => import('@/pages/admin/emails'))
+const AdminLeads = lazy(() => import('@/pages/admin/leads'))
+const IntegrationsPage = lazy(() => import('@/pages/integrations'))
 const DashboardPage = lazy(() => import('@/pages/dashboard'))
 const PropertiesPage = lazy(() => import('@/pages/properties'))
 const PricingPage = lazy(() => import('@/pages/properties/pricing'))
@@ -74,16 +82,31 @@ const PortalContractPrint = lazy(() => import('@/pages/print/contract').then((m)
 
 const page = (el: ReactNode) => <Suspense fallback={<PageSkeleton />}>{el}</Suspense>
 
+/**
+ * "/" — ยังไม่ล็อกอินเห็นหน้าแนะนำระบบ, ล็อกอินแล้วเข้าแอป (ภาพรวม) เหมือนเดิม
+ * path อื่นผ่านไปตามปกติโดยไม่รอเช็กเซสชัน
+ */
+function HomeGate() {
+  const home = useLocation().pathname === '/'
+  const me = useMe({ enabled: home })
+  if (!home) return <Outlet />
+  if (me.isLoading) return <FullScreenLoader />
+  if (!me.isError && !me.data) return <LandingPage />
+  return <Outlet />
+}
+
 export default function App() {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider delayDuration={300}>
-          <ConfirmProvider>
-            <BrowserRouter>
-              <NavigatorBridge />
-              <Suspense fallback={<FullScreenLoader />}>
-                <Routes>
+        <BrowserRouter>
+          <NavigatorBridge />
+          <Suspense fallback={<FullScreenLoader />}>
+            <Routes>
+              <Route element={<HomeGate />}>
+                {/* หน้าแนะนำระบบ — ส่วนราคา (เปิดได้ทั้งตอนล็อกอินอยู่และยังไม่ล็อกอิน) */}
+                <Route path="/pricing" element={<LandingPage section="pricing" />} />
+                <Route element={<AppProviders />}>
                   <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
                   <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
                   <Route path="/forgot-password" element={<GuestOnly><ForgotPasswordPage /></GuestOnly>} />
@@ -125,6 +148,7 @@ export default function App() {
                       <Route path="support" element={page(<AdminSupport />)} />
                       <Route path="billing" element={page(<AdminBilling />)} />
                       <Route path="emails" element={page(<AdminEmails />)} />
+                      <Route path="leads" element={page(<AdminLeads />)} />
                     </Route>
                     <Route element={<RequireOrg><AppShell /></RequireOrg>}>
                       <Route index element={page(<DashboardPage />)} />
@@ -146,6 +170,7 @@ export default function App() {
                       <Route path="expenses" element={page(<ExpensesPage />)} />
                       <Route path="support" element={page(<SupportPage />)} />
                       <Route path="settings" element={page(<SettingsPage />)} />
+                      <Route path="integrations" element={page(<IntegrationsPage />)} />
                       <Route path="billing" element={page(<BillingPage />)} />
                       <Route path="privacy-requests" element={page(<PrivacyRequestsPage />)} />
                       <Route path="audit-logs" element={page(<AuditLogsPage />)} />
@@ -155,12 +180,12 @@ export default function App() {
                       <Route path="*" element={page(<NotFoundPage />)} />
                     </Route>
                   </Route>
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
-            <Toaster richColors closeButton position="top-center" />
-          </ConfirmProvider>
-        </TooltipProvider>
+                </Route>
+              </Route>
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+        <Toaster richColors closeButton position="top-center" />
       </QueryClientProvider>
     </ThemeProvider>
   )

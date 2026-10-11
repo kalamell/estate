@@ -1,9 +1,10 @@
 import { NavLink, Outlet, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Building2, CreditCard, Inbox, LayoutDashboard, Mail, Package, ShieldCheck, Users } from 'lucide-react'
+import { ArrowLeft, Building2, CreditCard, Inbox, LayoutDashboard, Mail, Package, ShieldCheck, UserPlus, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/contexts/session'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CompactUserMenu } from '@/components/user-menu'
@@ -13,6 +14,7 @@ const TABS = [
   { to: '/admin/packages', label: 'แพ็กเกจ', icon: Package },
   { to: '/admin/orgs', label: 'องค์กรลูกค้า', icon: Building2 },
   { to: '/admin/billing', label: 'ค่าบริการ', icon: CreditCard },
+  { to: '/admin/leads', label: 'ผู้สนใจ', icon: UserPlus },
   { to: '/admin/users', label: 'ผู้ใช้', icon: Users },
   { to: '/admin/support', label: 'คำร้องจากลูกค้า', icon: Inbox },
   { to: '/admin/emails', label: 'อีเมล', icon: Mail },
@@ -27,6 +29,14 @@ export default function AdminLayout() {
     staleTime: 60_000,
     meta: { silent: true },
   }).data?.summary.review
+  // ผู้สนใจรายใหม่จากหน้าแนะนำระบบ (แสดงบนแท็บ ผู้สนใจ)
+  const newLeads = useQuery({
+    queryKey: ['admin', 'leads', 'new'],
+    queryFn: () => api.admin.leads({ status: 'new' }),
+    staleTime: 60_000,
+    meta: { silent: true },
+  }).data?.new
+  useDocumentTitle('Estate Console')
   return (
     <div className="min-h-svh bg-background">
       <header className="sticky top-0 z-20 border-b border-sidebar-border bg-sidebar text-sidebar-accent-foreground">
@@ -74,6 +84,14 @@ export default function AdminLayout() {
               {t.to === '/admin/billing' && !!review && (
                 <span className="rounded-sm bg-warning/25 px-1.5 text-xs font-semibold text-sidebar-accent-foreground tabular-nums">
                   {review}
+                </span>
+              )}
+              {t.to === '/admin/leads' && !!newLeads && (
+                <span
+                  className="rounded-sm bg-warning/25 px-1.5 text-xs font-semibold text-sidebar-accent-foreground tabular-nums"
+                  title="ผู้สนใจรายใหม่ที่ยังไม่ได้ติดต่อ"
+                >
+                  {newLeads}
                 </span>
               )}
             </NavLink>

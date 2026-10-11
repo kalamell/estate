@@ -1,23 +1,14 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Building2, LogOut, ShieldCheck } from 'lucide-react'
 import { SessionProvider, useMe, useSession } from '@/contexts/session'
-import { setNavigator } from '@/lib/query'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { FullScreenLoader, Logo } from '@/components/common'
 import { CreateOrgDialog } from '@/components/org-switcher'
 import { useLogout } from '@/components/user-menu'
 
-/** ให้โค้ดนอก React (เช่น toast action) นำทางผ่าน router ได้ */
-export function NavigatorBridge() {
-  const navigate = useNavigate()
-  useEffect(() => {
-    setNavigator((to) => navigate(to))
-    return () => setNavigator(null)
-  }, [navigate])
-  return null
-}
+export { NavigatorBridge } from '@/components/navigator-bridge'
 
 /** ต้องเข้าสู่ระบบ — มิฉะนั้นพาไป /login */
 export function RequireAuth() {

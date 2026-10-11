@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -57,6 +57,21 @@ export default function PropertiesPage() {
     setEditing(p)
     setOpen(true)
   }
+  // ?edit=<id> (ลิงก์จากหน้าการเชื่อมต่อ) → เปิดหน้าแก้ไขโครงการนั้นเมื่อโหลดรายการเสร็จ แล้วลบพารามิเตอร์ออก
+  const [params, setParams] = useSearchParams()
+  const editId = Number(params.get('edit')) || null
+  const [handledEdit, setHandledEdit] = useState<number | null>(null)
+  if (editId && properties && handledEdit !== editId) {
+    setHandledEdit(editId)
+    const p = properties.find((x) => x.id === editId)
+    if (p && canManage) {
+      setEditing(p)
+      setOpen(true)
+    }
+  }
+  useEffect(() => {
+    if (editId && handledEdit === editId) setParams((q) => (q.delete('edit'), q), { replace: true })
+  }, [editId, handledEdit, setParams])
   const askDelete = async (p: Property) => {
     if (
       await confirm({

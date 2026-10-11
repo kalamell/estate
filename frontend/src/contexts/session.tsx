@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  ApiError,
   api,
   getOrgId,
   setOrgId,
@@ -17,22 +16,8 @@ import { queryClient } from '@/lib/query'
 import { today } from '@/lib/format'
 import { useOrgColorTheme } from '@/components/theme-provider'
 
-/** ดึงข้อมูลผู้ใช้ปัจจุบัน — คืน null เมื่อยังไม่ได้เข้าสู่ระบบ */
-export function useMe() {
-  return useQuery<Me | null>({
-    queryKey: ['me'],
-    queryFn: async () => {
-      try {
-        return await api.me()
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 401) return null
-        throw e
-      }
-    },
-    staleTime: 5 * 60_000,
-    meta: { silent: true },
-  })
-}
+// useMe อยู่ใน lib/me (โมดูลเล็ก ใช้ในหน้าแรกได้) — export ต่อเพื่อให้โค้ดเดิมใช้ได้เหมือนเดิม
+export { useMe } from '@/lib/me'
 
 interface Session {
   user: User

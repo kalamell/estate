@@ -11,6 +11,9 @@ import { BOOKING_STATUS, TONE, UNIT_STATUS, type Tone } from '@/lib/format'
 import type { BookingStatus, Invoice, UnitStatus } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 
+// โลโก้และหน้าโหลดอยู่ในโมดูลเล็กแยก (ใช้ในหน้าแรกโดยไม่ดึงทั้งไฟล์นี้)
+export { FullScreenLoader, Logo, LogoMark } from '@/components/brand'
+
 /** Label + control ที่ผูก id กัน */
 export function Field({
   label,
@@ -218,41 +221,6 @@ export function UpsellHint({ children }: { children: ReactNode }) {
   )
 }
 
-/** โลโก้ monogram สี่เหลี่ยมสีเขียว */
-export function LogoMark({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'grid size-8 shrink-0 place-items-center rounded-md bg-primary text-[15px] leading-none font-bold text-primary-foreground',
-        className,
-      )}
-    >
-      E
-    </span>
-  )
-}
-
-export function Logo({
-  className,
-  subtitle = true,
-  markClassName,
-}: {
-  className?: string
-  subtitle?: boolean
-  markClassName?: string
-}) {
-  return (
-    <div className={cn('flex items-center gap-3', className)}>
-      <LogoMark className={markClassName} />
-      <div className="leading-tight">
-        <div className="font-semibold tracking-tight">Estate</div>
-        {subtitle && <div className="text-xs opacity-70">บริหารห้องเช่าครบวงจร</div>}
-      </div>
-    </div>
-  )
-}
-
 /** หัวข้อส่วนของหน้า */
 export function SectionTitle({
   children,
@@ -267,17 +235,6 @@ export function SectionTitle({
     <div className={cn('flex items-center gap-3', className)}>
       <h2 className="text-base font-semibold">{children}</h2>
       {action && <div className="ml-auto">{action}</div>}
-    </div>
-  )
-}
-
-export function FullScreenLoader() {
-  return (
-    <div className="grid min-h-svh place-items-center bg-background">
-      <div className="flex flex-col items-center gap-4">
-        <LogoMark className="size-10 animate-pulse text-lg" />
-        <p className="text-sm text-muted-foreground">กำลังโหลด…</p>
-      </div>
     </div>
   )
 }
