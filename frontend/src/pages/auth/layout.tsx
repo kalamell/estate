@@ -1,33 +1,43 @@
 import type { ReactNode } from 'react'
-import type { LucideIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowLeft, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/common'
 
-const FEATURES = [
-  'โครงการ ห้องพัก การจอง และเงินมัดจำ ในที่เดียว',
-  'จดมิเตอร์ ออกใบแจ้งหนี้ และรับชำระผ่าน PromptPay',
-  'ใบเสร็จรับเงิน / ใบกำกับภาษี พร้อมพิมพ์ A4',
-  'พอร์ทัลผู้เช่า แจ้งซ่อม และรายงานค้างชำระ',
+// สิ่งที่ระบบทำจริง — เขียนเป็นข้อเท็จจริงสั้นๆ ไม่ใช่สโลแกน
+const FACTS = [
+  'จดมิเตอร์น้ำไฟ แล้วออกบิลค่าเช่าทั้งโครงการได้ในรอบเดียว',
+  'บิลมี QR พร้อมเพย์ ผู้เช่าส่งสลิปและแจ้งซ่อมผ่าน LINE ได้',
+  'ใบเสร็จและใบกำกับภาษีเลขที่เรียงต่อเนื่อง ไม่ข้ามเลข พิมพ์ขนาด A4',
+  'ห้องรายวันซิงก์ปฏิทินกับ Airbnb, Booking.com และ Agoda',
 ]
 
 const YEAR = new Date().getFullYear()
 
-export function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+export function AuthLayout({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle: ReactNode
+  children: ReactNode
+}) {
   return (
     <div className="grid min-h-svh lg:grid-cols-[1fr_1fr]">
       <aside className="hidden flex-col bg-sidebar p-12 text-sidebar-accent-foreground lg:flex">
-        <Logo markClassName="bg-sidebar-mark text-sidebar-mark-foreground" />
+        <Logo subtitle={false} markClassName="bg-sidebar-mark text-sidebar-mark-foreground" />
         <div className="mt-auto max-w-md">
           <h2 className="text-3xl leading-snug font-semibold tracking-tight">
-            ระบบบริหารห้องเช่า
+            ระบบงานหลังบ้าน
             <br />
-            ที่บัญชีตรวจสอบได้
+            สำหรับหอพักและห้องเช่า
           </h2>
           <p className="mt-4 text-[15px] text-sidebar-foreground">
-            สำหรับเจ้าของหอพัก อพาร์ทเมนต์ และบ้านเช่า ที่ต้องการเอกสารถูกต้องและงานประจำที่เป็นระเบียบ
+            ใช้กับหอพัก อพาร์ทเมนต์ คอนโดปล่อยเช่า บ้านเช่า และห้องพักรายวัน
           </p>
           <ul className="mt-10 space-y-3 border-t border-sidebar-border pt-8">
-            {FEATURES.map((f) => (
+            {FACTS.map((f) => (
               <li key={f} className="flex gap-3 text-sm text-sidebar-muted">
                 <span className="mt-2 h-px w-4 shrink-0 bg-sidebar-primary" aria-hidden />
                 {f}
@@ -37,9 +47,15 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
         </div>
         <p className="mt-16 text-xs text-sidebar-muted">© {YEAR} Estate</p>
       </aside>
-      <main className="flex flex-col items-center justify-center bg-background px-4 py-10 sm:px-8">
+      <main className="relative flex flex-col items-center justify-center bg-background px-4 pt-16 pb-10 sm:px-8">
+        <Link
+          to="/"
+          className="absolute top-5 left-4 inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:left-8"
+        >
+          <ArrowLeft className="size-3.5" /> กลับหน้าแรก
+        </Link>
         <div className="w-full max-w-sm">
-          <Logo className="mb-10 lg:hidden" />
+          <Logo subtitle={false} className="mb-10 lg:hidden" />
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>
           <div className="mt-8">{children}</div>

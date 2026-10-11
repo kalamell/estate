@@ -46,20 +46,20 @@ export default function VerifyEmailPage() {
 
   if (token && verify.isPending)
     return (
-      <AuthLayout title="กำลังยืนยันอีเมล" subtitle="รอสักครู่…">
+      <AuthLayout title="กำลังยืนยันอีเมล" subtitle="รอสักครู่">
         <div className="flex items-center gap-3 rounded-lg border bg-card p-4 text-sm text-muted-foreground">
           <Loader2 className="size-5 animate-spin text-primary" />
-          กำลังตรวจสอบลิงก์
+          กำลังตรวจสอบลิงก์จากอีเมล…
         </div>
       </AuthLayout>
     )
 
   if (ok)
     return (
-      <AuthLayout title="ยืนยันอีเมลแล้ว" subtitle="ขอบคุณที่ยืนยันอีเมล">
+      <AuthLayout title="ยืนยันอีเมลแล้ว" subtitle="ใช้งานต่อได้ตามปกติ">
         <div className="grid gap-6">
-          <AuthNotice icon={CircleCheck} tone="success" title="อีเมลของคุณได้รับการยืนยันแล้ว">
-            จากนี้คุณจะได้รับใบแจ้งหนี้ค่าบริการและการแจ้งเตือนทางอีเมล และกู้คืนรหัสผ่านได้เมื่อจำเป็น
+          <AuthNotice icon={CircleCheck} tone="success" title="ยืนยันอีเมลเรียบร้อย">
+            ใบแจ้งค่าบริการและการแจ้งเตือนจะส่งมาที่อีเมลนี้ และใช้อีเมลนี้ตั้งรหัสผ่านใหม่ได้เมื่อลืม
           </AuthNotice>
           {next}
         </div>
@@ -74,11 +74,11 @@ export default function VerifyEmailPage() {
             verify.error.message
           ) : loggedIn ? (
             <>
-              ถ้ายืนยันไปแล้ว ไม่ต้องทำอะไรเพิ่ม — หากยังไม่ได้ยืนยัน กด <b className="font-medium">ส่งลิงก์อีกครั้ง</b>{' '}
-              จากแถบแจ้งเตือนด้านบนของแอป หรือที่เมนู <b className="font-medium">บัญชีของฉัน</b>
+              ถ้ายืนยันไปแล้วไม่ต้องทำอะไรเพิ่ม ถ้ายังไม่ได้ยืนยัน กด <b className="font-medium">ส่งลิงก์อีกครั้ง</b>{' '}
+              ที่แถบแจ้งเตือนด้านบนของแอป หรือที่เมนู <b className="font-medium">บัญชีของฉัน</b>
             </>
           ) : (
-            'ถ้ายืนยันไปแล้ว ไม่ต้องทำอะไรเพิ่ม — หากยังไม่ได้ยืนยัน ให้เข้าสู่ระบบแล้วขอลิงก์ใหม่จากเมนู "บัญชีของฉัน"'
+            'ถ้ายืนยันไปแล้วไม่ต้องทำอะไรเพิ่ม ถ้ายังไม่ได้ยืนยัน ให้เข้าสู่ระบบแล้วขอลิงก์ใหม่ที่เมนู "บัญชีของฉัน"'
           )}
         </AuthNotice>
         {next}

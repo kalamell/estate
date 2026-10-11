@@ -28,7 +28,7 @@ export default function ResetPasswordPage() {
     onSuccess: () => {
       // เซสชันทั้งหมดถูกยกเลิกแล้ว — ให้เข้าสู่ระบบใหม่
       queryClient.setQueryData(['me'], null)
-      toast.success('ตั้งรหัสผ่านใหม่แล้ว', { description: 'เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้เลย' })
+      toast.success('ตั้งรหัสผ่านใหม่แล้ว', { description: 'เข้าสู่ระบบด้วยรหัสผ่านใหม่' })
       navigate('/login', { replace: true })
     },
   })
@@ -39,10 +39,10 @@ export default function ResetPasswordPage() {
   // ลิงก์ถูกตัด/คัดลอกไม่ครบ → แจ้งทันทีโดยไม่ต้องให้กรอกรหัสผ่านก่อน
   if (!/^[0-9a-f]{32,}$/i.test(token) || isTokenError(reset.error))
     return (
-      <AuthLayout title="ลิงก์ใช้ไม่ได้" subtitle="ลิงก์ตั้งรหัสผ่านใหม่ใช้ได้ครั้งเดียวภายใน 1 ชั่วโมง">
+      <AuthLayout title="ลิงก์ใช้ไม่ได้" subtitle="ลิงก์ตั้งรหัสผ่านใหม่ใช้ได้ครั้งเดียว และหมดอายุใน 1 ชั่วโมง">
         <div className="grid gap-6">
           <AuthNotice icon={Link2Off} tone="error" title="ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว">
-            ลิงก์อาจถูกใช้ไปแล้ว หรือมีการขอลิงก์ใหม่หลังจากนี้ — ขอลิงก์ใหม่แล้วเปิดจากอีเมลฉบับล่าสุด
+            ลิงก์นี้อาจถูกใช้ไปแล้ว หรือมีการขอลิงก์ใหม่หลังจากนั้น ให้ขอลิงก์ใหม่แล้วเปิดจากอีเมลฉบับล่าสุด
           </AuthNotice>
           <Button asChild size="lg" className="h-11">
             <Link to="/forgot-password">
@@ -59,7 +59,7 @@ export default function ResetPasswordPage() {
     )
 
   return (
-    <AuthLayout title="ตั้งรหัสผ่านใหม่" subtitle="ตั้งรหัสผ่านใหม่สำหรับบัญชีของคุณ อุปกรณ์อื่นที่เข้าสู่ระบบอยู่จะถูกออกจากระบบ">
+    <AuthLayout title="ตั้งรหัสผ่านใหม่" subtitle="เมื่อบันทึกแล้ว ทุกอุปกรณ์ที่เข้าสู่ระบบอยู่จะถูกออกจากระบบ">
       <form
         className="grid gap-5"
         onSubmit={(e) => {

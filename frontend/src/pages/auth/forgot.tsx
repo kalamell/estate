@@ -18,11 +18,11 @@ export default function ForgotPasswordPage() {
 
   if (forgot.isSuccess)
     return (
-      <AuthLayout title="ตรวจอีเมลของคุณ" subtitle="ขั้นต่อไปอยู่ในกล่องจดหมาย">
+      <AuthLayout title="ส่งลิงก์แล้ว" subtitle="เปิดอีเมลแล้วกดลิงก์เพื่อตั้งรหัสผ่านใหม่">
         <div className="grid gap-6">
-          <AuthNotice icon={MailCheck} title="ถ้ามีบัญชีนี้ เราได้ส่งลิงก์ไปที่อีเมลแล้ว">
-            ตรวจกล่องจดหมาย/สแปมของ <span className="font-medium break-words text-foreground">{email.trim()}</span>{' '}
-            ลิงก์ใช้ได้ 1 ชั่วโมง
+          <AuthNotice icon={MailCheck} title="ถ้าอีเมลนี้มีบัญชีอยู่ ระบบได้ส่งลิงก์ไปแล้ว">
+            ส่งไปที่ <span className="font-medium break-words text-foreground">{email.trim()}</span> ถ้าไม่เห็นในกล่องจดหมาย
+            ให้ดูในโฟลเดอร์สแปม ลิงก์ใช้ได้ครั้งเดียวภายใน 1 ชั่วโมง
           </AuthNotice>
           <Button asChild size="lg" className="h-11">
             <Link to="/login">
@@ -30,13 +30,13 @@ export default function ForgotPasswordPage() {
             </Link>
           </Button>
           <p className="text-center text-sm text-muted-foreground">
-            ไม่ได้รับอีเมล?{' '}
+            พิมพ์อีเมลผิด หรือไม่ได้รับอีเมล{' '}
             <button
               type="button"
               className="font-medium text-primary hover:underline"
               onClick={() => forgot.reset()}
             >
-              ลองอีกครั้ง
+              ส่งใหม่
             </button>
           </p>
         </div>
@@ -44,7 +44,7 @@ export default function ForgotPasswordPage() {
     )
 
   return (
-    <AuthLayout title="ลืมรหัสผ่าน" subtitle="กรอกอีเมลที่ใช้สมัคร เราจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ให้">
+    <AuthLayout title="ลืมรหัสผ่าน" subtitle="กรอกอีเมลที่ใช้สมัคร ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปให้">
       <form
         className="grid gap-5"
         onSubmit={(e) => {
@@ -76,9 +76,8 @@ export default function ForgotPasswordPage() {
           ส่งลิงก์ตั้งรหัสผ่านใหม่
         </Button>
         <p className="text-center text-sm text-muted-foreground">
-          นึกออกแล้ว?{' '}
           <Link to="/login" className="font-medium text-primary hover:underline">
-            เข้าสู่ระบบ
+            กลับไปหน้าเข้าสู่ระบบ
           </Link>
         </p>
       </form>

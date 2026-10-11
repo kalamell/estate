@@ -1,10 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Cable, CalendarRange, ChevronLeft, ChevronRight, Inbox, MousePointerClick, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Cable,
+  CalendarDays,
+  CalendarRange,
+  ChartGantt,
+  ChevronLeft,
+  ChevronRight,
+  Inbox,
+  List,
+  MousePointerClick,
+  X,
+} from 'lucide-react'
 import { api, type CalendarUnit, type DayPrice, type EventSource } from '@/lib/api'
 import { CHANNELS } from '@/lib/channels'
-import { addDays, diffDays, thRange, today } from '@/lib/format'
+import { addDays, diffDays, thRange, today, weekdayOf } from '@/lib/format'
 import { readLS, writeLS } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/contexts/session'
@@ -18,12 +30,19 @@ import { EmptyState } from '@/components/common'
 import { useBookingDialog } from '@/components/booking-dialog'
 import { Agenda } from './agenda'
 import { ChannelsSheet } from './channels-sheet'
+import { monthStartOf, shiftMonth, thMonthLabel } from './lib'
+import { MonthGrid } from './month-grid'
 import { Timeline } from './timeline'
 
 const ALL = 'all'
 const LS_WEEKS = 'estate.calendarWeeks'
+const LS_VIEW = 'estate.calendarView'
 const LS_PROPERTY = 'estate.calendarProperty'
-const DAY_W: Record<number, number> = { 2: 52, 4: 40, 8: 30 }
+/** ช่วงของไทม์ไลน์: 2/4/8 สัปดาห์ หรือ 1 เดือนปฏิทิน */
+type Span = '2' | '4' | '8' | 'month'
+/** ไทม์ไลน์ (มือถือ = รายการ) หรือ ตารางปฏิทินรายเดือน */
+type View = 'timeline' | 'month'
+const DAY_W: Record<Span, number> = { '2': 52, '4': 40, '8': 30, month: 40 }
 const LEAD = 3 // แสดงย้อนหลังก่อนวันอ้างอิง 3 วัน
 
 /** รวมผลราคาหลายห้องเป็น Map (ฟังก์ชันคงที่ → React Query memo ผลลัพธ์ให้) */
@@ -47,17 +66,22 @@ export default function CalendarPage() {
   const { openBooking } = useBookingDialog()
   const isMobile = useIsMobile()
   const [anchor, setAnchor] = useState(today)
-  const [weeks, setWeeksState] = useState<number>(() => {
-    const v = Number(readLS(LS_WEEKS))
-    return v === 2 || v === 8 ? v : 4
+  const [span, setSpanState] = useState<Span>(() => {
+    const v = readLS(LS_WEEKS)
+    return v === '2' || v === '8' || v === 'month' ? v : '4'
   })
+  const [view, setViewState] = useState<View>(() => (readLS(LS_VIEW) === 'month' ? 'month' : 'timeline'))
   const [property, setPropertyState] = useState(() => readLS(LS_PROPERTY) || ALL)
   const [conflictsOnly, setConflictsOnly] = useState(false)
   const [channelsOpen, setChannelsOpen] = useState(false)
 
-  const setWeeks = (w: number) => {
-    setWeeksState(w)
-    writeLS(LS_WEEKS, String(w))
+  const setSpan = (v: Span) => {
+    setSpanState(v)
+    writeLS(LS_WEEKS, v)
+  }
+  const setView = (v: View) => {
+    setViewState(v)
+    writeLS(LS_VIEW, v)
   }
   const setProperty = (p: string) => {
     setPropertyState(p)
@@ -68,10 +92,40 @@ export default function CalendarPage() {
   const propertyId =
     property !== ALL && properties.data?.some((p) => String(p.id) === property) ? Number(property) : null
 
-  // เดสก์ท็อป: ย้อนหลัง 3 วัน … +N สัปดาห์ / มือถือ: วันนี้ … +8 สัปดาห์
-  const from = isMobile ? today() : addDays(anchor, -LEAD)
-  const days = isMobile ? 56 : weeks * 7 + LEAD
+  const grid = view === 'month'
+  /** นำทางทีละเดือน (ตารางเดือน หรือไทม์ไลน์แบบ "เดือน") */
+  const byMonth = grid || (!isMobile && span === 'month')
+  const weeks = span === 'month' ? 0 : Number(span)
+  const monthStart = monthStartOf(anchor)
+  const monthDays = diffDays(monthStart, shiftMonth(monthStart, 1))
+
+  // ช่วงที่ดึงข้อมูล
+  // ตารางเดือน: อาทิตย์ก่อนวันที่ 1 … เสาร์หลังวันสิ้นเดือน (5–6 สัปดาห์)
+  // ไทม์ไลน์ "เดือน": วันที่ 1 … วันสิ้นเดือน
+  // ไทม์ไลน์สัปดาห์: ย้อนหลัง 3 วัน … +N สัปดาห์ / มือถือ (รายการ): วันนี้ … +8 สัปดาห์
+  let from: string
+  let days: number
+  if (grid) {
+    from = addDays(monthStart, -weekdayOf(monthStart))
+    const next = shiftMonth(monthStart, 1)
+    days = diffDays(from, addDays(next, (7 - weekdayOf(next)) % 7))
+  } else if (isMobile) {
+    from = today()
+    days = 56
+  } else if (span === 'month') {
+    from = monthStart
+    days = monthDays
+  } else {
+    from = addDays(anchor, -LEAD)
+    days = weeks * 7 + LEAD
+  }
   const to = addDays(from, days)
+  // ช่วงที่ใช้คำนวณอัตราการจอง (ตารางเดือนนับเฉพาะวันในเดือน)
+  const statFrom = grid ? monthStart : from
+  const statDays = grid ? monthDays : days
+
+  const step = (dir: 1 | -1) =>
+    setAnchor((a) => (byMonth ? shiftMonth(monthStartOf(a), dir) : addDays(a, dir * weeks * 7)))
 
   const cal = useQuery({
     queryKey: ['calendar', { from, to, property_id: propertyId }],
@@ -83,28 +137,35 @@ export default function CalendarPage() {
   const events = useMemo(() => cal.data?.events ?? [], [cal.data])
   const unitProperty = useMemo(() => new Map(units.map((u) => [u.id, u.property_id])), [units])
 
+  const conflictUnits = useMemo(() => new Set(events.filter((e) => e.conflict).map((e) => e.unit_id)), [events])
   const stats = (() => {
     // อัตราการจองในช่วง: คืนที่ไม่ว่าง (การจอง + ปิดจากช่องทาง) ÷ (ห้อง × วัน)
     const nights = new Set<string>()
     for (const ev of events) {
       if (ev.type === 'request' || ev.status === 'cancelled') continue
-      const s = Math.max(0, diffDays(from, ev.start))
-      const e = Math.min(days, diffDays(from, ev.end))
+      const s = Math.max(0, diffDays(statFrom, ev.start))
+      const e = Math.min(statDays, diffDays(statFrom, ev.end))
       for (let i = s; i < e; i++) nights.add(`${ev.unit_id}:${i}`)
     }
-    const capacity = units.length * days
-    const conflictUnits = new Set(events.filter((e) => e.conflict).map((e) => e.unit_id))
+    const capacity = units.length * statDays
     return {
       booked: nights.size,
       capacity,
       rate: capacity ? nights.size / capacity : 0,
       conflicts: events.filter((e) => e.conflict).length,
-      conflictUnits,
       requests: events.filter((e) => e.type === 'request').length,
     }
   })()
 
-  const shownUnits = conflictsOnly ? units.filter((u) => stats.conflictUnits.has(u.id)) : units
+  const shownUnits = useMemo(
+    () => (conflictsOnly ? units.filter((u) => conflictUnits.has(u.id)) : units),
+    [conflictsOnly, units, conflictUnits],
+  )
+  const shownEvents = useMemo(() => {
+    if (!conflictsOnly) return events
+    const ids = new Set(shownUnits.map((u) => u.id))
+    return events.filter((e) => ids.has(e.unit_id))
+  }, [conflictsOnly, events, shownUnits])
 
   // สถานะทำความสะอาด (ใช้เมื่อ /api/calendar ไม่ได้ส่งมาด้วย)
   const allUnits = useQuery({ queryKey: ['units', 'all'], queryFn: () => api.units(), meta: { silent: true } })
@@ -115,7 +176,7 @@ export default function CalendarPage() {
 
   // ราคาต่อคืนตามกฎ — เฉพาะห้องรายวัน เมื่อแสดงไม่เกิน 4 สัปดาห์ (จำกัดจำนวนห้องเพื่อไม่ให้หนักเกินไป)
   const priceUnits =
-    features.short_stay && !isMobile && weeks <= 4
+    features.short_stay && !isMobile && !grid && span !== '8'
       ? shownUnits.filter((u) => u.rate_daily > 0).slice(0, 40)
       : []
   const prices = useQueries({
@@ -127,6 +188,17 @@ export default function CalendarPage() {
     })),
     combine: combinePrices,
   })
+
+  const bookOnDay = useCallback(
+    (date: string, u?: CalendarUnit) =>
+      openBooking(undefined, {
+        unit_id: u?.id,
+        start_date: date,
+        end_date: u && u.rate_daily > 0 ? addDays(date, 1) : undefined,
+        kind: u ? (u.rate_daily > 0 ? 'short_stay' : 'lease') : undefined,
+      }),
+    [openBooking],
+  )
 
   const selectRange = (u: CalendarUnit, start: string, end: string) =>
     openBooking(undefined, {
@@ -140,15 +212,27 @@ export default function CalendarPage() {
     <div className="space-y-4">
       {/* แถบควบคุม */}
       <div className="flex flex-wrap items-center gap-2">
-        {!isMobile && (
-          <>
+        {isMobile && (
+          <Tabs value={view} onValueChange={(v) => setView(v as View)} className="w-full">
+            <TabsList aria-label="มุมมอง" className="w-full">
+              <TabsTrigger value="timeline">
+                <List /> รายการ
+              </TabsTrigger>
+              <TabsTrigger value="month">
+                <CalendarDays /> ปฏิทินเดือน
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+        {(!isMobile || grid) && (
+          <div className="flex min-w-0 items-center gap-2">
             <div className="flex items-center">
               <Button
                 variant="outline"
                 size="icon"
                 className="rounded-r-none"
-                aria-label="ก่อนหน้า"
-                onClick={() => setAnchor((a) => addDays(a, -weeks * 7))}
+                aria-label={byMonth ? 'เดือนก่อนหน้า' : 'ก่อนหน้า'}
+                onClick={() => step(-1)}
               >
                 <ChevronLeft />
               </Button>
@@ -159,22 +243,37 @@ export default function CalendarPage() {
                 variant="outline"
                 size="icon"
                 className="rounded-l-none"
-                aria-label="ถัดไป"
-                onClick={() => setAnchor((a) => addDays(a, weeks * 7))}
+                aria-label={byMonth ? 'เดือนถัดไป' : 'ถัดไป'}
+                onClick={() => step(1)}
               >
                 <ChevronRight />
               </Button>
             </div>
-            <span className="px-1 text-sm font-medium tabular-nums">{thRange(from, addDays(to, -1))}</span>
-          </>
+            <span className="truncate px-1 text-sm font-medium tabular-nums" aria-live="polite">
+              {byMonth ? thMonthLabel(monthStart) : thRange(from, addDays(to, -1))}
+            </span>
+          </div>
         )}
         <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
           {!isMobile && (
-            <Tabs value={String(weeks)} onValueChange={(v) => setWeeks(Number(v))}>
+            <Tabs value={view} onValueChange={(v) => setView(v as View)}>
+              <TabsList aria-label="มุมมอง">
+                <TabsTrigger value="timeline">
+                  <ChartGantt /> ไทม์ไลน์
+                </TabsTrigger>
+                <TabsTrigger value="month">
+                  <CalendarDays /> ปฏิทินเดือน
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+          {!isMobile && !grid && (
+            <Tabs value={span} onValueChange={(v) => setSpan(v as Span)}>
               <TabsList aria-label="ช่วงเวลา">
                 <TabsTrigger value="2">2 สัปดาห์</TabsTrigger>
                 <TabsTrigger value="4">4 สัปดาห์</TabsTrigger>
                 <TabsTrigger value="8">8 สัปดาห์</TabsTrigger>
+                <TabsTrigger value="month">เดือน</TabsTrigger>
               </TabsList>
             </Tabs>
           )}
@@ -203,7 +302,7 @@ export default function CalendarPage() {
       {/* สรุป */}
       <div className="flex flex-wrap items-center gap-2">
         <Chip>
-          <span className="text-muted-foreground">{isMobile ? 'จองแล้ว 8 สัปดาห์ข้างหน้า' : 'อัตราการจองช่วงนี้'}</span>
+          <span className="text-muted-foreground">{isMobile && !grid ? 'จองแล้ว 8 สัปดาห์ข้างหน้า' : byMonth ? 'อัตราการจองเดือนนี้' : 'อัตราการจองช่วงนี้'}</span>
           <span className="font-semibold tabular-nums">{Math.round(stats.rate * 100)}%</span>
           <span className="text-xs text-muted-foreground tabular-nums">
             {stats.booked}/{stats.capacity} คืน
@@ -271,6 +370,36 @@ export default function CalendarPage() {
             }
           />
         </Card>
+      ) : grid ? (
+        <div className={cn('transition-opacity', cal.isPlaceholderData && 'opacity-60')}>
+          <MonthGrid
+            month={monthStart}
+            from={from}
+            days={days}
+            units={shownUnits}
+            events={shownEvents}
+            compact={isMobile}
+            readOnly={readOnly}
+            onBook={bookOnDay}
+          />
+          {!isMobile && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MousePointerClick className="size-3.5" />
+              คลิกวันที่เพื่อดูเช็คอิน เช็คเอาท์ และห้องว่างของวันนั้น{!readOnly && ' · จองห้องจากรายการได้'}
+            </p>
+          )}
+          {isMobile && (
+            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-primary" /> เช็คอิน
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-0.5 w-3 rounded-full bg-primary/70" /> ห้องที่ไม่ว่าง
+              </span>
+              <span>แตะวันที่เพื่อดูรายการ</span>
+            </p>
+          )}
+        </div>
       ) : isMobile ? (
         <Agenda units={units} events={events} />
       ) : (
@@ -279,7 +408,7 @@ export default function CalendarPage() {
             <Timeline
               from={from}
               days={days}
-              dayWidth={DAY_W[weeks] ?? 40}
+              dayWidth={DAY_W[span] ?? 40}
               units={shownUnits}
               events={events}
               readOnly={readOnly}

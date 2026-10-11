@@ -29,7 +29,7 @@ export default function LoginPage() {
   })
 
   return (
-    <AuthLayout title="ยินดีต้อนรับกลับ" subtitle="เข้าสู่ระบบเพื่อจัดการโครงการและห้องเช่าของคุณ">
+    <AuthLayout title="เข้าสู่ระบบ" subtitle="ใช้อีเมลและรหัสผ่านที่ลงทะเบียนไว้">
       <form
         className="grid gap-5"
         onSubmit={(e) => {
@@ -62,7 +62,7 @@ export default function LoginPage() {
               รหัสผ่าน
             </Label>
             <Link to="/forgot-password" className="text-xs font-medium text-primary hover:underline">
-              ลืมรหัสผ่าน?
+              ลืมรหัสผ่าน
             </Link>
           </div>
           <PasswordInput
@@ -79,9 +79,9 @@ export default function LoginPage() {
           เข้าสู่ระบบ
         </Button>
         <p className="text-center text-sm text-muted-foreground">
-          ยังไม่มีบัญชี?{' '}
+          ยังไม่มีบัญชี{' '}
           <Link to="/register" className="font-medium text-primary hover:underline">
-            สมัครใช้งานฟรี
+            สมัครใช้งาน
           </Link>
         </p>
       </form>

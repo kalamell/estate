@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
-import { AlertCircle, Loader2, Rocket } from 'lucide-react'
-import { api, setOrgId } from '@/lib/api'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { AlertCircle, Loader2, UserPlus } from 'lucide-react'
+import { api, request, setOrgId } from '@/lib/api'
 import { queryClient } from '@/lib/query'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,42 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/common'
 import { AuthLayout } from './layout'
+
+/** แพ็กเกจจาก GET /api/public/site (ใช้เฉพาะช่องที่ต้องแสดง) */
+interface SitePackage {
+  name: string
+  price_monthly: number
+  max_properties: number
+  max_units: number
+  is_default: boolean
+}
+
+/** แพ็กเกจที่องค์กรใหม่จะได้ — ตรงกับที่ backend เลือกตอนสมัคร (is_default ก่อน แล้วตามลำดับ) */
+function useStarterPlan() {
+  return useQuery({
+    queryKey: ['public-site'],
+    queryFn: () => request<{ packages: SitePackage[] }>('/api/public/site', { org: false }),
+    select: (d) => d.packages.find((p) => p.is_default) ?? d.packages[0] ?? null,
+    staleTime: 10 * 60_000,
+    retry: false,
+    meta: { silent: true },
+  })
+}
+
+function PlanNote({ plan }: { plan: SitePackage }) {
+  const n = (v: number) => v.toLocaleString('th-TH')
+  return (
+    <div className="rounded-md border bg-card px-3 py-2.5 text-xs leading-relaxed">
+      <p>
+        แพ็กเกจเริ่มต้น <span className="font-medium">{plan.name}</span>{' '}
+        {plan.price_monthly > 0 ? 'ทดลองใช้ 14 วัน ไม่ต้องผูกบัตร' : 'ใช้ฟรี ไม่มีวันหมดอายุ'}
+      </p>
+      <p className="text-muted-foreground">
+        {n(plan.max_properties)} โครงการ ไม่เกิน {n(plan.max_units)} ห้อง อัปเกรดได้เมื่อห้องเพิ่มขึ้น
+      </p>
+    </div>
+  )
+}
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -29,9 +65,10 @@ export default function RegisterPage() {
     },
   })
   const tooShort = form.password.length > 0 && form.password.length < 8
+  const plan = useStarterPlan().data
 
   return (
-    <AuthLayout title="สร้างบัญชีใหม่" subtitle="เริ่มทดลองใช้ฟรี พร้อมสร้างองค์กรแรกของคุณ">
+    <AuthLayout title="สมัครใช้งาน" subtitle="บัญชีนี้จะเป็นเจ้าขององค์กร เพิ่มทีมงานได้ภายหลัง">
       <form
         className="grid gap-4"
         onSubmit={(e) => {
@@ -46,7 +83,7 @@ export default function RegisterPage() {
             <AlertDescription>{register.error.message}</AlertDescription>
           </Alert>
         )}
-        <Field label="ชื่อของคุณ" htmlFor="name">
+        <Field label="ชื่อ-นามสกุล" htmlFor="name">
           <Input id="name" autoComplete="name" value={form.name} onChange={set('name')} required autoFocus className="h-11" />
         </Field>
         <Field label="อีเมล" htmlFor="email">
@@ -69,7 +106,7 @@ export default function RegisterPage() {
             className="h-11"
           />
         </Field>
-        <Field label="ชื่อองค์กร / ธุรกิจ" htmlFor="org" hint="เช่น ชื่อหอพักหรือบริษัท — เปลี่ยนภายหลังได้">
+        <Field label="ชื่อองค์กร / ธุรกิจ" htmlFor="org" hint="เช่น ชื่อหอพักหรือชื่อบริษัท แก้ไขได้ภายหลัง">
           <Input id="org" value={form.org_name} onChange={set('org_name')} required className="h-11" />
         </Field>
         <div className="grid gap-1.5">
@@ -98,16 +135,17 @@ export default function RegisterPage() {
           </div>
           {acceptError && (
             <p id="accept-error" className="pl-7 text-xs text-destructive">
-              กรุณายอมรับข้อกำหนดการใช้งานและนโยบายความเป็นส่วนตัว
+              ต้องยอมรับข้อกำหนดการใช้งานและนโยบายความเป็นส่วนตัวก่อนสมัคร
             </p>
           )}
         </div>
+        {plan && <PlanNote plan={plan} />}
         <Button type="submit" size="lg" className="mt-2 h-11" disabled={register.isPending}>
-          {register.isPending ? <Loader2 className="animate-spin" /> : <Rocket />}
-          สร้างบัญชีและองค์กร
+          {register.isPending ? <Loader2 className="animate-spin" /> : <UserPlus />}
+          สร้างบัญชี
         </Button>
         <p className="text-center text-sm text-muted-foreground">
-          มีบัญชีอยู่แล้ว?{' '}
+          มีบัญชีแล้ว{' '}
           <Link to="/login" className="font-medium text-primary hover:underline">
             เข้าสู่ระบบ
           </Link>
