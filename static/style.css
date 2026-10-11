@@ -1,0 +1,59 @@
+[x-cloak] { display: none !important; }
+:root { --brand: #4f46e5; --brand-2: #7c3aed; }
+body { font-feature-settings: "tnum" 0; }
+
+.card { background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.25rem; box-shadow: 0 1px 2px rgb(15 23 42 / .04); }
+.kpi { background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.1rem 1.25rem; }
+.kpi-label { font-size: .8rem; color: #64748b; }
+.kpi-value { font-size: 1.75rem; font-weight: 700; margin-top: .25rem; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.kpi-sub { font-size: .75rem; color: #94a3b8; margin-top: .4rem; }
+
+.btn-primary, .btn-soft, .btn-ghost, .btn-xs {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  border-radius: .65rem; font-size: .875rem; font-weight: 500; transition: all .15s; white-space: nowrap;
+}
+.btn-primary { padding: .55rem 1rem; color: #fff; background: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: 0 4px 14px -4px rgb(79 70 229 / .5); }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-soft { padding: .55rem 1rem; color: #4338ca; background: #eef2ff; }
+.btn-soft:hover { background: #e0e7ff; }
+.btn-ghost { padding: .55rem .85rem; color: #475569; }
+.btn-ghost:hover { background: #f1f5f9; }
+.btn-xs { padding: .3rem .6rem; font-size: .78rem; color: #4338ca; }
+.btn-xs:hover { background: #eef2ff; }
+
+.input { width: 100%; border: 1px solid #cbd5e1; border-radius: .65rem; padding: .55rem .75rem; font-size: .9rem; background: #fff; transition: border-color .15s, box-shadow .15s; }
+.input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgb(99 102 241 / .18); }
+.label { display: block; font-size: .78rem; font-weight: 500; color: #64748b; margin-bottom: .3rem; }
+.chip { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .55rem; border-radius: 999px; font-size: .75rem; font-weight: 500; background: #f1f5f9; color: #475569; }
+
+.th { padding: .7rem 1rem; font-weight: 500; font-size: .8rem; }
+.td { padding: .75rem 1rem; vertical-align: middle; }
+
+.seg { padding: .5rem; border-radius: .6rem; font-size: .875rem; color: #64748b; transition: all .15s; }
+.seg-on { background: #fff; color: #1e293b; font-weight: 600; box-shadow: 0 1px 3px rgb(15 23 42 / .12); }
+.tab { padding: .55rem .9rem; font-size: .875rem; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab-on { color: var(--brand); border-color: var(--brand); font-weight: 600; }
+
+.unit-tile { border-radius: .9rem; padding: .8rem .5rem; text-align: center; transition: transform .15s, box-shadow .15s; box-shadow: 0 6px 16px -8px rgb(15 23 42 / .35); }
+.unit-tile:hover { transform: translateY(-2px); box-shadow: 0 10px 22px -8px rgb(15 23 42 / .45); }
+
+.modal { position: fixed; inset: 0; z-index: 55; display: grid; place-items: center; padding: 1rem; }
+.modal-bg { position: absolute; inset: 0; background: rgb(15 23 42 / .45); backdrop-filter: blur(2px); }
+.modal-panel { position: relative; width: 100%; max-width: 36rem; max-height: calc(100vh - 2rem); overflow-y: auto; background: #fff; border-radius: 1.1rem; padding: 1.5rem; box-shadow: 0 25px 50px -12px rgb(15 23 42 / .35); }
+
+.pin { width: 34px; height: 34px; display: grid; place-items: center; color: #fff; font-size: 16px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2)); border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 10px rgb(15 23 42 / .35); }
+.pin span { transform: rotate(45deg); line-height: 1; }
+.leaflet-container { font-family: inherit; }
+
+.spinner { width: 28px; height: 28px; border: 3px solid rgb(255 255 255 / .3); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; inset: 0; box-shadow: none; max-height: none; }
+  .no-print { display: none !important; }
+}
