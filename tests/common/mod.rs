@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 pub struct Client {
+    pub state: AppState,
     pub app: Router,
     pub cookie: Option<String>,
     pub org: Option<i64>,
@@ -52,6 +53,7 @@ impl Client {
 
     pub fn other(&self) -> Client {
         Client {
+            state: self.state.clone(),
             app: self.app.clone(),
             cookie: None,
             org: None,
@@ -73,6 +75,11 @@ impl Client {
 }
 
 pub async fn setup() -> Client {
+    // พอร์ต 9 ไม่มีใครฟัง: การส่ง LINE จะล้มเหลวแบบปลอดภัย
+    setup_with_line("http://127.0.0.1:9").await
+}
+
+pub async fn setup_with_line(line_api: &str) -> Client {
     let path = std::env::temp_dir().join(format!("estate-test-{}.db", uuid::Uuid::new_v4()));
     let pool = db::connect(&format!("sqlite://{}?mode=rwc", path.display()))
         .await
@@ -85,8 +92,11 @@ pub async fn setup() -> Client {
         db: pool,
         upload_dir: std::env::temp_dir(),
         secure_cookies: false,
+        line: estate::line::LineClient::new(line_api),
+        public_url: "https://estate.test".into(),
     };
     Client {
+        state: state.clone(),
         app: build_app(state, std::path::Path::new("frontend/dist")),
         cookie: None,
         org: None,
@@ -139,5 +149,73 @@ impl Client {
             status,
             serde_json::from_slice(&bytes).unwrap_or(Value::Null),
         )
+    }
+}
+
+/// คำขอที่ mock LINE API ได้รับ: (ชนิด push/reply, body)
+pub type LineLog = std::sync::Arc<std::sync::Mutex<Vec<(String, Value)>>>;
+
+/// เซิร์ฟเวอร์จำลอง LINE Messaging API
+pub async fn spawn_line_mock() -> (String, LineLog) {
+    use axum::{
+        extract::Path as AxPath,
+        routing::{get, post},
+        Json,
+    };
+    let log: LineLog = Default::default();
+    let record = log.clone();
+    let app = Router::new()
+        .route(
+            "/v2/bot/message/:kind",
+            post(
+                move |AxPath(kind): AxPath<String>, Json(body): Json<Value>| {
+                    let record = record.clone();
+                    async move {
+                        record.lock().unwrap().push((kind, body));
+                        Json(json!({}))
+                    }
+                },
+            ),
+        )
+        .route(
+            "/v2/bot/info",
+            get(|| async {
+                Json(json!({"displayName": "หอทดสอบ", "basicId": "@estate"}))
+            }),
+        )
+        .route(
+            "/v2/bot/profile/:id",
+            get(|| async { Json(json!({"displayName": "สมชาย LINE"})) }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}"), log)
+}
+
+/// รอจนกว่า mock จะได้รับคำขอที่ตรงเงื่อนไข (งานส่งอัตโนมัติทำงานเบื้องหลัง)
+pub async fn wait_for(log: &LineLog, pred: impl Fn(&(String, Value)) -> bool) -> Value {
+    for _ in 0..100 {
+        if let Some(hit) = log.lock().unwrap().iter().find(|e| pred(e)) {
+            return hit.1.clone();
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+    }
+    panic!("mock LINE ไม่ได้รับข้อความที่คาดไว้: {:?}", log.lock().unwrap());
+}
+
+impl Client {
+    /// ส่ง webhook จาก LINE (ลงลายเซ็นด้วย channel secret)
+    pub async fn line_webhook(&self, path: &str, secret: &str, body: Value) -> StatusCode {
+        let raw = body.to_string();
+        let sig = estate::line::sign(secret, raw.as_bytes());
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(path)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("x-line-signature", sig)
+            .body(Body::from(raw))
+            .unwrap();
+        self.app.clone().oneshot(req).await.unwrap().status()
     }
 }

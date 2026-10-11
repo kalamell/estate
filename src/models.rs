@@ -107,6 +107,9 @@ pub struct Tenant {
     pub address: String,
     pub branch_code: String,
     pub portal_token: Option<String>,
+    pub line_linked: bool,
+    pub line_display_name: Option<String>,
+    pub line_linked_at: Option<String>,
     pub created_at: String,
 }
 

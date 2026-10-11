@@ -3,6 +3,7 @@ mod auth;
 mod bookings;
 mod dashboard;
 mod invoices;
+mod line;
 mod meters;
 mod move_outs;
 mod org;
@@ -35,6 +36,23 @@ pub fn api_router() -> Router<AppState> {
             "/api/org/members/:user_id",
             axum::routing::put(org::update_member).delete(org::remove_member),
         )
+        .route("/api/org/line", axum::routing::put(line::update_settings))
+        .route("/api/org/line/test", post(line::test_connection))
+        .route("/api/line/messages", get(line::messages))
+        .route("/api/line/webhook/:key", post(line::webhook))
+        .route("/api/tenants/:id/line-link", post(line::tenant_link_code))
+        .route(
+            "/api/tenants/:id/line",
+            axum::routing::delete(line::tenant_unlink),
+        )
+        .route(
+            "/api/tenants/:id/line/send-portal",
+            post(line::tenant_send_portal),
+        )
+        .route("/api/invoices/send-line", post(line::send_invoices))
+        .route("/api/invoices/:id/send-line", post(line::send_invoice))
+        .route("/api/receipts/:id/send-line", post(line::send_receipt))
+        .route("/api/portal/:token/line-link", post(portal::line_link))
         .route("/api/admin/stats", get(admin::stats))
         .route(
             "/api/admin/packages",

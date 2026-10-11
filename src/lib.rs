@@ -6,6 +6,7 @@ pub mod billing;
 pub mod db;
 pub mod docs;
 pub mod error;
+pub mod line;
 pub mod models;
 pub mod promptpay;
 pub mod routes;
@@ -25,6 +26,9 @@ pub struct AppState {
     pub db: SqlitePool,
     pub upload_dir: PathBuf,
     pub secure_cookies: bool,
+    pub line: line::LineClient,
+    /// URL สาธารณะของระบบ (ใช้สร้างลิงก์ในข้อความ LINE และ Webhook URL)
+    pub public_url: String,
 }
 
 pub struct Config {
@@ -37,6 +41,9 @@ pub struct Config {
     pub secure_cookies: bool,
     /// สร้าง/เลื่อนสิทธิ์ผู้ดูแลแพลตฟอร์มตอนเริ่มระบบ: (email, password)
     pub super_admin: Option<(String, String)>,
+    pub public_url: String,
+    /// เปลี่ยนได้เพื่อทดสอบกับ mock server
+    pub line_api_base: String,
 }
 
 impl Config {
@@ -52,6 +59,10 @@ impl Config {
             super_admin: std::env::var("SUPER_ADMIN_EMAIL")
                 .ok()
                 .zip(std::env::var("SUPER_ADMIN_PASSWORD").ok()),
+            public_url: var("PUBLIC_URL", "http://localhost:3000")
+                .trim_end_matches('/')
+                .to_string(),
+            line_api_base: var("LINE_API_BASE", "https://api.line.me"),
         })
     }
 }
@@ -82,7 +93,10 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
         db,
         upload_dir: config.upload_dir.clone(),
         secure_cookies: config.secure_cookies,
+        line: line::LineClient::new(&config.line_api_base),
+        public_url: config.public_url.clone(),
     };
+    line::spawn_reminders(state.clone());
     let app = build_app(state, &config.static_dir);
 
     tracing::info!("Estate พร้อมใช้งานที่ http://{}", config.bind);

@@ -13,7 +13,8 @@ use crate::{
 };
 
 const COLUMNS: &str =
-    "id, full_name, phone, email, id_card, note, tax_id, address, branch_code, portal_token, created_at";
+    "id, full_name, phone, email, id_card, note, tax_id, address, branch_code, portal_token,
+     line_user_id IS NOT NULL AS line_linked, line_display_name, line_linked_at, created_at";
 
 /// โทเค็นสุ่ม 128 บิตสำหรับลิงก์พอร์ทัลผู้เช่า
 pub fn new_portal_token() -> String {

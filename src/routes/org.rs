@@ -20,6 +20,11 @@ pub async fn get(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<Value
         .fetch_one(&s.db)
         .await?;
     let issuer = crate::docs::load_issuer(&s.db, ctx.org_id).await?;
+    let theme: String = sqlx::query_scalar("SELECT theme FROM organizations WHERE id = ?")
+        .bind(ctx.org_id)
+        .fetch_one(&s.db)
+        .await?;
+    let line = super::line::settings_json(&s, ctx.org_id).await?;
     let package: (i64, String, String, f64) = sqlx::query_as(
         "SELECT p.id, p.name, p.description, p.price_monthly FROM packages p
          JOIN organizations o ON o.package_id = p.id WHERE o.id = ?",
@@ -46,6 +51,7 @@ pub async fn get(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<Value
             "legal_name": issuer.legal_name, "tax_id": issuer.tax_id, "branch_code": issuer.branch_code,
             "address": issuer.address, "phone": issuer.phone, "vat_registered": issuer.vat_registered,
             "vat_rate": issuer.vat_rate, "receipt_note": issuer.receipt_note,
+            "theme": theme, "line": line,
         },
         "package": {
             "id": package.0, "name": package.1, "description": package.2, "price_monthly": package.3,
@@ -68,6 +74,7 @@ pub struct OrgInput {
     vat_registered: Option<bool>,
     vat_rate: Option<f64>,
     receipt_note: Option<String>,
+    theme: Option<String>,
 }
 
 pub async fn update(
@@ -92,6 +99,9 @@ pub async fn update(
         }
     };
     digits(&o.tax_id, 13, "เลขประจำตัวผู้เสียภาษี")?;
+    if let Some(t) = &o.theme {
+        super::validate_in("theme", t, super::line::THEMES)?;
+    }
     digits(&o.branch_code, 5, "รหัสสาขา")?;
     if matches!(o.vat_rate, Some(r) if !(0.0..=30.0).contains(&r)) {
         return Err(AppError::BadRequest("อัตราภาษีไม่ถูกต้อง".into()));
@@ -100,7 +110,8 @@ pub async fn update(
         "UPDATE organizations SET name = ?, legal_name = COALESCE(?, legal_name), tax_id = COALESCE(?, tax_id),
             branch_code = COALESCE(NULLIF(?, ''), branch_code), address = COALESCE(?, address),
             phone = COALESCE(?, phone), vat_registered = COALESCE(?, vat_registered),
-            vat_rate = COALESCE(?, vat_rate), receipt_note = COALESCE(?, receipt_note)
+            vat_rate = COALESCE(?, vat_rate), receipt_note = COALESCE(?, receipt_note),
+            theme = COALESCE(?, theme)
          WHERE id = ?",
     )
     .bind(o.name.trim())
@@ -112,6 +123,7 @@ pub async fn update(
     .bind(o.vat_registered)
     .bind(o.vat_rate)
     .bind(&o.receipt_note)
+    .bind(&o.theme)
     .bind(ctx.org_id)
         .execute(&s.db)
         .await?;

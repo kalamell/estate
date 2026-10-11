@@ -47,7 +47,19 @@ async fn resolve(db: &SqlitePool, token: &str) -> AppResult<PortalTenant> {
 }
 
 /// (booking, unit, unit_name, floor, property, property_name, start, end, price, deposit, kind)
-type BookingRow = (i64, i64, String, i64, i64, String, String, Option<String>, f64, f64, String);
+type BookingRow = (
+    i64,
+    i64,
+    String,
+    i64,
+    i64,
+    String,
+    String,
+    Option<String>,
+    f64,
+    f64,
+    String,
+);
 
 /// การเช่าปัจจุบัน (กำลังพัก > จองไว้ > ล่าสุด)
 async fn current_booking(
@@ -89,6 +101,13 @@ async fn tenant_invoices(db: &SqlitePool, tenant_id: i64) -> AppResult<Vec<Invoi
 
 pub async fn home(State(s): State<AppState>, Path(token): Path<String>) -> AppResult<Json<Value>> {
     let t = resolve(&s.db, &token).await?;
+    let line_org = crate::line::load(&s.db, t.org_id).await?;
+    let (line_linked, line_name): (bool, Option<String>) = sqlx::query_as(
+        "SELECT line_user_id IS NOT NULL, line_display_name FROM tenants WHERE id = ?",
+    )
+    .bind(t.tenant_id)
+    .fetch_one(&s.db)
+    .await?;
     let (org_name, org_phone): (String, String) =
         sqlx::query_as("SELECT name, phone FROM organizations WHERE id = ?")
             .bind(t.org_id)
@@ -110,7 +129,14 @@ pub async fn home(State(s): State<AppState>, Path(token): Path<String>) -> AppRe
     let receipts = receipts::for_tenant(&s.db, t.tenant_id).await?;
     Ok(Json(json!({
         "tenant": { "full_name": t.full_name, "phone": t.phone },
-        "org": { "name": org_name, "phone": org_phone },
+        "org": { "name": org_name, "phone": org_phone, "theme": line_org.theme },
+        "line": {
+            "enabled": line_org.ready() && !line_org.basic_id.is_empty(),
+            "basic_id": line_org.basic_id,
+            "add_friend_url": line_org.add_friend_url(),
+            "linked": line_linked,
+            "display_name": line_name,
+        },
         "property": property,
         "unit": booking.as_ref().map(|b| json!({ "name": b.2, "floor": b.3 })),
         "booking": booking.as_ref().map(|b| b.6.clone()),
@@ -216,4 +242,14 @@ pub async fn ticket_message(
     };
     tickets::add_message(&s.db, id, author, form, true).await?;
     Ok(Json(tickets::detail(&s.db, scope(&t), id).await?))
+}
+
+pub async fn line_link(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+) -> AppResult<Json<Value>> {
+    let t = resolve(&s.db, &token).await?;
+    Ok(Json(
+        super::line::issue_link_code(&s, t.org_id, t.tenant_id).await?,
+    ))
 }

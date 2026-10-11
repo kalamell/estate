@@ -75,9 +75,61 @@ pub fn buddhist_year(year: i32) -> i32 {
     year + 543
 }
 
+const MONTHS: [&str; 12] = [
+    "ม.ค.",
+    "ก.พ.",
+    "มี.ค.",
+    "เม.ย.",
+    "พ.ค.",
+    "มิ.ย.",
+    "ก.ค.",
+    "ส.ค.",
+    "ก.ย.",
+    "ต.ค.",
+    "พ.ย.",
+    "ธ.ค.",
+];
+
+/// เช่น 16 ต.ค. 2569
+pub fn short_date(d: chrono::NaiveDate) -> String {
+    use chrono::Datelike;
+    format!(
+        "{} {} {}",
+        d.day(),
+        MONTHS[d.month0() as usize],
+        buddhist_year(d.year())
+    )
+}
+
+/// เช่น 1,234.50 (ตัด .00 ออก)
+pub fn money(v: f64) -> String {
+    let s = format!("{:.2}", v.abs());
+    let (int, frac) = s.split_once('.').unwrap_or((&s, "00"));
+    let mut out = String::new();
+    for (i, c) in int.chars().enumerate() {
+        if i > 0 && (int.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    let sign = if v < 0.0 { "-" } else { "" };
+    if frac == "00" {
+        format!("{sign}{out}")
+    } else {
+        format!("{sign}{out}.{frac}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::baht_text;
+    use super::{baht_text, money};
+
+    #[test]
+    fn formats_money() {
+        assert_eq!(money(4700.0), "4,700");
+        assert_eq!(money(1234567.5), "1,234,567.50");
+        assert_eq!(money(999.0), "999");
+    }
 
     #[test]
     fn reads_amounts() {

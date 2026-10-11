@@ -296,6 +296,16 @@ pub async fn generate(
         .await?;
         result.created.push(id);
     }
+    for id in result.created.clone() {
+        crate::line::spawn_auto(
+            &s,
+            ctx.org_id,
+            |o| o.auto_invoice,
+            move |st, org| async move {
+                crate::line::send_invoice(&st, &org, id, "invoice", None).await
+            },
+        );
+    }
     Ok(Json(result))
 }
 
@@ -551,6 +561,13 @@ pub async fn pay(
     Json(p): Json<PayInput>,
 ) -> AppResult<Json<Value>> {
     let (invoice, receipt) = pay_invoice(&s.db, ctx.org_id, id, p).await?;
+    let receipt_id = receipt.id;
+    crate::line::spawn_auto(
+        &s,
+        ctx.org_id,
+        |o| o.auto_receipt,
+        move |st, org| async move { crate::line::send_receipt(&st, &org, receipt_id).await },
+    );
     Ok(Json(json!({ "invoice": invoice, "receipt": receipt })))
 }
 

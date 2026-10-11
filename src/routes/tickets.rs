@@ -392,12 +392,22 @@ pub async fn message(
 ) -> AppResult<Json<Value>> {
     ensure_ticket(&s.db, id, "org", Some(ctx.org_id)).await?;
     let form = uploads::parse(form, &s.upload_dir, "ticket").await?;
+    let internal = matches!(form.text("internal"), Some("1") | Some("true"));
+    let body = form.text("body").unwrap_or("(ส่งรูปภาพ)").to_string();
     let author = Author {
         kind: "staff",
         user_id: Some(ctx.user.id),
         name: &ctx.user.name,
     };
     add_message(&s.db, id, author, form, false).await?;
+    if !internal {
+        crate::line::spawn_auto(
+            &s,
+            ctx.org_id,
+            |o| o.auto_ticket,
+            move |st, org| async move { crate::line::send_ticket_reply(&st, &org, id, &body).await },
+        );
+    }
     Ok(Json(detail(&s.db, org_scope(&ctx), id).await?))
 }
 
