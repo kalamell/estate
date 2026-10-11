@@ -283,9 +283,14 @@ pub struct SubInvoice {
     payer: Value,
     void_reason: Option<String>,
     created_at: String,
+    /// ผลตรวจสลิปล่าสุด
+    slip_result: Option<String>,
+    slip_message: Option<String>,
 }
 
-const INV_SELECT: &str = "SELECT i.*, o.name AS org_name
+const INV_SELECT: &str = "SELECT i.*, o.name AS org_name,
+        (SELECT c.result FROM slip_checks c WHERE c.source = 'subscription' AND c.source_id = i.id ORDER BY c.id DESC LIMIT 1) AS slip_result,
+        (SELECT c.message FROM slip_checks c WHERE c.source = 'subscription' AND c.source_id = i.id ORDER BY c.id DESC LIMIT 1) AS slip_message
     FROM subscription_invoices i JOIN organizations o ON o.id = i.org_id";
 
 async fn load_invoice(db: &SqlitePool, id: i64) -> AppResult<SubInvoice> {
@@ -657,6 +662,24 @@ pub async fn upload_slip(
         Some(json!({ "doc_no": inv.doc_no })),
     )
     .await;
+    let (provider, auto) = crate::slip::platform_provider(&s.db).await?;
+    let check = crate::slip::check(
+        &s,
+        Some(&provider),
+        crate::slip::CheckInput {
+            org_id: ctx.org_id,
+            source: "subscription",
+            source_id: id,
+            slip_url: &url,
+            expected: Some(inv.total),
+        },
+    )
+    .await?;
+    if auto && check.verified() {
+        if let Err(e) = mark_paid(&s, id, None, None, check.trans_ref.as_deref()).await {
+            tracing::warn!(id, error = %e, "ยืนยันค่าแพ็กเกจอัตโนมัติไม่สำเร็จ");
+        }
+    }
     let plat = load_platform(&s.db).await?;
     Ok(Json(with_payment(&load_invoice(&s.db, id).await?, &plat)))
 }
@@ -719,8 +742,11 @@ pub async fn admin_overview(
     )
     .fetch_one(&s.db)
     .await?;
+    let (slip, slip_auto) = crate::slip::platform_provider(&s.db).await?;
     Ok(Json(json!({
         "settings": load_platform(&s.db).await?,
+        "slip": { "provider": slip.kind, "has_key": !slip.api_key.is_empty(), "branch_id": slip.branch_id,
+                  "auto_approve": slip_auto },
         "summary": { "review": review, "pending": pending, "overdue": overdue,
                      "revenue_month": month, "revenue_year": year },
         "invoices": invoices,
@@ -780,6 +806,49 @@ pub async fn update_settings(
 }
 
 #[derive(Deserialize)]
+pub struct SlipSettingsInput {
+    provider: String,
+    /// ว่าง = คงคีย์เดิม
+    #[serde(default)]
+    api_key: String,
+    #[serde(default)]
+    branch_id: String,
+    #[serde(default)]
+    auto_approve: bool,
+}
+
+/// ผู้ให้บริการตรวจสลิปสำหรับค่าแพ็กเกจ (แยกจากของแต่ละองค์กร)
+pub async fn update_slip_settings(
+    State(s): State<AppState>,
+    _: SuperAdmin,
+    Json(i): Json<SlipSettingsInput>,
+) -> AppResult<Json<Value>> {
+    validate_in("provider", &i.provider, crate::slip::PROVIDERS)?;
+    if i.provider == "slipok" && i.branch_id.trim().is_empty() {
+        return Err(AppError::BadRequest("SlipOK ต้องระบุ Branch ID".into()));
+    }
+    let key = i.api_key.trim();
+    sqlx::query(
+        "UPDATE platform_settings SET slip_provider = ?, slip_api_key = COALESCE(NULLIF(?, ''), slip_api_key),
+            slip_branch_id = ?, slip_auto_approve = ? WHERE id = 1",
+    )
+    .bind(&i.provider)
+    .bind(if key.is_empty() {
+        String::new()
+    } else {
+        crate::crypto::encrypt(key)
+    })
+    .bind(i.branch_id.trim())
+    .bind(i.auto_approve && i.provider != "none")
+    .execute(&s.db)
+    .await?;
+    let (p, auto) = crate::slip::platform_provider(&s.db).await?;
+    Ok(Json(json!({
+        "provider": p.kind, "has_key": !p.api_key.is_empty(), "branch_id": p.branch_id, "auto_approve": auto,
+    })))
+}
+
+#[derive(Deserialize)]
 pub struct AdminIssueInput {
     org_id: i64,
     package_id: i64,
@@ -812,7 +881,6 @@ pub struct ApproveInput {
     payment_ref: Option<String>,
 }
 
-/// ยืนยันการชำระ: ออกเลขใบเสร็จ แล้วต่ออายุ/เปลี่ยนแพ็กเกจขององค์กรในรายการเดียวกัน
 pub async fn approve(
     State(s): State<AppState>,
     SuperAdmin(me): SuperAdmin,
@@ -821,6 +889,27 @@ pub async fn approve(
     body: Option<Json<ApproveInput>>,
 ) -> AppResult<Json<Value>> {
     let input = body.map(|b| b.0).unwrap_or_default();
+    mark_paid(
+        &s,
+        id,
+        Some(me.id),
+        ip.0.as_deref(),
+        input.payment_ref.as_deref(),
+    )
+    .await?;
+    let plat = load_platform(&s.db).await?;
+    Ok(Json(with_payment(&load_invoice(&s.db, id).await?, &plat)))
+}
+
+/// ยืนยันการชำระ: ออกเลขใบเสร็จ แล้วต่ออายุ/เปลี่ยนแพ็กเกจขององค์กรในรายการเดียวกัน
+/// `approver = None` คือระบบยืนยันเองจากผลตรวจสลิปกับธนาคาร
+async fn mark_paid(
+    s: &AppState,
+    id: i64,
+    approver: Option<i64>,
+    ip: Option<&str>,
+    payment_ref: Option<&str>,
+) -> AppResult<()> {
     let plat = load_platform(&s.db).await?;
     let today = today();
     let mut tx = s.db.begin().await?;
@@ -851,8 +940,8 @@ pub async fn approve(
          WHERE id = ?",
     )
     .bind(&receipt_no)
-    .bind(me.id)
-    .bind(input.payment_ref.as_deref().map(str::trim))
+    .bind(approver)
+    .bind(payment_ref.map(str::trim))
     .bind(start)
     .bind(end)
     .bind(id)
@@ -873,15 +962,15 @@ pub async fn approve(
     audit::log(
         &s.db,
         Some(org_id),
-        Some(me.id),
-        ip.0.as_deref(),
+        approver,
+        ip,
         "subscription.paid",
         "subscription",
         Some(id),
-        Some(json!({ "receipt_no": receipt_no, "ends_at": end })),
+        Some(json!({ "receipt_no": receipt_no, "ends_at": end, "auto": approver.is_none() })),
     )
     .await;
-    Ok(Json(with_payment(&load_invoice(&s.db, id).await?, &plat)))
+    Ok(())
 }
 
 #[derive(Deserialize)]

@@ -16,6 +16,7 @@ mod privacy;
 mod properties;
 mod receipts;
 mod reports;
+mod slips;
 mod stay;
 mod subscription;
 mod tenants;
@@ -136,6 +137,17 @@ pub fn api_router() -> Router<AppState> {
         )
         .route("/api/privacy/retention", get(privacy::retention))
         .route("/api/audit-logs", get(audit_logs))
+        .route(
+            "/api/org/slip",
+            get(slips::settings).put(slips::update_settings),
+        )
+        .route("/api/payment-notices", get(slips::list))
+        .route("/api/payment-notices/:id/approve", post(slips::approve))
+        .route("/api/payment-notices/:id/reject", post(slips::reject))
+        .route(
+            "/api/portal/:token/invoices/:id/slip",
+            post(slips::portal_submit).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
         .route("/api/billing", get(subscription::overview))
         .route("/api/billing/checkout", post(subscription::checkout))
         .route("/api/billing/invoices/:id", get(subscription::invoice))
@@ -151,6 +163,10 @@ pub fn api_router() -> Router<AppState> {
         .route(
             "/api/admin/billing/settings",
             axum::routing::put(subscription::update_settings),
+        )
+        .route(
+            "/api/admin/billing/slip",
+            axum::routing::put(subscription::update_slip_settings),
         )
         .route(
             "/api/admin/billing/invoices",

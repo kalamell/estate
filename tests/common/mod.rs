@@ -98,6 +98,7 @@ pub async fn setup_with_line(line_api: &str) -> Client {
         allow_private_urls: true,
         limiter: Default::default(),
         public_url: "https://estate.test".into(),
+        slip_api_base: None,
     };
     Client {
         state: state.clone(),
@@ -131,6 +132,86 @@ impl Client {
             );
         }
         body += &format!("--{boundary}--\r\n");
+        let mut req = Request::builder().method(Method::POST).uri(path).header(
+            header::CONTENT_TYPE,
+            format!("multipart/form-data; boundary={boundary}"),
+        );
+        if let Some(c) = &self.cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        if let Some(o) = self.org {
+            req = req.header("x-org-id", o.to_string());
+        }
+        let res = self
+            .app
+            .clone()
+            .oneshot(req.body(Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+}
+
+/// รูปที่ mock LINE ส่งกลับเมื่อดึงเนื้อหาข้อความรูปภาพ
+pub static LINE_IMAGE: std::sync::Mutex<Vec<u8>> = std::sync::Mutex::new(Vec::new());
+
+/// รูป PNG ที่มี QR ของข้อความที่กำหนด (ใช้จำลองสลิปโอนเงิน)
+pub fn qr_png(text: &str) -> Vec<u8> {
+    let code = qrcode::QrCode::new(text.as_bytes()).unwrap();
+    let width = code.width();
+    let colors = code.to_colors();
+    let (scale, quiet) = (6usize, 4usize);
+    let size = (width + quiet * 2) * scale;
+    let img = image::GrayImage::from_fn(size as u32, size as u32, |x, y| {
+        let (mx, my) = (x as usize / scale, y as usize / scale);
+        let dark = mx >= quiet
+            && my >= quiet
+            && mx < width + quiet
+            && my < width + quiet
+            && colors[(my - quiet) * width + (mx - quiet)] == qrcode::Color::Dark;
+        image::Luma([if dark { 0 } else { 255 }])
+    });
+    let mut out = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut out, image::ImageFormat::Png).unwrap();
+    out.into_inner()
+}
+
+/// payload แบบเดียวกับ QR บนสลิปธนาคาร
+pub fn slip_payload(bank: &str, trans_ref: &str) -> String {
+    let t = |tag: &str, v: &str| format!("{tag}{:02}{v}", v.len());
+    let inner = t("00", "000001") + &t("01", bank) + &t("02", trans_ref);
+    let body = t("00", &inner) + &t("51", "TH") + "9104";
+    let crc = estate::promptpay::crc16(body.as_bytes());
+    format!("{body}{crc:04X}")
+}
+
+impl Client {
+    /// อัปโหลดไฟล์ 1 ไฟล์ (field ที่กำหนด) พร้อมฟิลด์ข้อความ ส่ง cookie/X-Org-Id ถ้ามี
+    pub async fn upload_file(
+        &mut self,
+        path: &str,
+        field: &str,
+        bytes: &[u8],
+        fields: &[(&str, &str)],
+    ) -> (StatusCode, Value) {
+        let boundary = "estate-test-boundary";
+        let mut body: Vec<u8> = Vec::new();
+        for (k, v) in fields {
+            body.extend(
+                format!(
+                    "--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n"
+                )
+                .as_bytes(),
+            );
+        }
+        body.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; filename=\"slip.png\"\r\nContent-Type: image/png\r\n\r\n").as_bytes());
+        body.extend(bytes);
+        body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
         let mut req = Request::builder().method(Method::POST).uri(path).header(
             header::CONTENT_TYPE,
             format!("multipart/form-data; boundary={boundary}"),
@@ -190,6 +271,15 @@ pub async fn spawn_line_mock() -> (String, LineLog) {
         .route(
             "/v2/bot/profile/:id",
             get(|| async { Json(json!({"displayName": "สมชาย LINE"})) }),
+        )
+        .route(
+            "/v2/bot/message/:id/content",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "image/png")],
+                    LINE_IMAGE.lock().unwrap().clone(),
+                )
+            }),
         );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

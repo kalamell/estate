@@ -598,6 +598,20 @@ pub async fn webhook(
                 )
                 .await?
             }
+            Some("message") if event["message"]["type"] == "image" => {
+                let ids: Vec<i64> = chat_tenants(&s, org.org_id, user_id)
+                    .await?
+                    .iter()
+                    .map(|t| t.id)
+                    .collect();
+                super::slips::from_line_image(
+                    &s,
+                    &org,
+                    &ids,
+                    event["message"]["id"].as_str().unwrap_or_default(),
+                )
+                .await?
+            }
             _ => continue,
         };
         let tenant_id = chat_tenants(&s, org.org_id, user_id)

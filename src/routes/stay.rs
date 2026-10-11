@@ -286,6 +286,9 @@ pub struct RequestRow {
     email: String,
     note: String,
     slip_url: Option<String>,
+    /// ผลตรวจสลิปล่าสุด (verified / readable / unreadable / duplicate / mismatch / error)
+    slip_result: Option<String>,
+    slip_message: Option<String>,
     reject_reason: Option<String>,
     booking_id: Option<i64>,
     expires_at: String,
@@ -294,7 +297,10 @@ pub struct RequestRow {
 
 const REQUEST_SELECT: &str = "SELECT r.id, r.status, r.property_id, p.name AS property_name, r.unit_id,
         u.name AS unit_name, r.check_in, r.check_out, r.nights, r.rate, r.total, r.deposit_amount, r.guests,
-        r.guest_name, r.phone, r.email, r.note, r.slip_url, r.reject_reason, r.booking_id, r.expires_at, r.created_at
+        r.guest_name, r.phone, r.email, r.note, r.slip_url,
+        (SELECT c.result FROM slip_checks c WHERE c.source = 'booking' AND c.source_id = r.id ORDER BY c.id DESC LIMIT 1) AS slip_result,
+        (SELECT c.message FROM slip_checks c WHERE c.source = 'booking' AND c.source_id = r.id ORDER BY c.id DESC LIMIT 1) AS slip_message,
+        r.reject_reason, r.booking_id, r.expires_at, r.created_at
     FROM booking_requests r JOIN properties p ON p.id = r.property_id JOIN units u ON u.id = r.unit_id";
 
 pub async fn request_status(
@@ -342,12 +348,13 @@ pub async fn upload_slip(
         std::time::Duration::from_secs(3600),
     )?;
     expire_stale(&s.db).await?;
-    let (status, org_id): (String, i64) =
-        sqlx::query_as("SELECT status, org_id FROM booking_requests WHERE token = ?")
-            .bind(&token)
-            .fetch_optional(&s.db)
-            .await?
-            .ok_or(AppError::NotFound)?;
+    let (request_id, status, org_id, deposit): (i64, String, i64, f64) = sqlx::query_as(
+        "SELECT id, status, org_id, deposit_amount FROM booking_requests WHERE token = ?",
+    )
+    .bind(&token)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or(AppError::NotFound)?;
     if status != "pending" {
         return Err(AppError::Conflict("คำขอนี้ไม่อยู่ในสถานะรอชำระ".into()));
     }
@@ -365,7 +372,23 @@ pub async fn upload_slip(
     .bind(&token)
     .execute(&s.db)
     .await?;
-    Ok(Json(json!({ "slip_url": url })))
+    // ตรวจสลิปไว้ให้ทีมงานดูประกอบการยืนยันการจอง (ไม่ยืนยันอัตโนมัติ เพราะต้องดูห้องว่างด้วย)
+    let (provider, _) = crate::slip::org_provider(&s.db, org_id).await?;
+    let check = crate::slip::check(
+        &s,
+        Some(&provider),
+        crate::slip::CheckInput {
+            org_id,
+            source: "booking",
+            source_id: request_id,
+            slip_url: &url,
+            expected: (deposit > 0.0).then_some(deposit),
+        },
+    )
+    .await?;
+    Ok(Json(
+        json!({ "slip_url": url, "check": { "result": check.result, "message": check.message } }),
+    ))
 }
 
 // ---------- ทีมงาน ----------

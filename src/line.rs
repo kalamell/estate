@@ -51,6 +51,41 @@ impl LineClient {
         ))
     }
 
+    /// ดึงไฟล์รูปที่ผู้ใช้ส่งมาในแชต (LINE เก็บไว้ที่โดเมน api-data)
+    pub async fn content(
+        &self,
+        token: &str,
+        message_id: &str,
+    ) -> Result<(Vec<u8>, String), String> {
+        let base = self
+            .api_base
+            .replace("://api.line.me", "://api-data.line.me");
+        let res = self
+            .http
+            .get(format!(
+                "{base}/v2/bot/message/{}/content",
+                urlencoding::encode(message_id)
+            ))
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| format!("เชื่อมต่อ LINE ไม่ได้: {e}"))?;
+        if !res.status().is_success() {
+            return Err(format!("LINE ตอบกลับ {}", res.status()));
+        }
+        let content_type = res
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/jpeg")
+            .to_string();
+        let bytes = res.bytes().await.map_err(|e| e.to_string())?;
+        if bytes.len() > 15 * 1024 * 1024 {
+            return Err("ไฟล์ใหญ่เกินไป".into());
+        }
+        Ok((bytes.to_vec(), content_type))
+    }
+
     pub async fn push(&self, token: &str, to: &str, messages: Vec<Value>) -> Result<(), String> {
         self.post(
             token,

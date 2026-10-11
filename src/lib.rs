@@ -15,6 +15,7 @@ pub mod pricing;
 pub mod promptpay;
 pub mod ratelimit;
 pub mod routes;
+pub mod slip;
 pub mod thai;
 pub mod uploads;
 
@@ -39,6 +40,8 @@ pub struct AppState {
     pub limiter: std::sync::Arc<ratelimit::RateLimiter>,
     /// URL สาธารณะของระบบ (ใช้สร้างลิงก์ในข้อความ LINE และ Webhook URL)
     pub public_url: String,
+    /// แทนที่ URL ของผู้ให้บริการตรวจสลิป (ใช้ทดสอบกับ mock server)
+    pub slip_api_base: Option<String>,
 }
 
 pub struct Config {
@@ -143,6 +146,7 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
         allow_private_urls: std::env::var("ALLOW_PRIVATE_FEED_URLS").is_ok_and(|v| v == "1"),
         limiter: Default::default(),
         public_url: config.public_url.clone(),
+        slip_api_base: std::env::var("SLIP_API_BASE").ok(),
     };
     line::spawn_reminders(state.clone());
     routes::spawn_background(state.clone());
