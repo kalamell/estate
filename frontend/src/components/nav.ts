@@ -1,4 +1,5 @@
 import {
+  BanknoteArrowDown,
   BanknoteArrowUp,
   BarChart3,
   BrushCleaning,
@@ -77,6 +78,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/meters', label: 'จดมิเตอร์', icon: Gauge },
       { to: '/invoices', label: 'บิล & เอกสาร', icon: ReceiptText, badge: 'overdue_count' },
       { to: '/payment-notices', label: 'แจ้งชำระ', icon: BanknoteArrowUp, badge: 'pending_payment_notices' },
+      // พนักงานเข้าได้เพื่อบันทึกรายจ่าย (รายการทั้งหมดเห็นเฉพาะเจ้าของ/ผู้ดูแล)
+      { to: '/expenses', label: 'รายจ่าย', icon: BanknoteArrowDown },
       { to: '/parcels', label: 'พัสดุ', icon: Package, badge: 'parcels_waiting' },
       { to: '/tickets', label: 'แจ้งซ่อม & ติดต่อ', icon: Wrench, badge: 'open_tickets' },
       { to: '/move-outs', label: 'ย้ายออก & คืนมัดจำ', icon: DoorOpen },

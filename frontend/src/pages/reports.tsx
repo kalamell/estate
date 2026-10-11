@@ -13,7 +13,8 @@ import {
   type TooltipContentProps,
 } from 'recharts'
 import type { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent'
-import { Download, Table2, TrendingUp } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { BarChart3, Download, Scale, Table2, TrendingUp } from 'lucide-react'
 import { api, type ReportSummary } from '@/lib/api'
 import { addDays, baht, thDate, thPeriod, today } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -23,32 +24,53 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { EmptyState, Field, StatCard, StatCardSkeleton, UpsellCard } from '@/components/common'
+import { LegendKey, TooltipBox } from '@/components/chart-parts'
+import { compact, monthShort } from '@/lib/chart'
+import { ProfitReport } from './profit'
 
 const ALL = 'all'
 
-const monthShort = (m: string) => {
-  const [y, mo] = m.split('-').map(Number)
-  if (!y || !mo) return m
-  const d = new Date(y, mo - 1, 1)
-  return d.toLocaleDateString('th-TH', { month: 'short' }) + (mo === 1 ? ` ${String((y + 543) % 100).padStart(2, '0')}` : '')
-}
-const compact = (n: number) =>
-  Math.abs(n) >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : Math.abs(n) >= 1000 ? `${+(n / 1000).toFixed(1)}k` : String(n)
 /** อัตรา 0–1 หรือ 0–100 → เปอร์เซ็นต์ */
 const pct = (r: number) => (r <= 1 ? r * 100 : r)
 
 export default function ReportsPage() {
-  const { features, featuresLoaded } = useSession()
+  const { features, featuresLoaded, canManage } = useSession()
+  const [params, setParams] = useSearchParams()
   if (featuresLoaded && !features.reports)
     return (
       <UpsellCard
         title="รายงานไม่รวมในแพ็กเกจปัจจุบัน"
-        description="อัปเกรดแพ็กเกจเพื่อดูรายรับเทียบยอดออกบิล อัตราเข้าพัก อายุลูกหนี้ และส่งออกข้อมูลเป็น CSV ให้นักบัญชี"
+        description="อัปเกรดแพ็กเกจเพื่อดูรายรับเทียบยอดออกบิล กำไรต่อโครงการ อัตราเข้าพัก อายุลูกหนี้ และส่งออกข้อมูลเป็น CSV ให้นักบัญชี"
       />
     )
-  return <Reports />
+  // กำไร (รวมรายจ่าย) — เฉพาะเจ้าของ/ผู้ดูแล
+  if (!canManage) return <Reports />
+  const tab = params.get('tab') === 'profit' ? 'profit' : 'overview'
+  return (
+    <Tabs
+      value={tab}
+      onValueChange={(v) => setParams(v === 'profit' ? { tab: v } : {}, { replace: true })}
+      className="gap-5"
+    >
+      <TabsList variant="line" className="w-full justify-start border-b">
+        <TabsTrigger value="overview" className="flex-none px-3">
+          <BarChart3 /> รายรับ & การเก็บเงิน
+        </TabsTrigger>
+        <TabsTrigger value="profit" className="flex-none px-3">
+          <Scale /> กำไร
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="overview">
+        <Reports />
+      </TabsContent>
+      <TabsContent value="profit">
+        <ProfitReport />
+      </TabsContent>
+    </Tabs>
+  )
 }
 
 function Reports() {
@@ -290,30 +312,6 @@ function ReportBody({ data }: { data: ReportSummary }) {
         )}
       </Card>
     </>
-  )
-}
-
-function LegendKey({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-      <span className="size-2.5 rounded-[2px]" style={{ background: color }} />
-      {label}
-    </span>
-  )
-}
-
-function TooltipBox({ title, rows }: { title: string; rows: { label: string; value: string; color?: string }[] }) {
-  return (
-    <div className="min-w-40 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-sm">
-      <div className="mb-1 font-medium">{title}</div>
-      {rows.map((r) => (
-        <div key={r.label} className="flex items-center gap-2">
-          {r.color && <span className="size-2 rounded-[2px]" style={{ background: r.color }} />}
-          <span className="text-muted-foreground">{r.label}</span>
-          <span className="ml-auto font-medium tabular-nums">{r.value}</span>
-        </div>
-      ))}
-    </div>
   )
 }
 

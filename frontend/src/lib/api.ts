@@ -1102,6 +1102,96 @@ export interface ParcelList {
   summary: { waiting: number; received_today: number; waiting_over_3_days: number }
 }
 
+// ----- รายจ่าย & กำไร -----
+export type ExpenseMethod = 'cash' | 'transfer' | 'card' | 'other'
+
+export interface ExpenseCategory {
+  id: number
+  name: string
+  is_active: boolean
+  sort_order: number
+  /** จำนวนรายจ่ายที่ใช้หมวดนี้ */
+  used: number
+}
+
+export interface Expense {
+  id: number
+  /** null = ค่าใช้จ่ายส่วนกลาง */
+  property_id: number | null
+  property_name: string | null
+  unit_id: number | null
+  unit_name: string | null
+  category_id: number
+  category_name: string
+  /** YYYY-MM-DD */
+  expense_date: string
+  amount: number
+  vendor: string
+  note: string
+  method: ExpenseMethod
+  receipt_url: string | null
+  ticket_id: number | null
+  ticket_title: string | null
+  /** สร้างอัตโนมัติจากรายจ่ายประจำ */
+  recurring_id: number | null
+  created_by_name: string | null
+  created_at: string
+}
+
+export interface ExpenseFilter {
+  from?: string
+  to?: string
+  property_id?: number | string
+  /** 'shared' = เฉพาะส่วนกลาง */
+  scope?: 'shared' | ''
+  category_id?: number | string
+  q?: string
+}
+
+export interface ExpenseList {
+  expenses: Expense[]
+  total: number
+  by_category: { category: string; amount: number }[]
+}
+
+export interface RecurringExpenseInput {
+  property_id: number | null
+  category_id: number
+  amount: number
+  vendor: string
+  note: string
+  /** 1–28 */
+  day_of_month: number
+  is_active: boolean
+}
+
+export interface RecurringExpense extends RecurringExpenseInput {
+  id: number
+  property_name: string | null
+  category_name: string
+  /** เดือนล่าสุดที่สร้างรายการแล้ว 'YYYY-MM' */
+  last_generated: string | null
+}
+
+export interface ProfitReport {
+  from: string
+  to: string
+  months: { month: string; income: number; expense: number; net: number }[]
+  properties: {
+    property_id: number
+    name: string
+    income: number
+    expense: number
+    net: number
+    /** % — null เมื่อไม่มีรายรับ */
+    margin: number | null
+  }[]
+  /** รายจ่ายที่ไม่ระบุโครงการ (หักในยอดรวม) */
+  shared_expense: number
+  categories: { category: string; amount: number }[]
+  totals: { income: number; expense: number; net: number; margin: number | null }
+}
+
 // ----- ตม.30 -----
 export type Tm30Status = 'pending' | 'submitted' | 'not_required'
 export type Tm30Missing = 'passport_no' | 'arrival_date' | 'visa_type' | 'gender' | 'birth_date'
@@ -1148,6 +1238,8 @@ export interface Dashboard {
   occupancy_rate: number
   units_by_status: Partial<Record<UnitStatus, number>>
   revenue_month: number
+  /** รายจ่ายที่บันทึกในเดือนนี้ (ตามวันที่จ่าย) */
+  expense_month?: number
   outstanding: number
   outstanding_count: number
   deposits_held: number
@@ -1943,6 +2035,30 @@ export const api = {
 
   reportSummary: (f: { months?: number; property_id?: number | string } = {}) =>
     get<ReportSummary>('/api/reports/summary', f),
+  /** กำไรต่อโครงการ (from/to = YYYY-MM) — เจ้าของ/ผู้ดูแล + ฟีเจอร์รายงาน */
+  profitReport: (f: { from?: string; to?: string; property_id?: number | string } = {}) =>
+    get<ProfitReport>('/api/reports/profit', f),
+
+  // รายจ่าย (ดูรายการ/แก้ไข = เจ้าของ/ผู้ดูแล, บันทึกใหม่ = ทุกคน)
+  expenseCategories: () => get<ExpenseCategory[]>('/api/expense-categories'),
+  createExpenseCategory: (name: string) => post<{ id: number }>('/api/expense-categories', { name }),
+  updateExpenseCategory: (id: number, b: { name: string; is_active: boolean }) =>
+    put<object>(`/api/expense-categories/${id}`, b),
+  deleteExpenseCategory: (id: number) => del(`/api/expense-categories/${id}`),
+  expenses: (f: ExpenseFilter = {}) => get<ExpenseList>('/api/expenses', { ...f }),
+  /** multipart: category_id, amount, expense_date, property_id | unit_id, vendor, note, method, ticket_id, photo */
+  createExpense: (fd: FormData) => form<Expense>('/api/expenses', fd),
+  /** multipart เหมือนตอนสร้าง — แนบ photo ใหม่เพื่อแทนรูปเดิม, remove_receipt=1 เพื่อลบ */
+  updateExpense: (id: number, fd: FormData) => form<Expense>(`/api/expenses/${id}`, fd),
+  deleteExpense: (id: number) => del(`/api/expenses/${id}`),
+  /** ลิงก์ดาวน์โหลด CSV รายจ่าย (แนบ org_id แทน header) */
+  expenseExportUrl: (f: ExpenseFilter = {}) => '/api/expenses/export.csv' + qs({ ...f, org_id: currentOrgId }),
+  recurringExpenses: () => get<RecurringExpense[]>('/api/recurring-expenses'),
+  saveRecurringExpense: (b: RecurringExpenseInput & { id?: number }) =>
+    b.id
+      ? put<RecurringExpense>(`/api/recurring-expenses/${b.id}`, b)
+      : post<RecurringExpense>('/api/recurring-expenses', b),
+  deleteRecurringExpense: (id: number) => del(`/api/recurring-expenses/${id}`),
   // แจ้งชำระ + ตรวจสลิป
   paymentNotices: (f: { status?: NoticeStatus | '' } = {}) => get<PaymentNotice[]>('/api/payment-notices', f),
   approveNotice: (id: number, b: { amount?: number; paid_at?: string; method?: 'transfer' | 'promptpay' | 'cash' } = {}) =>

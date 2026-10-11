@@ -48,6 +48,7 @@ const AdminBilling = lazy(() => import('@/pages/admin/billing'))
 const TicketsPage = lazy(() => import('@/pages/tickets'))
 const MoveOutsPage = lazy(() => import('@/pages/move-outs'))
 const ReportsPage = lazy(() => import('@/pages/reports'))
+const ExpensesPage = lazy(() => import('@/pages/expenses'))
 const SupportPage = lazy(() => import('@/pages/support'))
 const PortalPage = lazy(() => import('@/pages/portal'))
 const StaffInvoicePrint = lazy(() => import('@/pages/print/invoice').then((m) => ({ default: m.StaffInvoicePrint })))
@@ -142,6 +143,7 @@ export default function App() {
                       <Route path="tickets" element={page(<TicketsPage />)} />
                       <Route path="move-outs" element={page(<MoveOutsPage />)} />
                       <Route path="reports" element={page(<ReportsPage />)} />
+                      <Route path="expenses" element={page(<ExpensesPage />)} />
                       <Route path="support" element={page(<SupportPage />)} />
                       <Route path="settings" element={page(<SettingsPage />)} />
                       <Route path="billing" element={page(<BillingPage />)} />

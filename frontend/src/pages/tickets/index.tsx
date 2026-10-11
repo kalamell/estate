@@ -10,6 +10,7 @@ import { TicketInbox, type InboxConfig } from '@/components/tickets/inbox'
 import { NewTicketDialog } from '@/components/tickets/new-ticket-dialog'
 import { ORG_CATEGORIES } from '@/components/tickets/labels'
 import { AnnouncementsTab } from './announcements'
+import { TicketCost } from './ticket-cost'
 
 export default function TicketsPage() {
   const { readOnly } = useSession()
@@ -30,6 +31,7 @@ export default function TicketsPage() {
     propertyFilter: true,
     readOnly,
     emptyText: 'ไม่มีคำร้องในสถานะนี้',
+    paneExtra: (t) => <TicketCost ticket={t} />,
     toolbar: (
       <Button size="sm" onClick={() => setNewOpen(true)} disabled={readOnly}>
         <Plus /> บันทึกคำร้อง

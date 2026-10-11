@@ -38,6 +38,8 @@ export interface InboxConfig {
   emptyText: string
   toolbar?: ReactNode
   readOnly?: boolean
+  /** ส่วนเพิ่มเติมใต้หัวเรื่อง (เช่น บันทึกค่าใช้จ่ายของงานซ่อม) */
+  paneExtra?: (t: Ticket) => ReactNode
 }
 
 const ALL = 'all'
@@ -325,6 +327,7 @@ function TicketPane({ id, config, onBack }: { id: number; config: InboxConfig; o
         {!canEdit && t.assignee_name && (
           <div className="text-xs text-muted-foreground">ผู้รับผิดชอบ: {t.assignee_name}</div>
         )}
+        {config.paneExtra?.(t)}
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/30 p-4">

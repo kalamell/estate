@@ -19,7 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { api, type UnitStatus } from '@/lib/api'
-import { KINDS, UNIT_STATUS, baht, thDate } from '@/lib/format'
+import { KINDS, UNIT_STATUS, baht, signedBaht, thDate } from '@/lib/format'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -70,8 +70,12 @@ export default function DashboardPage() {
               icon={Wallet}
               tone="success"
               value={baht(d.revenue_month)}
-              sub="จากการชำระเงินที่บันทึก"
-            />
+              sub={canManage && d.expense_month != null ? undefined : 'จากการชำระเงินที่บันทึก'}
+            >
+              {canManage && d.expense_month != null && (
+                <MonthNet revenue={d.revenue_month} expense={d.expense_month} />
+              )}
+            </StatCard>
             <StatCard
               label="ค้างชำระ"
               icon={HandCoins}
@@ -392,6 +396,30 @@ function LineCard({ span }: { span: boolean }) {
         )}
       </div>
       <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  )
+}
+
+/** รายจ่าย + กำไรสุทธิเดือนนี้ (ใต้ยอดรายรับ — เฉพาะเจ้าของ/ผู้ดูแล) */
+function MonthNet({ revenue, expense }: { revenue: number; expense: number }) {
+  const net = revenue - expense
+  return (
+    <Link
+      to="/reports?tab=profit"
+      className="group mt-2 grid gap-0.5 border-t pt-2 text-xs text-muted-foreground tabular-nums"
+      title="ดูรายงานกำไร"
+    >
+      <span className="flex items-center gap-1.5">
+        รายจ่าย
+        <span className="ml-auto font-medium text-foreground">{baht(expense)}</span>
+      </span>
+      <span className="flex items-center gap-1.5">
+        กำไรสุทธิ
+        <span className={cn('ml-auto font-semibold', net < 0 ? 'text-destructive' : 'text-foreground')}>
+          {signedBaht(net)}
+        </span>
+        <ArrowRight className="size-3 shrink-0 transition-transform group-hover:translate-x-0.5" />
+      </span>
     </Link>
   )
 }

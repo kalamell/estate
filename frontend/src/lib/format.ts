@@ -12,6 +12,9 @@ export const baht = (n: number | null | undefined) =>
   '฿' +
   Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 
+/** จำนวนเงินที่ติดลบได้ เช่น กำไร: "−฿2,900" */
+export const signedBaht = (n: number | null | undefined) => (Number(n) < 0 ? `−${baht(-Number(n))}` : baht(n))
+
 export const num = (n: number | null | undefined) =>
   Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })
 
