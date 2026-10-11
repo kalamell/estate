@@ -13,6 +13,7 @@ import {
   Home,
   Loader2,
   Megaphone,
+  Package,
   Phone,
   Pin,
   Plus,
@@ -46,14 +47,22 @@ import { useForcedColorTheme } from '@/components/theme-provider'
 import { LineIcon } from '@/components/line'
 import { NoticeText } from '@/components/privacy'
 import { PRIVACY_KINDS } from '@/lib/privacy'
+import { NoticeBadge, PayWithSlip } from './slip'
+import { ParcelsHomeCard, ParcelsTab } from './parcels'
 
-type Tab = 'home' | 'bills' | 'repair' | 'privacy'
-const BASE_TABS: { v: Tab; label: string; icon: LucideIcon }[] = [
-  { v: 'home', label: 'หน้าหลัก', icon: Home },
-  { v: 'bills', label: 'บิล & ใบเสร็จ', icon: FileText },
-  { v: 'repair', label: 'แจ้งซ่อม', icon: Wrench },
+type Tab = 'home' | 'bills' | 'parcels' | 'repair' | 'privacy'
+/** short = ป้ายบนแถบเมนูด้านล่าง (มือถือ) */
+const BASE_TABS: { v: Tab; label: string; short: string; icon: LucideIcon }[] = [
+  { v: 'home', label: 'หน้าหลัก', short: 'หน้าหลัก', icon: Home },
+  { v: 'bills', label: 'บิล & ใบเสร็จ', short: 'บิล', icon: FileText },
+  { v: 'parcels', label: 'พัสดุ', short: 'พัสดุ', icon: Package },
+  { v: 'repair', label: 'แจ้งซ่อม', short: 'แจ้งซ่อม', icon: Wrench },
 ]
-const PRIVACY_TAB = { v: 'privacy' as Tab, label: 'ความเป็นส่วนตัว', icon: ShieldCheck }
+const PRIVACY_TAB = { v: 'privacy' as Tab, label: 'ความเป็นส่วนตัว', short: 'ส่วนตัว', icon: ShieldCheck }
+
+/** การแจ้งชำระล่าสุดของบิล */
+const noticeFor = (d: PortalHome, invoiceId: number) =>
+  d.payment_notices?.find((n) => n.invoice_id === invoiceId) ?? null
 
 const silent = { meta: { silent: true }, retry: false } as const
 
@@ -62,6 +71,8 @@ const TAB_ALIAS: Record<string, Tab> = {
   home: 'home',
   bills: 'bills',
   receipts: 'bills',
+  parcels: 'parcels',
+  parcel: 'parcels',
   repair: 'repair',
   tickets: 'repair',
   privacy: 'privacy',
@@ -103,6 +114,7 @@ export default function PortalPage() {
 
   const TABS = d.privacy ? [...BASE_TABS, PRIVACY_TAB] : BASE_TABS
   const current: Tab = tab === 'privacy' && !d.privacy ? 'home' : tab
+  const waitingParcels = (d.parcels ?? []).filter((p) => p.status === 'waiting').length
   return (
     <div className="min-h-svh bg-background pb-24 sm:pb-10">
       <header className="border-b bg-card">
@@ -123,25 +135,35 @@ export default function PortalPage() {
             </Button>
           )}
         </div>
-        <nav className="mx-auto hidden max-w-lg gap-1 px-4 sm:flex" aria-label="เมนู">
+        <nav className="mx-auto hidden max-w-lg gap-0.5 overflow-x-auto px-4 sm:flex" aria-label="เมนู">
           {TABS.map((t) => (
             <button
               key={t.v}
               onClick={() => setTab(t.v)}
               className={cn(
-                'flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm',
+                'flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-sm whitespace-nowrap',
                 current === t.v ? 'border-primary font-medium' : 'border-transparent text-muted-foreground',
               )}
             >
               <t.icon className="size-4" /> {t.label}
+              {t.v === 'parcels' && waitingParcels > 0 && <TabCount n={waitingParcels} />}
             </button>
           ))}
         </nav>
       </header>
 
       <main className="mx-auto max-w-lg space-y-4 p-4">
-        {current === 'home' && <HomeTab token={token} d={d} goBills={() => setTab('bills')} />}
+        {current === 'home' && (
+          <HomeTab
+            token={token}
+            d={d}
+            goBills={() => setTab('bills')}
+            goParcels={() => setTab('parcels')}
+            payInvoice={(id) => setParams({ tab: 'bills', invoice: String(id), pay: '1' })}
+          />
+        )}
         {current === 'bills' && <BillsTab token={token} d={d} focusReceipts={params.get('tab') === 'receipts'} />}
+        {current === 'parcels' && <ParcelsTab token={token} d={d} />}
         {current === 'repair' && <RepairTab token={token} />}
         {current === 'privacy' && d.privacy && <PrivacyTab token={token} d={d} privacy={d.privacy} />}
       </main>
@@ -149,7 +171,7 @@ export default function PortalPage() {
       <nav
         className={cn(
           'fixed inset-x-0 bottom-0 z-20 grid border-t bg-card pb-[env(safe-area-inset-bottom)] sm:hidden',
-          TABS.length === 4 ? 'grid-cols-4' : 'grid-cols-3',
+          TABS.length === 5 ? 'grid-cols-5' : 'grid-cols-4',
         )}
         aria-label="เมนู"
       >
@@ -158,17 +180,33 @@ export default function PortalPage() {
             key={t.v}
             onClick={() => setTab(t.v)}
             className={cn(
-              'flex h-16 flex-col items-center justify-center gap-1 px-0.5 text-xs leading-tight',
+              'relative flex h-16 min-w-0 flex-col items-center justify-center gap-1 px-0.5 text-xs leading-tight',
               current === t.v ? 'font-medium text-primary' : 'text-muted-foreground',
             )}
             aria-current={current === t.v ? 'page' : undefined}
+            aria-label={t.label}
           >
-            <t.icon className="size-5" />
-            {t.label}
+            <span className="relative">
+              <t.icon className="size-5" />
+              {t.v === 'parcels' && waitingParcels > 0 && (
+                <span className="absolute -top-1.5 -right-2.5">
+                  <TabCount n={waitingParcels} />
+                </span>
+              )}
+            </span>
+            <span className="max-w-full truncate">{t.short}</span>
           </button>
         ))}
       </nav>
     </div>
+  )
+}
+
+function TabCount({ n }: { n: number }) {
+  return (
+    <span className="grid h-4 min-w-4 place-items-center rounded-full bg-warning px-1 text-[10px] leading-none font-semibold text-warning-foreground tabular-nums">
+      {n}
+    </span>
   )
 }
 
@@ -205,7 +243,19 @@ function SectionHead({ icon: Icon, children }: { icon: LucideIcon; children: Rea
   )
 }
 
-function HomeTab({ token, d, goBills }: { token: string; d: PortalHome; goBills: () => void }) {
+function HomeTab({
+  token,
+  d,
+  goBills,
+  goParcels,
+  payInvoice,
+}: {
+  token: string
+  d: PortalHome
+  goBills: () => void
+  goParcels: () => void
+  payInvoice: (id: number) => void
+}) {
   const unpaid = useMemo(
     () => d.invoices.filter((i) => i.status === 'unpaid').sort((a, b) => a.due_date.localeCompare(b.due_date)),
     [d.invoices],
@@ -219,6 +269,7 @@ function HomeTab({ token, d, goBills }: { token: string; d: PortalHome; goBills:
     ...silent,
   })
   const oldestDue = oldest ? Math.max(0, oldest.total - (oldest.paid_amount || 0)) : 0
+  const oldestNotice = oldest ? noticeFor(d, oldest.id) : null
   const anns = [...d.announcements].sort(
     (a, b) => Number(b.pinned) - Number(a.pinned) || b.created_at.localeCompare(a.created_at),
   )
@@ -229,6 +280,8 @@ function HomeTab({ token, d, goBills }: { token: string; d: PortalHome; goBills:
         <p className="text-sm text-muted-foreground">สวัสดี</p>
         <h1 className="text-xl font-semibold">คุณ{d.tenant.full_name}</h1>
       </div>
+
+      <ParcelsHomeCard d={d} onOpen={goParcels} />
 
       <PortalLineCard token={token} line={d.line} />
 
@@ -258,11 +311,35 @@ function HomeTab({ token, d, goBills }: { token: string; d: PortalHome; goBills:
               <p className="text-center text-sm text-muted-foreground">ติดต่อผู้ดูแลเพื่อชำระเงิน</p>
             )}
             <p className="mt-3 text-center text-xs text-muted-foreground">
-              บันทึกภาพ QR แล้วเปิดในแอปธนาคาร · โอนแล้วส่งสลิปให้ผู้ดูแล
+              บันทึกภาพ QR แล้วเปิดในแอปธนาคาร · โอนแล้วแนบสลิปเพื่อแจ้งชำระ
             </p>
-            <Button variant="outline" className="mt-4 h-11 w-full" onClick={goBills}>
-              ดูบิลทั้งหมด <ChevronRight />
-            </Button>
+            <div className="mt-4 grid gap-2">
+              {oldestNotice?.status === 'pending' ? (
+                <div className="flex items-center justify-center gap-2 rounded-md border bg-card px-3 py-2.5 text-sm">
+                  <ToneBadge tone="ink">รอตรวจสลิป</ToneBadge>
+                  <span className="text-muted-foreground">แจ้งชำระแล้ว รอเจ้าหน้าที่ตรวจสอบ</span>
+                </div>
+              ) : (
+                <>
+                  {oldestNotice?.status === 'rejected' && (
+                    <p className="text-center text-sm text-destructive">
+                      สลิปที่ส่งไม่ผ่าน{oldestNotice.reject_reason ? `: ${oldestNotice.reject_reason}` : ''}
+                    </p>
+                  )}
+                  <Button className="h-12 w-full text-base" onClick={() => payInvoice(oldest.id)}>
+                    {oldestNotice?.status === 'rejected' ? 'แนบสลิปใหม่' : 'แจ้งชำระ / แนบสลิป'}
+                  </Button>
+                </>
+              )}
+              <Button variant="outline" className="h-11 w-full" onClick={goBills}>
+                ดูบิลทั้งหมด <ChevronRight />
+              </Button>
+            </div>
+            {d.line?.linked && oldestNotice?.status !== 'pending' && (
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <LineIcon className="size-3.5" /> หรือส่งรูปสลิปในแชต LINE ได้เลย
+              </p>
+            )}
           </div>
         )}
       </Card>
@@ -337,28 +414,47 @@ function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; f
       ) : (
         <Card className="gap-0 overflow-hidden py-0">
           <ul className="divide-y">
-            {invoices.map((i) => (
-              <li key={i.id}>
-                <button
-                  className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
-                  onClick={() => setOpenId(i.id)}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className={cn('font-medium', i.status === 'void' && 'line-through')}>
-                      {thPeriod(i.period)}
+            {invoices.map((i) => {
+              const notice = i.status === 'unpaid' ? noticeFor(d, i.id) : null
+              return (
+                <li key={i.id}>
+                  <button
+                    className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
+                    onClick={() => setOpenId(i.id)}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className={cn('font-medium', i.status === 'void' && 'line-through')}>
+                        {thPeriod(i.period)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {i.doc_no} · ครบ {thDate(i.due_date)}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {i.doc_no} · ครบ {thDate(i.due_date)}
+                    <div className="grid justify-items-end gap-1 text-right">
+                      <div className="font-medium tabular-nums">{baht(i.total)}</div>
+                      {notice && notice.status !== 'approved' ? (
+                        <NoticeBadge notice={notice} />
+                      ) : (
+                        <InvoiceStatusBadge status={i.status} overdueDays={i.overdue_days} />
+                      )}
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-medium tabular-nums">{baht(i.total)}</div>
-                    <InvoiceStatusBadge status={i.status} overdueDays={i.overdue_days} />
-                  </div>
-                  <ChevronRight className="size-4 text-muted-foreground" />
-                </button>
-              </li>
-            ))}
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  </button>
+                  {i.status === 'unpaid' && notice?.status !== 'pending' && (
+                    <div className="-mt-1 px-4 pb-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-full"
+                        onClick={() => setParams({ tab: 'bills', invoice: String(i.id), pay: '1' }, { replace: true })}
+                      >
+                        {notice?.status === 'rejected' ? 'สลิปไม่ผ่าน — แนบสลิปใหม่' : 'แจ้งชำระ / แนบสลิป'}
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </Card>
       )}
@@ -395,12 +491,30 @@ function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; f
         </Card>
       )}
 
-      <PortalInvoiceDialog token={token} id={openId} onClose={() => setOpenId(null)} />
+      <PortalInvoiceDialog
+        token={token}
+        id={openId}
+        d={d}
+        autoPay={params.get('pay') === '1'}
+        onClose={() => setOpenId(null)}
+      />
     </>
   )
 }
 
-function PortalInvoiceDialog({ token, id, onClose }: { token: string; id: number | null; onClose: () => void }) {
+function PortalInvoiceDialog({
+  token,
+  id,
+  d,
+  autoPay,
+  onClose,
+}: {
+  token: string
+  id: number | null
+  d: PortalHome
+  autoPay: boolean
+  onClose: () => void
+}) {
   const q = useQuery({
     queryKey: ['portal', token, 'invoice', id],
     queryFn: () => api.portal.invoice(token, id!),
@@ -425,8 +539,9 @@ function PortalInvoiceDialog({ token, id, onClose }: { token: string; id: number
                 {inv.doc_no} · ครบกำหนด {thDateLong(inv.due_date)}
               </DialogDescription>
             </DialogHeader>
-            <div className="flex">
+            <div className="flex flex-wrap gap-1.5">
               <InvoiceStatusBadge status={inv.status} overdueDays={inv.overdue_days} />
+              {inv.status === 'unpaid' && <NoticeBadge notice={noticeFor(d, inv.id)} />}
             </div>
             <div className="divide-y rounded-md border text-sm">
               {inv.items.map((it, i) => (
@@ -456,6 +571,19 @@ function PortalInvoiceDialog({ token, id, onClose }: { token: string; id: number
             )}
             {inv.status === 'unpaid' && q.data?.promptpay_payload && (
               <PromptPayQR payload={q.data.promptpay_payload} amount={baht(remaining)} className="w-60" />
+            )}
+            {inv.status === 'unpaid' && (
+              <div className="border-t pt-4">
+                <PayWithSlip
+                  key={inv.id}
+                  token={token}
+                  invoiceId={inv.id}
+                  amountDue={Math.round((remaining + (inv.late_fee || 0)) * 100) / 100}
+                  notice={noticeFor(d, inv.id)}
+                  lineLinked={!!d.line?.linked}
+                  autoStart={autoPay}
+                />
+              </div>
             )}
             <Button asChild variant="outline" className="h-11">
               <Link to={`/p/${token}/print/invoice/${inv.id}`}>

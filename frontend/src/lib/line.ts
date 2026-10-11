@@ -12,6 +12,9 @@ export const LINE_KIND_LABEL: Record<string, string> = {
   linked: 'เชื่อมบัญชีสำเร็จ',
   housekeeping: 'แจ้งงานแม่บ้าน',
   staff_linked: 'เชื่อมพนักงานสำเร็จ',
+  parcel: 'แจ้งพัสดุ',
+  notice_rejected: 'แจ้งชำระไม่ผ่าน',
+  tm30: 'เตือน ตม.30',
 }
 
 /** ค่าเริ่มต้นเมื่อ backend ยังไม่ส่ง org.line มา */
@@ -27,6 +30,7 @@ export const EMPTY_LINE: LineSettings = {
   auto_ticket_reply: true,
   auto_remind: true,
   auto_housekeeping: false,
+  auto_parcel: true,
   linked_tenants: 0,
   add_friend_url: null,
 }

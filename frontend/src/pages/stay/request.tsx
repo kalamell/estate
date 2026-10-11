@@ -268,8 +268,12 @@ function PaySection({ token, d }: { token: string; d: StayRequestStatus }) {
       return api.stay.uploadSlip(token, fd)
     },
     meta: { silent: true },
-    onSuccess: async () => {
-      toast.success('ส่งสลิปแล้ว — รอที่พักยืนยัน')
+    onSuccess: async (res) => {
+      const r = res.check?.result
+      if (r === 'duplicate') toast.warning('สลิปนี้เคยถูกใช้แล้ว — ที่พักจะตรวจสอบและติดต่อกลับ')
+      else if (r === 'unreadable') toast.success('ส่งสลิปแล้ว — ระบบอ่าน QR บนสลิปไม่ได้ ที่พักจะตรวจสอบจากรูป')
+      else if (r === 'mismatch') toast.warning('ส่งสลิปแล้ว แต่ยอดเงินไม่ตรงกับยอดมัดจำ — ที่พักจะตรวจสอบ')
+      else toast.success('ส่งสลิปแล้ว — รอที่พักยืนยัน')
       setFile(null)
       await queryClient.invalidateQueries({ queryKey: ['stay-request', token] })
     },

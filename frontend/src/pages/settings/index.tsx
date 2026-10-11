@@ -1,5 +1,5 @@
 import { Navigate, useSearchParams } from 'react-router-dom'
-import { Building2, FileText, MessageCircle, Palette, ShieldCheck, Users } from 'lucide-react'
+import { Building2, FileText, MessageCircle, Palette, ScanLine, ShieldCheck, Users } from 'lucide-react'
 import { useSession } from '@/contexts/session'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrgTab } from './org-tab'
@@ -8,9 +8,10 @@ import { IssuerTab } from './issuer-tab'
 import { AppearanceTab } from './appearance-tab'
 import { LineTab } from './line-tab'
 import { PrivacyTab } from './privacy-tab'
+import { SlipTab } from './slip-tab'
 
-const TABS = ['org', 'issuer', 'appearance', 'line', 'privacy', 'members'] as const
-const ADMIN_TABS: readonly Tab[] = ['line', 'privacy']
+const TABS = ['org', 'issuer', 'appearance', 'line', 'slip', 'privacy', 'members'] as const
+const ADMIN_TABS: readonly Tab[] = ['line', 'slip', 'privacy']
 type Tab = (typeof TABS)[number]
 
 export default function SettingsPage() {
@@ -39,6 +40,11 @@ export default function SettingsPage() {
           </TabsTrigger>
         )}
         {canManage && (
+          <TabsTrigger value="slip" className="px-3">
+            <ScanLine /> ตรวจสลิป
+          </TabsTrigger>
+        )}
+        {canManage && (
           <TabsTrigger value="privacy" className="px-3">
             <ShieldCheck /> ความเป็นส่วนตัว (PDPA)
           </TabsTrigger>
@@ -59,6 +65,11 @@ export default function SettingsPage() {
       {canManage && (
         <TabsContent value="line">
           <LineTab />
+        </TabsContent>
+      )}
+      {canManage && (
+        <TabsContent value="slip">
+          <SlipTab />
         </TabsContent>
       )}
       {canManage && (

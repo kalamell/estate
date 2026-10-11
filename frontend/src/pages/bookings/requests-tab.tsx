@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState, ToneBadge } from '@/components/common'
 import { ReasonDialog } from '@/components/reason-dialog'
 import { PhotoGrid } from '@/components/tickets/parts'
+import { SlipResultBadge, SlipResultLine } from '@/components/slip-check'
 
 const ALL = 'all'
 
@@ -194,7 +195,11 @@ function RequestCard({
                 <div className="flex items-center gap-1 font-medium text-success">
                   <ReceiptText className="size-3.5" /> ส่งสลิปแล้ว
                 </div>
-                แตะรูปเพื่อขยาย
+                {r.slip_result ? (
+                  <SlipResultBadge result={r.slip_result} className="mt-1" />
+                ) : (
+                  'แตะรูปเพื่อขยาย'
+                )}
               </div>
             </>
           ) : (
@@ -253,7 +258,8 @@ function ApproveDialog({ request, onClose }: { request: BookingRequest | null; o
 }
 
 function ApproveForm({ r, onClose }: { r: BookingRequest; onClose: () => void }) {
-  const [paid, setPaid] = useState(!!r.slip_url)
+  // สลิปซ้ำ/ยอดไม่ตรง → ไม่ติ๊กให้อัตโนมัติ ให้ตรวจก่อน
+  const [paid, setPaid] = useState(!!r.slip_url && r.slip_result !== 'duplicate' && r.slip_result !== 'mismatch')
   const approve = useMutation({
     mutationFn: () => api.approveRequest(r.id, paid),
     onSuccess: async (res) => {
@@ -293,7 +299,10 @@ function ApproveForm({ r, onClose }: { r: BookingRequest; onClose: () => void })
         <dd className="font-semibold tabular-nums">{baht(r.deposit_amount)}</dd>
       </dl>
       {r.slip_url ? (
-        <PhotoGrid photos={[r.slip_url]} />
+        <div className="grid gap-2">
+          <PhotoGrid photos={[r.slip_url]} />
+          <SlipResultLine result={r.slip_result} message={r.slip_message} />
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">ผู้จองยังไม่ได้ส่งสลิป</p>
       )}

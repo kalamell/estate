@@ -38,7 +38,11 @@ export function LineTab() {
   return <LineSettingsView key={orgInfo.org.id} line={line} />
 }
 
-const AUTOMATIONS: { k: 'auto_invoice' | 'auto_receipt' | 'auto_ticket_reply' | 'auto_remind'; label: string; hint: string }[] = [
+const AUTOMATIONS: {
+  k: 'auto_invoice' | 'auto_receipt' | 'auto_ticket_reply' | 'auto_remind' | 'auto_parcel'
+  label: string
+  hint: string
+}[] = [
   { k: 'auto_invoice', label: 'ส่งบิลใหม่อัตโนมัติ', hint: 'เมื่อออกใบแจ้งหนี้ ผู้เช่าจะได้รับบิลพร้อม QR ชำระเงิน' },
   { k: 'auto_receipt', label: 'ส่งใบเสร็จหลังรับชำระ', hint: 'ส่งลิงก์ใบเสร็จทันทีเมื่อบันทึกการรับชำระ' },
   { k: 'auto_ticket_reply', label: 'แจ้งเมื่อทีมงานตอบเรื่องแจ้งซ่อม', hint: 'ผู้เช่าได้รับข้อความเมื่อมีการตอบหรือเปลี่ยนสถานะ' },
@@ -46,6 +50,11 @@ const AUTOMATIONS: { k: 'auto_invoice' | 'auto_receipt' | 'auto_ticket_reply' | 
     k: 'auto_remind',
     label: 'เตือนก่อนครบกำหนด 1 วัน และเมื่อค้างชำระ',
     hint: 'เตือนเมื่อเกินกำหนด วันที่ 1, 3 และ 7',
+  },
+  {
+    k: 'auto_parcel',
+    label: 'แจ้งพัสดุถึงผู้เช่าอัตโนมัติ',
+    hint: 'ส่งการ์ดพร้อมรหัสรับพัสดุทันทีที่บันทึกรับพัสดุ — ผู้เช่าพิมพ์ “พัสดุ” ในแชตเพื่อดูรายการที่รอรับได้',
   },
 ]
 
@@ -65,6 +74,7 @@ const formOf = (l: LineSettings): FormState => ({
   auto_ticket_reply: l.auto_ticket_reply,
   auto_remind: l.auto_remind,
   auto_housekeeping: !!l.auto_housekeeping,
+  auto_parcel: l.auto_parcel ?? true,
 })
 
 function LineSettingsView({ line }: { line: LineSettings }) {
@@ -87,6 +97,7 @@ function LineSettingsView({ line }: { line: LineSettings }) {
         auto_ticket_reply: form.auto_ticket_reply,
         auto_remind: form.auto_remind,
         auto_housekeeping: form.auto_housekeeping,
+        auto_parcel: form.auto_parcel,
       }
       if (form.channel_secret.trim()) body.channel_secret = form.channel_secret.trim()
       if (form.channel_access_token.trim()) body.channel_access_token = form.channel_access_token.trim()
@@ -421,12 +432,15 @@ function SetupGuide({ webhookUrl, className }: { webhookUrl: string; className?:
     </span>,
     <span key="s6">
       <span className="text-muted-foreground">(แนะนำ)</span> สร้าง <b>Rich menu</b> ใน OA Manager โดยตั้งปุ่มเป็น “ข้อความ”:{' '}
-      {['บิล', 'ใบเสร็จ', 'ข้อมูลของฉัน', 'แจ้งซ่อม'].map((t, i) => (
+      {['บิล', 'ใบเสร็จ', 'พัสดุ', 'ข้อมูลของฉัน', 'แจ้งซ่อม'].map((t, i) => (
         <span key={t}>
           {i > 0 && ' '}
           <code className="inline-block rounded-sm border bg-muted px-1 py-px text-xs whitespace-nowrap">{t}</code>
         </span>
       ))}
+      <span className="mt-1 block text-xs text-muted-foreground">
+        ผู้เช่าส่งรูปสลิปในแชตเพื่อแจ้งชำระได้เลย และพิมพ์ “พัสดุ” เพื่อดูพัสดุที่รอรับพร้อมรหัสรับ
+      </span>
     </span>,
   ]
   return (

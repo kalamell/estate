@@ -28,9 +28,27 @@ import {
 } from '@/components/ui/sidebar'
 import { Logo } from '@/components/common'
 import { BookingDialogProvider, useBookingDialog } from '@/components/booking-dialog'
-import { BILLING_NAV, SETTINGS_NAV, SUPPORT_NAV, navBadgeCount, navGroupsFor, titleFor, type NavItem } from '@/components/nav'
+import {
+  BILLING_NAV,
+  SETTINGS_NAV,
+  SUPPORT_NAV,
+  navBadgeCount,
+  navGroupsFor,
+  titleFor,
+  type NavBadge,
+  type NavItem,
+} from '@/components/nav'
 import { OrgSwitcher } from '@/components/org-switcher'
 import { SidebarUserMenu } from '@/components/user-menu'
+
+const BADGE_TITLE: Partial<Record<NavBadge, string>> = {
+  pending_requests: 'คำขอจองออนไลน์รอตอบ',
+  hk_open_tasks: 'งานแม่บ้านที่ยังไม่เสร็จ',
+  open_privacy_requests: 'คำขอใช้สิทธิ์ PDPA ที่ยังไม่ปิด',
+  pending_payment_notices: 'แจ้งชำระรอตรวจสลิป',
+  parcels_waiting: 'พัสดุรอผู้เช่ามารับ',
+  tm30_pending: 'ตม.30 ที่ยังไม่ได้แจ้ง',
+}
 
 function NavLinks({ items }: { items: NavItem[] }) {
   const { pathname } = useLocation()
@@ -67,19 +85,13 @@ function NavLinks({ items }: { items: NavItem[] }) {
                 className={
                   n.badge === 'overdue_count' ||
                   n.badge === 'pending_requests' ||
-                  n.badge === 'open_privacy_requests'
+                  n.badge === 'open_privacy_requests' ||
+                  n.badge === 'pending_payment_notices' ||
+                  n.badge === 'tm30_pending'
                     ? 'rounded-sm bg-warning/20 text-warning'
                     : 'rounded-sm bg-sidebar-accent text-sidebar-foreground'
                 }
-                title={
-                  n.badge === 'pending_requests'
-                    ? 'คำขอจองออนไลน์รอตอบ'
-                    : n.badge === 'hk_open_tasks'
-                      ? 'งานแม่บ้านที่ยังไม่เสร็จ'
-                      : n.badge === 'open_privacy_requests'
-                        ? 'คำขอใช้สิทธิ์ PDPA ที่ยังไม่ปิด'
-                        : undefined
-                }
+                title={n.badge ? BADGE_TITLE[n.badge] : undefined}
               >
                 {count}
               </SidebarMenuBadge>

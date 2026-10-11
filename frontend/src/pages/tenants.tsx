@@ -38,13 +38,14 @@ import {
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/common'
+import { EmptyState, ToneBadge } from '@/components/common'
 import { useConfirm } from '@/components/confirm'
 import { TenantDialog } from '@/components/tenant-dialog'
 import { PortalLinkDialog } from '@/components/portal-link-dialog'
 import { LineIcon, LineLinkDialog, LineSetupHint, TenantLineBadge, useTenantLineActions } from '@/components/line'
 import { AnonymizeDialog, ConsentBadge, type AnonymizeTarget } from '@/components/privacy'
 import { useExportTenant } from '@/lib/privacy'
+import { countryName, isForeign } from '@/lib/countries'
 
 type LineFilter = 'all' | 'linked' | 'unlinked'
 const LINE_FILTERS: { v: LineFilter; label: string }[] = [
@@ -211,6 +212,12 @@ export default function TenantsPage() {
                       </div>
                     )}
                     <div className="flex flex-wrap gap-1.5 pt-1">
+                      {!anonymized && isForeign(t.nationality) && (
+                        <ToneBadge tone="grey" className="gap-1">
+                          <span className="font-mono text-[10px]">{t.nationality?.toUpperCase()}</span>
+                          {countryName(t.nationality)}
+                        </ToneBadge>
+                      )}
                       {!anonymized && <TenantLineBadge tenant={t} />}
                       <ConsentBadge tenant={t} />
                     </div>

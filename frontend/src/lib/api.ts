@@ -98,6 +98,8 @@ export interface LineSettings {
   auto_remind: boolean
   /** แจ้งงานแม่บ้านให้พนักงานที่เชื่อม LINE */
   auto_housekeeping?: boolean
+  /** แจ้งพัสดุถึงผู้เช่าอัตโนมัติ */
+  auto_parcel?: boolean
   linked_tenants: number
   add_friend_url: string | null
 }
@@ -114,6 +116,7 @@ export interface LineSettingsInput {
   auto_ticket_reply: boolean
   auto_remind: boolean
   auto_housekeeping: boolean
+  auto_parcel: boolean
 }
 
 export interface LineBotInfo {
@@ -500,7 +503,17 @@ export interface Tenant {
   consent_source?: ConsentSource | null
   /** ลบข้อมูลส่วนบุคคล (ทำให้ไม่ระบุตัวตน) แล้ว */
   anonymized_at?: string | null
+  /** รหัสประเทศ 2 ตัวอักษร ('' หรือ 'TH' = ไทย/ไม่ระบุ) */
+  nationality?: string
+  gender?: Gender
+  birth_date?: string | null
+  /** วันที่เดินทางเข้าประเทศ */
+  arrival_date?: string | null
+  visa_type?: string
+  visa_expiry?: string | null
 }
+
+export type Gender = '' | 'M' | 'F'
 
 export type TenantInput = Pick<
   Tenant,
@@ -510,6 +523,13 @@ export type TenantInput = Pick<
   id_card?: string
   /** เจ้าหน้าที่ยืนยันว่าได้รับความยินยอมจากผู้เช่าแล้ว */
   consent_obtained?: boolean
+  /** ข้อมูลคนต่างชาติ — ไม่ส่ง = ไม่เปลี่ยน, วันที่ส่ง '' = ล้างค่า */
+  nationality?: string
+  gender?: Gender
+  birth_date?: string
+  arrival_date?: string
+  visa_type?: string
+  visa_expiry?: string
 }
 
 // ----- PDPA -----
@@ -863,11 +883,171 @@ export interface PortalHome {
     status: InvoiceStatus
     paid_amount: number
     overdue_days: number
+    late_fee?: number
   }[]
   receipts: { id: number; doc_no: string; issue_date: string; total: number; status: 'issued' | 'void' }[]
   features: { portal: boolean }
   /** PDPA — ประกาศความเป็นส่วนตัวและสถานะความยินยอม */
   privacy?: PortalPrivacy
+  /** การแจ้งชำระล่าสุดของแต่ละบิล */
+  payment_notices?: PortalNotice[]
+  /** พัสดุรอรับ + ที่รับแล้วใน 30 วัน */
+  parcels?: PortalParcel[]
+}
+
+export interface PortalNotice {
+  id: number
+  invoice_id: number
+  amount: number
+  status: NoticeStatus
+  reject_reason: string | null
+  created_at: string
+}
+
+export interface PortalParcel {
+  id: number
+  kind: ParcelKind
+  kind_label: string
+  carrier: string
+  tracking_no: string
+  /** มีเฉพาะพัสดุที่ยังรอรับ */
+  pickup_code: string | null
+  status: ParcelStatus
+  received_at: string
+  picked_up_at: string | null
+  photo_url: string | null
+}
+
+export interface PortalSlipResult {
+  notice: { id: number; status: NoticeStatus; amount: number; created_at: string }
+  check: { result: SlipResult; message: string }
+  /** ยืนยันอัตโนมัติแล้ว (ออกใบเสร็จแล้ว) */
+  paid: boolean
+  receipt_id: number | null
+}
+
+// ----- แจ้งชำระ + ตรวจสลิป -----
+export type NoticeStatus = 'pending' | 'approved' | 'rejected'
+
+/** ผลตรวจสลิป (slip_checks) */
+export interface SlipCheckInfo {
+  result: SlipResult
+  message: string
+  bank_code: string | null
+  trans_ref: string | null
+  amount: number | null
+  expected_amount: number | null
+  sender_name: string | null
+  receiver_name: string | null
+  transferred_at: string | null
+  provider: string
+  duplicate_of: number | null
+  created_at?: string
+}
+
+export interface PaymentNotice {
+  id: number
+  invoice_id: number
+  invoice_doc_no: string | null
+  period: string
+  unit_name: string
+  tenant_id: number | null
+  tenant_name: string | null
+  amount: number
+  slip_url: string
+  note: string
+  channel: 'portal' | 'line'
+  status: NoticeStatus
+  reject_reason: string | null
+  receipt_id: number | null
+  reviewed_by_name: string | null
+  reviewed_at: string | null
+  created_at: string
+  check: SlipCheckInfo | null
+}
+
+export interface OrgSlipSettings {
+  provider: 'none' | 'easyslip' | 'slipok'
+  has_key: boolean
+  branch_id: string
+  auto_approve: boolean
+}
+
+// ----- พัสดุ -----
+export type ParcelKind = 'parcel' | 'letter' | 'food' | 'large' | 'other'
+export type ParcelStatus = 'waiting' | 'picked_up' | 'returned'
+
+export interface Parcel {
+  id: number
+  property_id: number
+  property_name: string
+  unit_id: number | null
+  unit_name: string | null
+  tenant_id: number | null
+  tenant_name: string | null
+  tenant_line_linked: boolean
+  recipient_name: string
+  carrier: string
+  tracking_no: string
+  kind: ParcelKind
+  note: string
+  photo_url: string | null
+  pickup_code: string
+  status: ParcelStatus
+  received_at: string
+  received_by_name: string | null
+  notified_at: string | null
+  picked_up_at: string | null
+  picked_up_by: string | null
+  pickup_photo_url: string | null
+  signature_url: string | null
+  handed_by_name: string | null
+}
+
+export interface ParcelList {
+  parcels: Parcel[]
+  summary: { waiting: number; received_today: number; waiting_over_3_days: number }
+}
+
+// ----- ตม.30 -----
+export type Tm30Status = 'pending' | 'submitted' | 'not_required'
+export type Tm30Missing = 'passport_no' | 'arrival_date' | 'visa_type' | 'gender' | 'birth_date'
+
+export interface Tm30Report {
+  id: number
+  tenant_id: number
+  booking_id: number
+  check_in: string
+  status: Tm30Status
+  reference_no: string
+  submitted_at: string | null
+  submitted_by_name: string | null
+  proof_url: string | null
+  note: string
+  full_name: string
+  nationality: string
+  passport_no: string
+  gender: Gender
+  birth_date: string | null
+  arrival_date: string | null
+  visa_type: string
+  visa_expiry: string | null
+  phone: string
+  unit_name: string
+  property_name: string
+  property_address: string
+  booking_kind: BookingKind
+  check_out: string | null
+  /** วันสุดท้ายที่ต้องแจ้ง (เข้าพัก + 1 วัน) */
+  deadline: string | null
+  overdue_days: number
+  missing: Tm30Missing[]
+}
+
+export interface Tm30List {
+  reports: Tm30Report[]
+  summary: { pending: number; overdue: number; due_today: number }
+  visa_expiring: { tenant_id: number; full_name: string; nationality: string; visa_expiry: string }[]
 }
 
 export interface Dashboard {
@@ -895,6 +1075,12 @@ export interface Dashboard {
   housekeeping?: { dirty: number; in_progress: number; open_tasks: number }
   /** คำขอใช้สิทธิ์ตาม PDPA ที่ยังไม่ปิด */
   open_privacy_requests?: number
+  /** ผู้เช่าแจ้งชำระรอตรวจสลิป */
+  pending_payment_notices?: number
+  /** พัสดุรอผู้เช่ามารับ */
+  parcels_waiting?: number
+  /** ตม.30 ที่ยังไม่ได้แจ้ง */
+  tm30_pending?: number
 }
 
 // ----- Housekeeping (งานแม่บ้าน) -----
@@ -1094,6 +1280,9 @@ export interface BookingRequest {
   guests: number
   note: string
   slip_url: string | null
+  /** ผลตรวจสลิปล่าสุด */
+  slip_result?: SlipResult | null
+  slip_message?: string | null
   created_at: string
   expires_at: string
   booking_id: number | null
@@ -1497,6 +1686,32 @@ export const api = {
 
   reportSummary: (f: { months?: number; property_id?: number | string } = {}) =>
     get<ReportSummary>('/api/reports/summary', f),
+  // แจ้งชำระ + ตรวจสลิป
+  paymentNotices: (f: { status?: NoticeStatus | '' } = {}) => get<PaymentNotice[]>('/api/payment-notices', f),
+  approveNotice: (id: number, b: { amount?: number; paid_at?: string; method?: 'transfer' | 'promptpay' | 'cash' } = {}) =>
+    post<PaymentNotice>(`/api/payment-notices/${id}/approve`, b),
+  rejectNotice: (id: number, reason: string) => post<PaymentNotice>(`/api/payment-notices/${id}/reject`, { reason }),
+  slipSettings: () => get<OrgSlipSettings>('/api/org/slip'),
+  updateSlipSettings: (b: Omit<OrgSlipSettings, 'has_key'> & { api_key: string }) =>
+    put<OrgSlipSettings>('/api/org/slip', b),
+
+  // พัสดุ
+  parcels: (f: { status?: ParcelStatus | ''; property_id?: number | null; q?: string } = {}) =>
+    get<ParcelList>('/api/parcels', f),
+  createParcel: (fd: FormData) => form<Parcel>('/api/parcels', fd),
+  pickupParcel: (id: number, fd: FormData) => form<Parcel>(`/api/parcels/${id}/pickup`, fd),
+  notifyParcel: (id: number) => post<Parcel>(`/api/parcels/${id}/notify`),
+  returnParcel: (id: number, note: string) => post<Parcel>(`/api/parcels/${id}/return`, { note }),
+  deleteParcel: (id: number) => del(`/api/parcels/${id}`),
+
+  // ตม.30
+  tm30: (f: { status?: Tm30Status | '' } = {}) => get<Tm30List>('/api/tm30', f),
+  submitTm30: (id: number, fd: FormData) => form<Tm30Report>(`/api/tm30/${id}/submit`, fd),
+  skipTm30: (id: number, reason: string) => post<Tm30Report>(`/api/tm30/${id}/skip`, { reason }),
+  reopenTm30: (id: number) => post<Tm30Report>(`/api/tm30/${id}/reopen`),
+  /** ลิงก์ดาวน์โหลด CSV รายการ ตม.30 (แนบ org_id แทน header) */
+  tm30ExportUrl: (status: Tm30Status = 'pending') => '/api/tm30/export.csv' + qs({ status, org_id: currentOrgId }),
+
   /** ลิงก์ดาวน์โหลด CSV (ใช้ <a href> — แนบ org_id แทน header) */
   reportExportUrl: (type: 'invoices' | 'receipts' | 'payments', from: string, to: string) =>
     '/api/reports/export' + qs({ type, from, to, org_id: currentOrgId }),
@@ -1520,6 +1735,9 @@ export const api = {
     privacyRequest: (token: string, b: { kind: PrivacyRequestKind; note: string }) =>
       post<PrivacyRequest>(`/api/portal/${enc(token)}/privacy-requests`, b, false),
     exportData: (token: string) => downloadFile(`/api/portal/${enc(token)}/export`, 'my-data.json', false),
+    /** แจ้งชำระพร้อมสลิป (multipart: photo, amount?, note?) */
+    submitSlip: (token: string, invoiceId: number, fd: FormData) =>
+      form<PortalSlipResult>(`/api/portal/${enc(token)}/invoices/${invoiceId}/slip`, fd, false),
   },
 
   // หน้าจองออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน ไม่ส่ง X-Org-Id)
@@ -1540,7 +1758,11 @@ export const api = {
     request: (token: string) =>
       get<StayRequestStatus>(`/api/public/requests/${enc(token)}`, undefined, false),
     uploadSlip: (token: string, fd: FormData) =>
-      form<{ slip_url: string }>(`/api/public/requests/${enc(token)}/slip`, fd, false),
+      form<{ slip_url: string; check?: { result: SlipResult; message: string } }>(
+        `/api/public/requests/${enc(token)}/slip`,
+        fd,
+        false,
+      ),
   },
 
   // super admin (ไม่ต้องใช้ X-Org-Id)

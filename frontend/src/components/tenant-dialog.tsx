@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ChevronDown, Loader2 } from 'lucide-react'
-import { api, type Tenant, type TenantInput } from '@/lib/api'
+import { ChevronDown, Loader2, PlaneLanding } from 'lucide-react'
+import { api, type Gender, type Tenant, type TenantInput } from '@/lib/api'
+import { GENDERS, VISA_TYPES, isForeign } from '@/lib/countries'
 import { invalidate } from '@/lib/query'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -15,11 +16,35 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Field } from '@/components/common'
+import { CountryPicker } from '@/components/country-picker'
 import { cn } from '@/lib/utils'
 
-type FormState = Required<Omit<TenantInput, 'consent_obtained'>> & { id?: number }
+type FormState = Required<
+  Pick<TenantInput, 'full_name' | 'phone' | 'email' | 'id_card' | 'note' | 'tax_id' | 'address' | 'branch_code'>
+> & { id?: number }
+
+/** ข้อมูลคนต่างชาติ (ใช้แจ้ง ตม.30) */
+interface Foreign {
+  nationality: string
+  gender: Gender
+  birth_date: string
+  arrival_date: string
+  visa_type: string
+  visa_expiry: string
+}
+
+const foreignOf = (t?: Tenant | null): Foreign => ({
+  nationality: isForeign(t?.nationality) ? (t?.nationality ?? '').toUpperCase() : '',
+  gender: (t?.gender ?? '') as Gender,
+  birth_date: t?.birth_date?.slice(0, 10) ?? '',
+  arrival_date: t?.arrival_date?.slice(0, 10) ?? '',
+  visa_type: t?.visa_type ?? '',
+  visa_expiry: t?.visa_expiry?.slice(0, 10) ?? '',
+})
 
 const EMPTY: FormState = {
   full_name: '',
@@ -56,6 +81,10 @@ function TenantForm({
 }) {
   const [form, setForm] = useState<FormState>(() => (tenant ? toInput(tenant) : EMPTY))
   const [showTax, setShowTax] = useState(() => !!(tenant?.tax_id || tenant?.address || tenant?.branch_code))
+  const wasForeign = isForeign(tenant?.nationality)
+  const [foreign, setForeign] = useState(wasForeign)
+  const [fx, setFx] = useState<Foreign>(() => foreignOf(tenant))
+  const setF = <K extends keyof Foreign>(k: K, v: Foreign[K]) => setFx((f) => ({ ...f, [k]: v }))
   // PDPA: ถามความยินยอมเฉพาะเมื่อยังไม่มี
   const askConsent = !tenant?.consent_at
   const [consent, setConsent] = useState(false)
@@ -71,6 +100,9 @@ function TenantForm({
       const body: TenantInput & { id?: number } = { ...rest, tax_id: taxDigits }
       if (idCardChanged) body.id_card = id_card
       if (askConsent) body.consent_obtained = consent
+      // ข้อมูลคนต่างชาติ: ส่งทั้งชุดเมื่อเป็นชาวต่างชาติ ('' = ล้างวันที่), ปิดสวิตช์ = กลับเป็นไทย
+      if (foreign) Object.assign(body, { ...fx, visa_type: fx.visa_type.trim() })
+      else if (wasForeign) body.nationality = ''
       return api.saveTenant(body)
     },
     onSuccess: async (t) => {
@@ -93,6 +125,7 @@ function TenantForm({
           return toast.error('เลขประจำตัวผู้เสียภาษีต้องมี 13 หลัก')
         }
         if (idCardChanged && form.id_card.includes('•')) return toast.error('กรุณาพิมพ์เลขบัตรประชาชนใหม่ทั้งหมด')
+        if (foreign && !fx.nationality) return toast.error('กรุณาเลือกสัญชาติ')
         save.mutate()
       }}
     >
@@ -112,9 +145,15 @@ function TenantForm({
         </Field>
       </div>
       <Field
-        label="เลขบัตรประชาชน / พาสปอร์ต"
+        label="เลขบัตรประชาชน / เลขหนังสือเดินทาง"
         htmlFor="t-id"
-        hint={idCardMasked && !idCardChanged ? 'แสดงบางส่วนเพื่อคุ้มครองข้อมูล — พิมพ์ใหม่ทั้งหมดหากต้องการแก้ไข' : undefined}
+        hint={
+          idCardMasked && !idCardChanged
+            ? 'แสดงบางส่วนเพื่อคุ้มครองข้อมูล — พิมพ์ใหม่ทั้งหมดหากต้องการแก้ไข'
+            : foreign
+              ? 'ชาวต่างชาติใช้เลขหนังสือเดินทาง (ใช้แจ้ง ตม.30)'
+              : undefined
+        }
       >
         <Input
           id="t-id"
@@ -126,6 +165,81 @@ function TenantForm({
           }}
         />
       </Field>
+      <div className="rounded-md border">
+        <label className="flex items-center gap-3 px-3 py-2.5">
+          <Switch checked={foreign} onCheckedChange={setForeign} aria-describedby="t-foreign-hint" />
+          <span className="grid gap-0.5">
+            <span className="text-sm font-medium">ผู้เช่าชาวต่างชาติ</span>
+            <span id="t-foreign-hint" className="text-xs text-muted-foreground">
+              ข้อมูลสำหรับแจ้งที่พักคนต่างด้าว (ตม.30)
+            </span>
+          </span>
+          <PlaneLanding className="ml-auto size-4 text-muted-foreground" />
+        </label>
+        {foreign && (
+          <div className="grid gap-4 border-t p-3">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8rem]">
+              <Field label="สัญชาติ" htmlFor="t-nat">
+                <CountryPicker
+                  id="t-nat"
+                  value={fx.nationality}
+                  onChange={(v) => setF('nationality', v)}
+                  invalid={!fx.nationality}
+                />
+              </Field>
+              <Field label="เพศ" htmlFor="t-gender">
+                <Select value={fx.gender || 'none'} onValueChange={(v) => setF('gender', (v === 'none' ? '' : v) as Gender)}>
+                  <SelectTrigger id="t-gender" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENDERS.map((g) => (
+                      <SelectItem key={g.v || 'none'} value={g.v || 'none'}>
+                        {g.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="วันเกิด" htmlFor="t-birth">
+                <Input id="t-birth" type="date" value={fx.birth_date} onChange={(e) => setF('birth_date', e.target.value)} />
+              </Field>
+              <Field label="วันที่เดินทางเข้าประเทศ" htmlFor="t-arrival">
+                <Input
+                  id="t-arrival"
+                  type="date"
+                  value={fx.arrival_date}
+                  onChange={(e) => setF('arrival_date', e.target.value)}
+                />
+              </Field>
+              <Field label="ประเภทวีซ่า" htmlFor="t-visa">
+                <Input
+                  id="t-visa"
+                  list="t-visa-types"
+                  value={fx.visa_type}
+                  onChange={(e) => setF('visa_type', e.target.value)}
+                  placeholder="เช่น Non-B"
+                />
+                <datalist id="t-visa-types">
+                  {VISA_TYPES.map((v) => (
+                    <option key={v} value={v} />
+                  ))}
+                </datalist>
+              </Field>
+              <Field label="วีซ่าครบกำหนด" htmlFor="t-visa-exp">
+                <Input
+                  id="t-visa-exp"
+                  type="date"
+                  value={fx.visa_expiry}
+                  onChange={(e) => setF('visa_expiry', e.target.value)}
+                />
+              </Field>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="rounded-md border">
         <button
           type="button"

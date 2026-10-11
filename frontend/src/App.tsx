@@ -57,6 +57,9 @@ const TermsPage = lazy(() => import('@/pages/legal').then((m) => ({ default: m.T
 const LegalPrivacyPage = lazy(() => import('@/pages/legal').then((m) => ({ default: m.PrivacyPage })))
 const PrivacyRequestsPage = lazy(() => import('@/pages/privacy-requests'))
 const AuditLogsPage = lazy(() => import('@/pages/audit-logs'))
+const PaymentNoticesPage = lazy(() => import('@/pages/payment-notices'))
+const ParcelsPage = lazy(() => import('@/pages/parcels'))
+const Tm30Page = lazy(() => import('@/pages/tm30'))
 
 const page = (el: ReactNode) => <Suspense fallback={<PageSkeleton />}>{el}</Suspense>
 
@@ -122,6 +125,9 @@ export default function App() {
                       <Route path="billing" element={page(<BillingPage />)} />
                       <Route path="privacy-requests" element={page(<PrivacyRequestsPage />)} />
                       <Route path="audit-logs" element={page(<AuditLogsPage />)} />
+                      <Route path="payment-notices" element={page(<PaymentNoticesPage />)} />
+                      <Route path="parcels" element={page(<ParcelsPage />)} />
+                      <Route path="tm30" element={page(<Tm30Page />)} />
                       <Route path="*" element={page(<NotFoundPage />)} />
                     </Route>
                   </Route>

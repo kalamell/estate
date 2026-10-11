@@ -3,12 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
   ArrowRight,
+  BanknoteArrowUp,
   BedDouble,
   BrushCleaning,
   CalendarClock,
   HandCoins,
   Inbox,
+  Package,
   PiggyBank,
+  PlaneLanding,
   ShieldCheck,
   TrendingUp,
   Wallet,
@@ -32,6 +35,18 @@ export default function DashboardPage() {
   const properties = useQuery({ queryKey: ['properties'], queryFn: api.properties })
   const d = dash.data
   const openPdpa = canManage ? (d?.open_privacy_requests ?? 0) : 0
+  const notices = d?.pending_payment_notices ?? 0
+  const parcels = d?.parcels_waiting ?? 0
+  const tm30 = canManage ? (d?.tm30_pending ?? 0) : 0
+  const today_ = [notices, parcels, tm30].filter((n) => n > 0).length
+  // จำนวนที่เกินกำหนดแจ้ง (ดึงเฉพาะเมื่อมีรายการรอแจ้ง)
+  const tm30q = useQuery({
+    queryKey: ['tm30', 'pending'],
+    queryFn: () => api.tm30({ status: 'pending' }),
+    enabled: tm30 > 0,
+    meta: { silent: true },
+  })
+  const tm30Overdue = tm30q.data?.summary.overdue ?? 0
 
   return (
     <div className="space-y-6">
@@ -71,6 +86,51 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {today_ > 0 && (
+        <div className={cn('grid gap-4 sm:grid-cols-2', today_ >= 3 && 'lg:grid-cols-3')}>
+          {notices > 0 && (
+            <AttentionRow
+              to="/payment-notices"
+              icon={BanknoteArrowUp}
+              tone="warning"
+              title="แจ้งชำระรอตรวจสลิป"
+              loading={false}
+              count={notices}
+              detail={`${notices} รายการ · ตรวจสลิปแล้วยืนยันเพื่อออกใบเสร็จ`}
+              empty=""
+            />
+          )}
+          {parcels > 0 && (
+            <AttentionRow
+              to="/parcels"
+              icon={Package}
+              tone="info"
+              title="พัสดุรอผู้เช่ามารับ"
+              loading={false}
+              count={parcels}
+              detail={`${parcels} ชิ้น`}
+              empty=""
+            />
+          )}
+          {tm30 > 0 && (
+            <AttentionRow
+              to="/tm30"
+              icon={PlaneLanding}
+              tone="warning"
+              title="ตม.30 รอแจ้ง"
+              loading={false}
+              count={tm30}
+              detail={
+                tm30Overdue > 0
+                  ? `${tm30} รายการ · เกินกำหนด ${tm30Overdue} รายการ`
+                  : `${tm30} รายการ · ต้องแจ้ง ตม. ภายใน 24 ชม. หลังเข้าพัก`
+              }
+              empty=""
+            />
+          )}
+        </div>
+      )}
 
       {openPdpa > 0 && (
         <AttentionRow

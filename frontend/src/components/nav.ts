@@ -1,4 +1,5 @@
 import {
+  BanknoteArrowUp,
   BarChart3,
   BrushCleaning,
   Building2,
@@ -11,6 +12,8 @@ import {
   LayoutDashboard,
   LifeBuoy,
   MapPinned,
+  Package,
+  PlaneLanding,
   ReceiptText,
   Settings,
   ShieldCheck,
@@ -36,6 +39,9 @@ export type NavBadge =
   | 'pending_requests'
   | 'hk_open_tasks'
   | 'open_privacy_requests'
+  | 'pending_payment_notices'
+  | 'parcels_waiting'
+  | 'tm30_pending'
 
 /** ตัวเลขบนเมนูจากข้อมูล dashboard */
 export function navBadgeCount(d: Dashboard | undefined, badge: NavBadge): number {
@@ -66,6 +72,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/housekeeping', label: 'งานแม่บ้าน', icon: BrushCleaning, badge: 'hk_open_tasks' },
       { to: '/meters', label: 'จดมิเตอร์', icon: Gauge },
       { to: '/invoices', label: 'บิล & เอกสาร', icon: ReceiptText, badge: 'overdue_count' },
+      { to: '/payment-notices', label: 'แจ้งชำระ', icon: BanknoteArrowUp, badge: 'pending_payment_notices' },
+      { to: '/parcels', label: 'พัสดุ', icon: Package, badge: 'parcels_waiting' },
       { to: '/tickets', label: 'แจ้งซ่อม & ติดต่อ', icon: Wrench, badge: 'open_tickets' },
       { to: '/move-outs', label: 'ย้ายออก & คืนมัดจำ', icon: DoorOpen },
       { to: '/tenants', label: 'ผู้เช่า', icon: Users },
@@ -85,6 +93,7 @@ export const NAV_GROUPS: NavGroup[] = [
         badge: 'open_privacy_requests',
         adminOnly: true,
       },
+      { to: '/tm30', label: 'ตม.30', icon: PlaneLanding, badge: 'tm30_pending', adminOnly: true },
       { to: '/audit-logs', label: 'ประวัติการใช้งาน', icon: History, adminOnly: true },
     ],
   },
