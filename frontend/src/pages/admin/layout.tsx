@@ -1,5 +1,7 @@
 import { NavLink, Outlet, Link } from 'react-router-dom'
-import { ArrowLeft, Building2, Inbox, LayoutDashboard, Package, ShieldCheck, Users } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowLeft, Building2, CreditCard, Inbox, LayoutDashboard, Package, ShieldCheck, Users } from 'lucide-react'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/contexts/session'
 import { Badge } from '@/components/ui/badge'
@@ -10,12 +12,20 @@ const TABS = [
   { to: '/admin', label: 'ภาพรวม', icon: LayoutDashboard, end: true },
   { to: '/admin/packages', label: 'แพ็กเกจ', icon: Package },
   { to: '/admin/orgs', label: 'องค์กรลูกค้า', icon: Building2 },
+  { to: '/admin/billing', label: 'ค่าบริการ', icon: CreditCard },
   { to: '/admin/users', label: 'ผู้ใช้', icon: Users },
   { to: '/admin/support', label: 'คำร้องจากลูกค้า', icon: Inbox },
 ]
 
 export default function AdminLayout() {
   const { user, orgs } = useSession()
+  // จำนวนสลิปรอตรวจ (แสดงบนแท็บ ค่าบริการ)
+  const review = useQuery({
+    queryKey: ['admin', 'billing', 'settings'],
+    queryFn: () => api.admin.billing({ status: 'review' }),
+    staleTime: 60_000,
+    meta: { silent: true },
+  }).data?.summary.review
   return (
     <div className="min-h-svh bg-background">
       <header className="sticky top-0 z-20 border-b border-sidebar-border bg-sidebar text-sidebar-accent-foreground">
@@ -60,6 +70,11 @@ export default function AdminLayout() {
             >
               <t.icon className="size-4" />
               {t.label}
+              {t.to === '/admin/billing' && !!review && (
+                <span className="rounded-sm bg-warning/25 px-1.5 text-xs font-semibold text-sidebar-accent-foreground tabular-nums">
+                  {review}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

@@ -32,12 +32,14 @@ const MetersPage = lazy(() => import('@/pages/meters'))
 const InvoicesPage = lazy(() => import('@/pages/invoices'))
 const TenantsPage = lazy(() => import('@/pages/tenants'))
 const SettingsPage = lazy(() => import('@/pages/settings'))
+const BillingPage = lazy(() => import('@/pages/billing'))
 const AdminLayout = lazy(() => import('@/pages/admin/layout'))
 const AdminOverview = lazy(() => import('@/pages/admin/overview'))
 const AdminPackages = lazy(() => import('@/pages/admin/packages'))
 const AdminOrgs = lazy(() => import('@/pages/admin/orgs'))
 const AdminUsers = lazy(() => import('@/pages/admin/users'))
 const AdminSupport = lazy(() => import('@/pages/admin/support'))
+const AdminBilling = lazy(() => import('@/pages/admin/billing'))
 const TicketsPage = lazy(() => import('@/pages/tickets'))
 const MoveOutsPage = lazy(() => import('@/pages/move-outs'))
 const ReportsPage = lazy(() => import('@/pages/reports'))
@@ -47,6 +49,8 @@ const StaffInvoicePrint = lazy(() => import('@/pages/print/invoice').then((m) =>
 const PortalInvoicePrint = lazy(() => import('@/pages/print/invoice').then((m) => ({ default: m.PortalInvoicePrint })))
 const StaffReceiptPrint = lazy(() => import('@/pages/print/receipt').then((m) => ({ default: m.StaffReceiptPrint })))
 const PortalReceiptPrint = lazy(() => import('@/pages/print/receipt').then((m) => ({ default: m.PortalReceiptPrint })))
+const OrgSubscriptionPrint = lazy(() => import('@/pages/print/subscription').then((m) => ({ default: m.OrgSubscriptionPrint })))
+const AdminSubscriptionPrint = lazy(() => import('@/pages/print/subscription').then((m) => ({ default: m.AdminSubscriptionPrint })))
 const StaffMoveOutPrint = lazy(() => import('@/pages/print/move-out').then((m) => ({ default: m.StaffMoveOutPrint })))
 const NotFoundPage = lazy(() => import('@/pages/not-found'))
 const TermsPage = lazy(() => import('@/pages/legal').then((m) => ({ default: m.TermsPage })))
@@ -82,6 +86,12 @@ export default function App() {
                     <Route path="/print/invoice/:id" element={<StaffInvoicePrint />} />
                     <Route path="/print/receipt/:id" element={<StaffReceiptPrint />} />
                     <Route path="/print/move-out/:id" element={<StaffMoveOutPrint />} />
+                    {/* ใบแจ้งหนี้/ใบเสร็จค่าบริการแพลตฟอร์ม (?type=invoice|receipt) */}
+                    <Route path="/print/subscription/:id" element={<OrgSubscriptionPrint />} />
+                    <Route
+                      path="/admin/print/subscription/:id"
+                      element={<RequireSuperAdmin><AdminSubscriptionPrint /></RequireSuperAdmin>}
+                    />
                     <Route
                       path="/admin"
                       element={<RequireSuperAdmin><AdminLayout /></RequireSuperAdmin>}
@@ -91,6 +101,7 @@ export default function App() {
                       <Route path="orgs" element={page(<AdminOrgs />)} />
                       <Route path="users" element={page(<AdminUsers />)} />
                       <Route path="support" element={page(<AdminSupport />)} />
+                      <Route path="billing" element={page(<AdminBilling />)} />
                     </Route>
                     <Route element={<RequireOrg><AppShell /></RequireOrg>}>
                       <Route index element={page(<DashboardPage />)} />
@@ -108,6 +119,7 @@ export default function App() {
                       <Route path="reports" element={page(<ReportsPage />)} />
                       <Route path="support" element={page(<SupportPage />)} />
                       <Route path="settings" element={page(<SettingsPage />)} />
+                      <Route path="billing" element={page(<BillingPage />)} />
                       <Route path="privacy-requests" element={page(<PrivacyRequestsPage />)} />
                       <Route path="audit-logs" element={page(<AuditLogsPage />)} />
                       <Route path="*" element={page(<NotFoundPage />)} />

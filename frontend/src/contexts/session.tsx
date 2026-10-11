@@ -96,7 +96,8 @@ export function SessionProvider({ me, children }: { me: Me; children: ReactNode 
     const role = orgInfo?.role ?? org?.role ?? null
     const status = orgInfo?.org.status ?? org?.status
     const endsAt = orgInfo?.org.ends_at
-    const expired = !!endsAt && endsAt.slice(0, 10) < today()
+    // หมดอายุแล้วแต่ยังอยู่ในช่วงผ่อนผัน → ยังใช้งานได้ตามปกติ (ตรงกับฝั่งเซิร์ฟเวอร์)
+    const expired = !!endsAt && endsAt.slice(0, 10) < today() && !orgInfo?.billing?.in_grace
     const readOnly = status === 'suspended' || status === 'cancelled' || expired
     return {
       user: me.user,

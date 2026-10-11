@@ -42,8 +42,11 @@ export function handleApiError(err: unknown) {
           ? 'เกินขีดจำกัดของแพ็กเกจปัจจุบัน'
           : e.code === 'feature_unavailable'
             ? 'ฟีเจอร์นี้ไม่รวมอยู่ในแพ็กเกจปัจจุบัน'
-            : 'การสมัครใช้งานไม่อยู่ในสถานะใช้งาน',
-      action: { label: 'ดูแพ็กเกจ', onClick: () => navigateTo('/settings?tab=package') },
+            : 'บัญชีหมดอายุหรือถูกระงับ — อ่านข้อมูลได้อย่างเดียว',
+      action: {
+        label: e.code === 'subscription_inactive' ? 'ต่ออายุ / ชำระเงิน' : 'ดูแพ็กเกจ',
+        onClick: () => navigateTo('/billing'),
+      },
       duration: 8000,
     })
     return

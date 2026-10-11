@@ -31,6 +31,7 @@ const EMPTY: PackageInput = {
   name: '',
   description: '',
   price_monthly: 0,
+  price_yearly: 0,
   max_properties: 1,
   max_units: 20,
   max_members: 2,
@@ -40,8 +41,20 @@ const EMPTY: PackageInput = {
   sort_order: 0,
 }
 
+/** จำนวนเดือนของราคารายปีอัตโนมัติ (ตั้งค่าที่ ค่าบริการ → ตั้งค่าผู้ให้บริการ) */
+function useYearlyMonths() {
+  return (
+    useQuery({
+      queryKey: ['admin', 'billing', 'settings'],
+      queryFn: () => api.admin.billing({ status: 'review' }),
+      meta: { silent: true },
+    }).data?.settings.yearly_months ?? 10
+  )
+}
+
 export default function AdminPackages() {
   const confirm = useConfirm()
+  const months = useYearlyMonths()
   const { data: packages, isLoading } = useQuery({ queryKey: ['admin', 'packages'], queryFn: api.admin.packages })
   const [editing, setEditing] = useState<Package | null>(null)
   const [open, setOpen] = useState(false)
@@ -94,9 +107,17 @@ export default function AdminPackages() {
                 {p.description && <p className="line-clamp-2 text-sm text-muted-foreground">{p.description}</p>}
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold tracking-tight tabular-nums">{baht(p.price_monthly)}</span>
-                  <span className="text-sm text-muted-foreground">/ เดือน</span>
+                <div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-bold tracking-tight tabular-nums">{baht(p.price_monthly)}</span>
+                    <span className="text-sm text-muted-foreground">/ เดือน</span>
+                  </div>
+                  {p.price_monthly > 0 && (
+                    <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                      {baht(p.price_yearly || p.price_monthly * months)} / ปี
+                      {!p.price_yearly && ` (อัตโนมัติ × ${months} เดือน)`}
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   {[
@@ -188,15 +209,17 @@ function SwitchRow({
   )
 }
 
-type NumField = 'price_monthly' | 'max_properties' | 'max_units' | 'max_members' | 'sort_order'
+type NumField = 'price_monthly' | 'price_yearly' | 'max_properties' | 'max_units' | 'max_members' | 'sort_order'
 
 function PackageForm({ onOpenChange, pkg }: { open: boolean; onOpenChange: (o: boolean) => void; pkg: Package | null }) {
+  const months = useYearlyMonths()
   const [form, setForm] = useState<PackageInput>(() =>
     pkg
       ? {
           name: pkg.name,
           description: pkg.description ?? '',
           price_monthly: pkg.price_monthly,
+          price_yearly: pkg.price_yearly ?? 0,
           max_properties: pkg.max_properties,
           max_units: pkg.max_units,
           max_members: pkg.max_members,
@@ -230,7 +253,7 @@ function PackageForm({ onOpenChange, pkg }: { open: boolean; onOpenChange: (o: b
     >
       <DialogHeader>
         <DialogTitle>{pkg ? `แก้ไขแพ็กเกจ ${pkg.name}` : 'สร้างแพ็กเกจ'}</DialogTitle>
-        <DialogDescription>ขีดจำกัดต้องมีค่าอย่างน้อย 1</DialogDescription>
+        <DialogDescription>ขีดจำกัดต้องมีค่าอย่างน้อย 1 · ราคารวม VAT</DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="ชื่อแพ็กเกจ" htmlFor="pk-name" className="sm:col-span-2">
@@ -239,8 +262,29 @@ function PackageForm({ onOpenChange, pkg }: { open: boolean; onOpenChange: (o: b
         <Field label="ราคา/เดือน (฿)" htmlFor="pk-price">
           <Input id="pk-price" type="number" min={0} step="0.01" value={form.price_monthly} onChange={numIn('price_monthly')} />
         </Field>
-        <Field label="คำอธิบาย" htmlFor="pk-desc" className="sm:col-span-3">
+        <Field label="คำอธิบาย" htmlFor="pk-desc" className="sm:col-span-2">
           <Textarea id="pk-desc" rows={2} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+        </Field>
+        <Field
+          label="ราคา/ปี (฿)"
+          htmlFor="pk-price-y"
+          hint={
+            form.price_yearly > 0
+              ? form.price_monthly > 0 && form.price_yearly < form.price_monthly * 12
+                ? `ลูกค้าประหยัด ${baht(form.price_monthly * 12 - form.price_yearly)} ต่อปี`
+                : 'กำหนดเอง'
+              : `ว่าง = อัตโนมัติ ${baht(form.price_monthly * months)} (× ${months} เดือน)`
+          }
+        >
+          <Input
+            id="pk-price-y"
+            type="number"
+            min={0}
+            step="0.01"
+            value={form.price_yearly || ''}
+            placeholder={`อัตโนมัติ ${(form.price_monthly * months).toLocaleString('th-TH')}`}
+            onChange={numIn('price_yearly')}
+          />
         </Field>
         <Field label="จำนวนโครงการสูงสุด" htmlFor="pk-mp">
           <Input id="pk-mp" type="number" min={1} value={form.max_properties} onChange={numIn('max_properties')} required />

@@ -1,9 +1,12 @@
+import type { ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarPlus, ShieldAlert } from 'lucide-react'
+import { ArrowRight, CalendarClock, CalendarPlus, Clock, ShieldAlert, XCircle } from 'lucide-react'
 import { useSession } from '@/contexts/session'
 import { api } from '@/lib/api'
-import { ORG_STATUS, thDateLong } from '@/lib/format'
+import { BILLING_PATH, billingNotice } from '@/lib/billing'
+import { thDateLong } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -25,7 +28,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Logo } from '@/components/common'
 import { BookingDialogProvider, useBookingDialog } from '@/components/booking-dialog'
-import { SETTINGS_NAV, SUPPORT_NAV, navBadgeCount, navGroupsFor, titleFor, type NavItem } from '@/components/nav'
+import { BILLING_NAV, SETTINGS_NAV, SUPPORT_NAV, navBadgeCount, navGroupsFor, titleFor, type NavItem } from '@/components/nav'
 import { OrgSwitcher } from '@/components/org-switcher'
 import { SidebarUserMenu } from '@/components/user-menu'
 
@@ -111,7 +114,7 @@ function AppSidebar() {
         ))}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
-            <NavLinks items={[SUPPORT_NAV, SETTINGS_NAV]} />
+            <NavLinks items={[SUPPORT_NAV, BILLING_NAV, SETTINGS_NAV]} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -122,21 +125,110 @@ function AppSidebar() {
   )
 }
 
-function ReadOnlyBanner() {
-  const { readOnly, orgInfo } = useSession()
-  if (!readOnly) return null
-  const status = orgInfo?.org.status
+/** แถบแจ้งเตือนเรื่องแพ็กเกจ: ใกล้หมดอายุ / ช่วงผ่อนผัน / อ่านอย่างเดียว / สลิปถูกตีกลับ */
+function BillingBanner() {
+  const { readOnly, orgInfo, canManage } = useSession()
+  const { pathname } = useLocation()
+  const n = billingNotice(orgInfo, readOnly)
+  if (!n) return null
+  // พนักงานไม่ต้องเห็นเรื่องสลิป (เจ้าของจัดการเอง)
+  if (!canManage && (n.kind === 'rejected' || n.kind === 'review')) return null
+
+  let tone: 'calm' | 'warn' | 'alert' = 'warn'
+  let icon = CalendarClock
+  let text: ReactNode
+  let cta = 'ต่ออายุแพ็กเกจ'
+  switch (n.kind) {
+    case 'suspended':
+    case 'cancelled':
+      tone = 'alert'
+      icon = ShieldAlert
+      text = (
+        <>
+          <b className="font-medium">บัญชี{n.kind === 'suspended' ? 'ถูกระงับ' : 'ถูกยกเลิก'}</b> — ข้อมูลยังอยู่ครบ แต่อ่านได้อย่างเดียว
+        </>
+      )
+      break
+    case 'expired':
+      tone = 'alert'
+      icon = ShieldAlert
+      text = (
+        <>
+          <b className="font-medium">แพ็กเกจหมดอายุ{n.endsAt ? ` ${thDateLong(n.endsAt)}` : ''}</b> — อ่านข้อมูลได้อย่างเดียวจนกว่าจะต่ออายุ
+        </>
+      )
+      cta = 'ต่ออายุเพื่อใช้งานต่อ'
+      break
+    case 'rejected':
+      tone = 'alert'
+      icon = XCircle
+      text = (
+        <>
+          <b className="font-medium">สลิปค่าบริการไม่ผ่านการตรวจสอบ</b> — {n.reason}
+        </>
+      )
+      cta = 'แนบสลิปใหม่'
+      break
+    case 'review':
+      tone = 'calm'
+      icon = Clock
+      text = 'ได้รับสลิปค่าบริการแล้ว — รอผู้ให้บริการตรวจสอบ แพ็กเกจจะต่ออายุให้อัตโนมัติ'
+      cta = 'ดูสถานะ'
+      break
+    case 'grace':
+      text = (
+        <>
+          <b className="font-medium">แพ็กเกจหมดอายุแล้ว</b> — ยังใช้งานได้ถึง {thDateLong(n.graceUntil)}
+        </>
+      )
+      cta = n.hasInvoice ? 'ชำระเงิน' : 'ต่ออายุแพ็กเกจ'
+      break
+    case 'expiring':
+      tone = n.daysLeft <= 3 ? 'warn' : 'calm'
+      text = (
+        <>
+          {n.trial ? 'ช่วงทดลองใช้' : 'แพ็กเกจ'}
+          {n.daysLeft === 0 ? 'หมดอายุวันนี้' : `จะหมดอายุในอีก ${n.daysLeft} วัน`}
+          <span className="opacity-70"> · {thDateLong(n.endsAt)}</span>
+        </>
+      )
+      cta = n.trial ? 'เลือกแพ็กเกจ' : n.hasInvoice ? 'ชำระเงิน' : 'ต่ออายุแพ็กเกจ'
+      break
+  }
+  const Icon = icon
+  const onBilling = pathname.startsWith(BILLING_PATH)
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning-foreground lg:px-8">
-      <ShieldAlert className="size-4 shrink-0" />
-      <span className="font-medium">บัญชีถูกระงับ/หมดอายุ — อ่านได้อย่างเดียว</span>
-      <span className="opacity-80">
-        {status && ORG_STATUS[status]?.label}
-        {orgInfo?.org.ends_at && ` · สิ้นสุด ${thDateLong(orgInfo.org.ends_at)}`}
-      </span>
-      <Link to="/settings?tab=package" className="ml-auto font-medium underline underline-offset-4">
-        ดูแพ็กเกจ
-      </Link>
+    <div
+      role="status"
+      className={cn(
+        'flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-[13px] lg:px-8',
+        tone === 'calm' && 'bg-muted/60 text-foreground',
+        tone === 'warn' && 'border-warning/30 bg-warning/10 text-foreground',
+        tone === 'alert' && 'border-destructive/20 bg-destructive/[0.06] text-foreground',
+      )}
+    >
+      <Icon
+        className={cn(
+          'size-4 shrink-0',
+          tone === 'calm' && 'text-muted-foreground',
+          tone === 'warn' && 'text-warning',
+          tone === 'alert' && 'text-destructive',
+        )}
+      />
+      <span className="min-w-0">{text}</span>
+      {canManage ? (
+        !onBilling && (
+          <Link
+            to={n.kind === 'suspended' || n.kind === 'cancelled' ? '/support' : BILLING_PATH + (n.kind === 'rejected' ? '#pay' : '')}
+            className="ml-auto inline-flex items-center gap-1 font-medium whitespace-nowrap underline-offset-4 hover:underline"
+          >
+            {n.kind === 'suspended' || n.kind === 'cancelled' ? 'ติดต่อผู้ให้บริการ' : cta}
+            <ArrowRight className="size-3.5" />
+          </Link>
+        )
+      ) : (
+        <span className="ml-auto whitespace-nowrap text-muted-foreground">ติดต่อเจ้าของบัญชี</span>
+      )}
     </div>
   )
 }
@@ -169,7 +261,7 @@ export function AppShell() {
         <AppSidebar />
         <SidebarInset className="min-w-0">
           <Header />
-          <ReadOnlyBanner />
+          <BillingBanner />
           <main className="mx-auto w-full max-w-7xl flex-1 p-4 pb-24 sm:pb-8 lg:p-8">
             <Outlet key={orgId ?? 'none'} />
           </main>

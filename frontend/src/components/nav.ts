@@ -4,6 +4,7 @@ import {
   Building2,
   CalendarDays,
   CalendarRange,
+  CreditCard,
   DoorOpen,
   Gauge,
   History,
@@ -99,11 +100,12 @@ export function navGroupsFor(canManage: boolean): NavGroup[] {
 export const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items)
 
 export const SUPPORT_NAV: NavItem = { to: '/support', label: 'ติดต่อผู้ให้บริการ', icon: LifeBuoy }
+export const BILLING_NAV: NavItem = { to: '/billing', label: 'แพ็กเกจ & การชำระเงิน', icon: CreditCard }
 export const SETTINGS_NAV: NavItem = { to: '/settings', label: 'ตั้งค่าองค์กร', icon: Settings }
 
 export function titleFor(pathname: string) {
   if (/^\/properties\/\d+\/pricing/.test(pathname)) return 'ราคาตามฤดูกาล'
-  const all = [...NAV, SUPPORT_NAV, SETTINGS_NAV]
+  const all = [...NAV, SUPPORT_NAV, BILLING_NAV, SETTINGS_NAV]
   return (
     all.find((n) => (n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)))?.label ?? 'Estate'
   )

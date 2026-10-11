@@ -1,16 +1,15 @@
-import { useSearchParams } from 'react-router-dom'
-import { Building2, FileText, MessageCircle, Package, Palette, ShieldCheck, Users } from 'lucide-react'
+import { Navigate, useSearchParams } from 'react-router-dom'
+import { Building2, FileText, MessageCircle, Palette, ShieldCheck, Users } from 'lucide-react'
 import { useSession } from '@/contexts/session'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrgTab } from './org-tab'
-import { PackageTab } from './package-tab'
 import { MembersTab } from './members-tab'
 import { IssuerTab } from './issuer-tab'
 import { AppearanceTab } from './appearance-tab'
 import { LineTab } from './line-tab'
 import { PrivacyTab } from './privacy-tab'
 
-const TABS = ['org', 'issuer', 'appearance', 'line', 'privacy', 'package', 'members'] as const
+const TABS = ['org', 'issuer', 'appearance', 'line', 'privacy', 'members'] as const
 const ADMIN_TABS: readonly Tab[] = ['line', 'privacy']
 type Tab = (typeof TABS)[number]
 
@@ -18,6 +17,8 @@ export default function SettingsPage() {
   const { canManage } = useSession()
   const [params, setParams] = useSearchParams()
   const raw = params.get('tab')
+  // แท็บแพ็กเกจเดิมย้ายไปหน้า แพ็กเกจ & การชำระเงิน
+  if (raw === 'package') return <Navigate to="/billing" replace />
   const allowed = TABS.filter((t) => canManage || !ADMIN_TABS.includes(t))
   const tab: Tab = (allowed as readonly string[]).includes(raw ?? '') ? (raw as Tab) : 'org'
   return (
@@ -42,9 +43,6 @@ export default function SettingsPage() {
             <ShieldCheck /> ความเป็นส่วนตัว (PDPA)
           </TabsTrigger>
         )}
-        <TabsTrigger value="package" className="px-3">
-          <Package /> แพ็กเกจ & การใช้งาน
-        </TabsTrigger>
         <TabsTrigger value="members" className="px-3">
           <Users /> สมาชิก
         </TabsTrigger>
@@ -68,9 +66,6 @@ export default function SettingsPage() {
           <PrivacyTab />
         </TabsContent>
       )}
-      <TabsContent value="package">
-        <PackageTab />
-      </TabsContent>
       <TabsContent value="members">
         <MembersTab />
       </TabsContent>

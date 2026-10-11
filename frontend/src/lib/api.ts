@@ -164,6 +164,8 @@ export interface OrgInfo {
     features: Features
   }
   usage: { properties: number; units: number; members: number }
+  /** สรุปสถานะการต่ออายุ (สำหรับแถบแจ้งเตือน) */
+  billing?: BillingSummary
   role: Role
 }
 
@@ -195,6 +197,8 @@ export interface PackageInput {
   name: string
   description: string
   price_monthly: number
+  /** 0 = คิดอัตโนมัติจาก ราคารายเดือน × yearly_months */
+  price_yearly: number
   max_properties: number
   max_units: number
   max_members: number
@@ -232,6 +236,158 @@ export interface AdminUser {
   is_active: boolean
   org_count: number
   created_at: string
+}
+
+// ===================== Types: ค่าบริการแพลตฟอร์ม (SaaS billing) =====================
+
+export type BillingCycle = 'monthly' | 'yearly'
+export type SubInvoiceStatus = 'pending' | 'review' | 'paid' | 'void'
+
+/** สรุปสถานะการต่ออายุ (GET /api/org → billing, GET /api/billing → summary) */
+export interface BillingSummary {
+  /** วันที่เหลือก่อนหมดอายุ (ติดลบ = เลยมาแล้ว), null = ไม่มีวันหมดอายุ */
+  days_left: number | null
+  grace_until: string | null
+  /** หมดอายุแล้วแต่ยังอยู่ในช่วงผ่อนผัน (ยังใช้งานได้ตามปกติ) */
+  in_grace: boolean
+  open_invoice: {
+    id: number
+    doc_no: string
+    total: number
+    due_date: string
+    status: SubInvoiceStatus
+    reject_reason: string | null
+  } | null
+}
+
+/** ข้อมูลผู้ให้บริการแพลตฟอร์ม (ตั้งค่าโดย super admin) */
+export interface PlatformSettings {
+  company_name: string
+  tax_id: string
+  branch_code: string
+  address: string
+  phone: string
+  email: string
+  vat_registered: boolean
+  vat_rate: number
+  promptpay_id: string
+  bank_info: string
+  /** ออกใบแจ้งหนี้ต่ออายุล่วงหน้ากี่วัน */
+  remind_days: number
+  /** ใช้งานต่อได้หลังหมดอายุกี่วัน */
+  grace_days: number
+  /** ราคารายปีอัตโนมัติ = ราคารายเดือน × จำนวนเดือนนี้ */
+  yearly_months: number
+}
+
+export interface SubInvoice {
+  id: number
+  org_id: number
+  org_name: string
+  doc_no: string
+  /** renewal = ต่ออายุแพ็กเกจเดิม, change = เปลี่ยนแพ็กเกจ/รอบบิล */
+  kind: 'renewal' | 'change'
+  package_id: number
+  package_name: string
+  cycle: BillingCycle
+  period_start: string
+  period_end: string
+  /** ราคาแพ็กเกจ (รวม VAT) */
+  price: number
+  /** ส่วนลดจากมูลค่าวันที่เหลือของแพ็กเกจเดิม */
+  credit: number
+  /** มูลค่าก่อน VAT */
+  subtotal: number
+  vat_amount: number
+  total: number
+  due_date: string
+  status: SubInvoiceStatus
+  slip_url: string | null
+  slip_at: string | null
+  reject_reason: string | null
+  paid_at: string | null
+  payment_ref: string | null
+  receipt_no: string | null
+  issuer: {
+    name: string
+    tax_id: string
+    branch_code: string
+    address: string
+    phone: string
+    email: string
+    vat_registered: boolean
+    vat_rate: number
+  }
+  payer: { name: string; tax_id: string; branch_code: string; address: string; phone: string }
+  void_reason: string | null
+  created_at: string
+  /** ผลตรวจสลิปอัตโนมัติล่าสุด (null = ยังไม่ได้ตรวจ) */
+  slip_result?: SlipResult | null
+  slip_message?: string | null
+}
+
+export type SlipResult = 'verified' | 'readable' | 'unreadable' | 'duplicate' | 'mismatch' | 'error'
+
+/** ผู้ให้บริการตรวจสลิปสำหรับค่าแพ็กเกจ */
+export interface PlatformSlipSettings {
+  provider: 'none' | 'easyslip' | 'slipok'
+  has_key: boolean
+  branch_id: string
+  auto_approve: boolean
+}
+
+export interface SubPayment {
+  invoice: SubInvoice
+  /** QR พร้อมเพย์แบบระบุยอด (เฉพาะใบที่ยังไม่ชำระ และตั้งค่าพร้อมเพย์แล้ว) */
+  promptpay_payload: string | null
+  bank_info: string
+  baht_text: string
+}
+
+export interface BillingPackage {
+  id: number
+  name: string
+  description: string
+  price_monthly: number
+  /** ราคารายปีจริง (คำนวณอัตโนมัติแล้วถ้าไม่ได้กำหนด) */
+  price_yearly: number
+  max_properties: number
+  max_units: number
+  max_members: number
+  features: Features
+  current: boolean
+}
+
+export interface BillingOverview {
+  platform: {
+    company_name: string
+    bank_info: string
+    has_promptpay: boolean
+    vat_registered: boolean
+    vat_rate: number
+    grace_days: number
+    yearly_months: number
+  }
+  subscription: {
+    package_id: number
+    package_name: string
+    cycle: BillingCycle
+    status: OrgStatus
+    ends_at: string | null
+    price: number
+    read_only: boolean
+  }
+  summary: BillingSummary
+  packages: BillingPackage[]
+  open_invoice: SubPayment | null
+  invoices: SubInvoice[]
+}
+
+export interface AdminBilling {
+  settings: PlatformSettings
+  summary: { review: number; pending: number; overdue: number; revenue_month: number; revenue_year: number }
+  invoices: SubInvoice[]
+  slip?: PlatformSlipSettings
 }
 
 // ===================== Types: domain =====================
@@ -1203,6 +1359,14 @@ export const api = {
   unlinkStaffLine: () => del('/api/org/line/staff-link'),
   lineMessages: (limit = 50) => get<LineMessage[]>('/api/line/messages', { limit }),
 
+  // ค่าบริการแพลตฟอร์ม (เจ้าของ/ผู้ดูแลองค์กร — ใช้ได้แม้บัญชีหมดอายุ)
+  billing: () => get<BillingOverview>('/api/billing'),
+  checkout: (b: { package_id: number; cycle: BillingCycle }) =>
+    post<SubPayment | { switched: true }>('/api/billing/checkout', b),
+  billingInvoice: (id: number) => get<SubPayment>(`/api/billing/invoices/${id}`),
+  uploadBillingSlip: (id: number, fd: FormData) => form<SubPayment>(`/api/billing/invoices/${id}/slip`, fd),
+  cancelBillingInvoice: (id: number) => post<object>(`/api/billing/invoices/${id}/cancel`),
+
   // domain
   dashboard: () => get<Dashboard>('/api/dashboard'),
   properties: () => get<Property[]>('/api/properties'),
@@ -1401,5 +1565,20 @@ export const api = {
       form<unknown>(`/api/admin/support/${id}/messages`, fd, false),
     patchSupport: (id: number, b: { status?: TicketStatus; priority?: TicketPriority }) =>
       patch<Ticket>(`/api/admin/support/${id}`, b, false),
+    billing: (f: { status?: SubInvoiceStatus | ''; org_id?: number | '' } = {}) =>
+      get<AdminBilling>('/api/admin/billing', f, false),
+    updateBillingSettings: (b: PlatformSettings) =>
+      put<PlatformSettings>('/api/admin/billing/settings', b, false),
+    updateSlipSettings: (b: Omit<PlatformSlipSettings, 'has_key'> & { api_key: string }) =>
+      put<PlatformSlipSettings>('/api/admin/billing/slip', b, false),
+    issueInvoice: (b: { org_id: number; package_id: number; cycle: BillingCycle }) =>
+      post<SubPayment>('/api/admin/billing/invoices', b, false),
+    billingInvoice: (id: number) => get<SubPayment>(`/api/admin/billing/invoices/${id}`, undefined, false),
+    approveInvoice: (id: number, payment_ref?: string) =>
+      post<SubPayment>(`/api/admin/billing/invoices/${id}/approve`, { payment_ref: payment_ref || null }, false),
+    rejectInvoice: (id: number, reason: string) =>
+      post<SubPayment>(`/api/admin/billing/invoices/${id}/reject`, { reason }, false),
+    voidInvoice: (id: number, reason: string) =>
+      post<SubPayment>(`/api/admin/billing/invoices/${id}/void`, { reason }, false),
   },
 }

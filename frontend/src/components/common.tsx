@@ -191,7 +191,7 @@ export function UpsellCard({ title, description }: { title: string; description:
         description={description}
         action={
           <Button asChild variant="outline">
-            <Link to="/settings?tab=package">
+            <Link to="/billing">
               ดูแพ็กเกจที่รองรับ <ArrowRight />
             </Link>
           </Button>
@@ -207,7 +207,7 @@ export function UpsellHint({ children }: { children: ReactNode }) {
       <Lock className="mt-0.5 size-3.5 shrink-0" />
       <div>
         {children}{' '}
-        <Link to="/settings?tab=package" className="font-medium text-primary hover:underline">
+        <Link to="/billing" className="font-medium text-primary hover:underline">
           อัปเกรดแพ็กเกจ
         </Link>
       </div>
