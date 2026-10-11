@@ -4,6 +4,7 @@ mod bookings;
 mod calendar;
 mod contracts;
 mod dashboard;
+mod expenses;
 mod files;
 mod housekeeping;
 mod imports;
@@ -208,6 +209,37 @@ pub fn api_router() -> Router<AppState> {
             "/api/import-mappings/:id",
             axum::routing::delete(imports::delete_mapping),
         )
+        .route(
+            "/api/expense-categories",
+            get(expenses::categories).post(expenses::create_category),
+        )
+        .route(
+            "/api/expense-categories/:id",
+            axum::routing::put(expenses::update_category).delete(expenses::delete_category),
+        )
+        .route(
+            "/api/expenses",
+            get(expenses::list)
+                .post(expenses::create)
+                .layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
+        .route("/api/expenses/export.csv", get(expenses::export))
+        .route(
+            "/api/expenses/:id",
+            post(expenses::update)
+                .put(expenses::update)
+                .delete(expenses::delete)
+                .layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
+        .route(
+            "/api/recurring-expenses",
+            get(expenses::recurring).post(expenses::create_recurring),
+        )
+        .route(
+            "/api/recurring-expenses/:id",
+            axum::routing::put(expenses::update_recurring).delete(expenses::delete_recurring),
+        )
+        .route("/api/reports/profit", get(expenses::profit))
         .route("/api/tm30", get(tm30::list))
         .route("/api/tm30/export.csv", get(tm30::export))
         .route(
@@ -417,12 +449,21 @@ pub fn spawn_background(state: crate::AppState) {
     calendar::spawn_sync(state.clone());
     subscription::spawn_renewals(state.clone());
     tm30::spawn_alerts(state.clone());
+    expenses::spawn_recurring(state.db.clone());
     housekeeping::spawn_auto_tasks(state);
 }
 
 /// ออกใบแจ้งหนี้ต่ออายุแพ็กเกจ (เปิดให้ test เรียกได้)
 pub async fn run_subscription_renewals(state: &crate::AppState) -> crate::error::AppResult<usize> {
     subscription::run_renewals(state).await
+}
+
+/// สร้างรายจ่ายประจำ (เปิดให้ test เรียกได้)
+pub async fn run_recurring_expenses(
+    db: &sqlx::SqlitePool,
+    today: chrono::NaiveDate,
+) -> crate::error::AppResult<usize> {
+    expenses::run_recurring(db, today).await
 }
 
 /// แจ้งเตือน ตม.30 (เปิดให้ test เรียกได้)

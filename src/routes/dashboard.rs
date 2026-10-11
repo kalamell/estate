@@ -109,6 +109,8 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
     .fetch_one(&s.db)
     .await?;
 
+    let expense_month = super::expenses::month_expense(&s.db, ctx.org_id).await?;
+
     let open_privacy: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM privacy_requests WHERE org_id = ? AND status = 'open'",
     )
@@ -127,6 +129,7 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
         "occupancy_rate": if total_units > 0 { occupied as f64 / total_units as f64 } else { 0.0 },
         "units_by_status": units_by_status.into_iter().collect::<std::collections::HashMap<_, _>>(),
         "revenue_month": revenue_month,
+        "expense_month": expense_month,
         "outstanding": outstanding,
         "outstanding_count": outstanding_count,
         "deposits_held": deposits_held,
