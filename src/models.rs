@@ -134,6 +134,7 @@ pub struct Tenant {
     pub arrival_date: Option<String>,
     pub visa_type: String,
     pub visa_expiry: Option<String>,
+    pub lang: String,
     pub created_at: String,
 }
 
@@ -189,6 +190,9 @@ pub struct TenantInput {
     pub visa_type: Option<String>,
     #[serde(default)]
     pub visa_expiry: Option<String>,
+    /// ภาษาของข้อความถึงผู้เช่า th / en (ไม่ส่งมา = ไม่เปลี่ยน; ผู้เช่าต่างชาติใหม่เริ่มที่ en)
+    #[serde(default)]
+    pub lang: Option<String>,
 }
 
 #[derive(Debug, Serialize, FromRow)]

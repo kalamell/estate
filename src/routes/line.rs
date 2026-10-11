@@ -14,8 +14,9 @@ use serde_json::{json, Value};
 use crate::{
     auth::{ensure_tenant, OrgCtx},
     error::{AppError, AppResult},
-    line::{self, card, flex, text_with_menu, OrgLine},
-    thai::{money, short_date},
+    i18n::Lang,
+    line::{self, card, flex, menu, text_with_menu, OrgLine},
+    thai::money,
     AppState,
 };
 
@@ -319,10 +320,11 @@ struct ChatTenant {
     id: i64,
     full_name: String,
     portal_token: Option<String>,
+    lang: String,
 }
 
 async fn chat_tenants(s: &AppState, org_id: i64, user_id: &str) -> AppResult<Vec<ChatTenant>> {
-    Ok(sqlx::query_as("SELECT id, full_name, portal_token FROM tenants WHERE org_id = ? AND line_user_id = ? ORDER BY id")
+    Ok(sqlx::query_as("SELECT id, full_name, portal_token, lang FROM tenants WHERE org_id = ? AND line_user_id = ? ORDER BY id")
         .bind(org_id)
         .bind(user_id)
         .fetch_all(&s.db)
@@ -397,9 +399,45 @@ async fn answer(
 
     let tenants = chat_tenants(s, org.org_id, user_id).await?;
     let Some(first) = tenants.first() else {
+        // ข้อความภาษาอังกฤษล้วน → ตอบเป็นภาษาอังกฤษ
+        if msg.is_ascii() {
+            return Ok(vec![menu(
+                Lang::En,
+                "This LINE account is not linked to a room yet.\nPlease tap \"Link LINE\" on your room page, or send \"เชื่อมบัญชี CODE\" with the 6-character code from our staff.",
+            )]);
+        }
         return Ok(vec![text_with_menu(
             "บัญชี LINE นี้ยังไม่ได้เชื่อมกับห้องพัก\nกรุณาส่งข้อความ \"เชื่อมบัญชี รหัส6หลัก\" (ขอรหัสได้จากเจ้าหน้าที่) หรือกดปุ่ม \"เชื่อมบัญชี LINE\" ในลิงก์ข้อมูลห้องพักที่ได้รับ",
         )]);
+    };
+    let lower = msg.to_lowercase();
+    // เปลี่ยนภาษา
+    let switch = if ["english", "eng", "en"].contains(&lower.as_str()) {
+        Some(Lang::En)
+    } else if ["ภาษาไทย", "ไทย", "thai", "th"].contains(&lower.as_str()) {
+        Some(Lang::Th)
+    } else {
+        None
+    };
+    if let Some(l) = switch {
+        for t in &tenants {
+            sqlx::query("UPDATE tenants SET lang = ? WHERE id = ?")
+                .bind(l.code())
+                .bind(t.id)
+                .execute(&s.db)
+                .await?;
+        }
+        return Ok(vec![menu(
+            l,
+            l.t(
+                "เปลี่ยนเป็นภาษาไทยแล้ว ✅",
+                "Language set to English ✅ — type \"ภาษาไทย\" to switch back.",
+            ),
+        )]);
+    }
+    let lang = Lang::from_code(&first.lang);
+    let has = |th: &[&str], en: &[&str]| {
+        th.iter().any(|k| msg.contains(k)) || en.iter().any(|k| lower.contains(k))
     };
     let portal = |t: &ChatTenant, suffix: &str| {
         line::portal_url(s, t.portal_token.as_deref().unwrap_or(""), suffix)
@@ -407,11 +445,16 @@ async fn answer(
     let ids: Vec<String> = tenants.iter().map(|t| t.id.to_string()).collect();
     let id_list = ids.join(",");
 
-    if msg.contains("พัสดุ") || msg.contains("ของ") && msg.contains("ส่ง") {
-        return super::parcels::chat_reply(s, org, &id_list).await;
+    if has(&["พัสดุ"], &["parcel", "package", "delivery"])
+        || msg.contains("ของ") && msg.contains("ส่ง")
+    {
+        return super::parcels::chat_reply(s, org, &id_list, lang).await;
     }
 
-    if ["บิล", "ยอด", "ค้าง", "จ่าย"].iter().any(|k| msg.contains(k)) {
+    if has(
+        &["บิล", "ยอด", "ค้าง", "จ่าย"],
+        &["bill", "invoice", "pay", "rent", "due"],
+    ) {
         let bills: Vec<i64> = sqlx::query_scalar(&format!(
             "SELECT i.id FROM invoices i JOIN bookings b ON b.id = i.booking_id
              WHERE b.tenant_id IN ({id_list}) AND i.status = 'unpaid' ORDER BY i.due_date LIMIT 5"
@@ -419,29 +462,33 @@ async fn answer(
         .fetch_all(&s.db)
         .await?;
         if bills.is_empty() {
+            let title = lang.t("ไม่มียอดค้างชำระ", "Nothing to pay");
             let bubble = card(
                 org,
-                "ไม่มียอดค้างชำระ",
-                "ขอบคุณที่ชำระตรงเวลาครับ/ค่ะ",
+                title,
+                lang.t("ขอบคุณที่ชำระตรงเวลาครับ/ค่ะ", "Thank you for paying on time!"),
                 vec![],
-                ("ดูประวัติบิล", &portal(first, "?tab=bills")),
+                (
+                    lang.t("ดูประวัติบิล", "Bill history"),
+                    &portal(first, "?tab=bills"),
+                ),
             );
-            return Ok(vec![flex("ไม่มียอดค้างชำระ", bubble)]);
+            return Ok(vec![flex(title, bubble)]);
         }
         // ส่งการ์ดบิลแบบเลื่อนดูได้ (carousel)
         let mut bubbles = Vec::new();
         for id in bills {
-            if let Ok(b) = bill_for(s, org, id).await {
+            if let Ok(b) = bill_for(s, org, id, lang).await {
                 bubbles.push(b);
             }
         }
         return Ok(vec![flex(
-            "บิลที่ต้องชำระ",
+            lang.t("บิลที่ต้องชำระ", "Bills to pay"),
             json!({ "type": "carousel", "contents": bubbles }),
         )]);
     }
 
-    if msg.contains("ใบเสร็จ") {
+    if has(&["ใบเสร็จ"], &["receipt"]) {
         let rows: Vec<(i64, String, f64, chrono::NaiveDate)> = sqlx::query_as(&format!(
             "SELECT id, doc_no, total, issue_date FROM receipts WHERE tenant_id IN ({id_list}) AND status = 'issued'
              ORDER BY issue_date DESC, id DESC LIMIT 5"
@@ -449,43 +496,57 @@ async fn answer(
         .fetch_all(&s.db)
         .await?;
         if rows.is_empty() {
-            return Ok(vec![text_with_menu("ยังไม่มีใบเสร็จ")]);
+            return Ok(vec![menu(lang, lang.t("ยังไม่มีใบเสร็จ", "No receipts yet."))]);
         }
         let list: Vec<(String, String, bool)> = rows
             .iter()
             .map(|(_, doc, total, date)| {
                 (
-                    format!("{doc} · {}", short_date(*date)),
+                    format!("{doc} · {}", lang.date(*date)),
                     format!("฿{}", money(*total)),
                     false,
                 )
             })
             .collect();
+        let title = lang.t("ใบเสร็จล่าสุด", "Recent receipts");
         let bubble = card(
             org,
-            "ใบเสร็จล่าสุด",
+            title,
             "",
             list,
-            ("ดูใบเสร็จทั้งหมด", &portal(first, "?tab=receipts")),
+            (
+                lang.t("ดูใบเสร็จทั้งหมด", "All receipts"),
+                &portal(first, "?tab=receipts"),
+            ),
         );
-        return Ok(vec![flex("ใบเสร็จล่าสุด", bubble)]);
+        return Ok(vec![flex(title, bubble)]);
     }
 
-    if msg.contains("ซ่อม") || msg.contains("แจ้ง") {
+    if has(
+        &["ซ่อม", "แจ้ง"],
+        &["repair", "fix", "broken", "help", "contact"],
+    ) {
+        let title = lang.t("แจ้งซ่อม / ติดต่อเจ้าหน้าที่", "Repairs / contact us");
         let bubble = card(
             org,
-            "แจ้งซ่อม / ติดต่อเจ้าหน้าที่",
-            "ถ่ายรูปและเล่าปัญหาได้เลย ทีมงานจะตอบกลับทาง LINE นี้",
+            title,
+            lang.t(
+                "ถ่ายรูปและเล่าปัญหาได้เลย ทีมงานจะตอบกลับทาง LINE นี้",
+                "Send photos and describe the problem — our team will reply here on LINE.",
+            ),
             vec![],
-            ("แจ้งเรื่องใหม่", &portal(first, "?tab=tickets")),
+            (
+                lang.t("แจ้งเรื่องใหม่", "New request"),
+                &portal(first, "?tab=tickets"),
+            ),
         );
-        return Ok(vec![flex("แจ้งซ่อม", bubble)]);
+        return Ok(vec![flex(title, bubble)]);
     }
 
-    if ["ข้อมูล", "ของฉัน", "ห้อง", "สัญญา", "พอร์ทัล"]
-        .iter()
-        .any(|k| msg.contains(k))
-    {
+    if has(
+        &["ข้อมูล", "ของฉัน", "ห้อง", "สัญญา", "พอร์ทัล"],
+        &["info", "room", "contract", "lease", "portal"],
+    ) {
         let info: Option<(String, String, String)> = sqlx::query_as(&format!(
             "SELECT u.name, p.name, b.start_date FROM bookings b JOIN units u ON u.id = b.unit_id
              JOIN properties p ON p.id = u.property_id
@@ -495,28 +556,35 @@ async fn answer(
         .await?;
         let rows = match info {
             Some((unit, property, start)) => vec![
-                ("ห้อง".to_string(), unit, false),
-                ("โครงการ".to_string(), property, false),
-                ("เริ่มเช่า".to_string(), start, false),
+                (lang.t("ห้อง", "Room").to_string(), unit, false),
+                (lang.t("โครงการ", "Property").to_string(), property, false),
+                (lang.t("เริ่มเช่า", "Since").to_string(), start, false),
             ],
             None => vec![],
         };
         let bubble = card(
             org,
-            &format!("คุณ{}", first.full_name),
-            "ข้อมูลห้องพักของคุณ",
+            &match lang {
+                Lang::Th => format!("คุณ{}", first.full_name),
+                Lang::En => first.full_name.clone(),
+            },
+            lang.t("ข้อมูลห้องพักของคุณ", "Your room"),
             rows,
-            ("เปิดดูข้อมูลทั้งหมด", &portal(first, "")),
+            (lang.t("เปิดดูข้อมูลทั้งหมด", "Open my page"), &portal(first, "")),
         );
-        return Ok(vec![flex("ข้อมูลของฉัน", bubble)]);
+        return Ok(vec![flex(lang.t("ข้อมูลของฉัน", "My info"), bubble)]);
     }
 
-    Ok(vec![text_with_menu(
-        "พิมพ์หรือกดเมนูด้านล่างได้เลยครับ/ค่ะ\n• บิล — ดูยอดที่ต้องชำระและสแกนจ่าย\n• ใบเสร็จ — ใบเสร็จล่าสุด\n• ข้อมูลของฉัน — ห้องและสัญญาเช่า\n• แจ้งซ่อม — แจ้งปัญหาพร้อมรูป",
+    Ok(vec![menu(
+        lang,
+        lang.t(
+            "พิมพ์หรือกดเมนูด้านล่างได้เลยครับ/ค่ะ\n• บิล — ดูยอดที่ต้องชำระและสแกนจ่าย\n• ใบเสร็จ — ใบเสร็จล่าสุด\n• พัสดุ — พัสดุที่รอรับ\n• ข้อมูลของฉัน — ห้องและสัญญาเช่า\n• แจ้งซ่อม — แจ้งปัญหาพร้อมรูป\n• ส่งรูปสลิป — แจ้งชำระเงิน\n• English — change language",
+            "Type or tap a menu button below:\n• Bill — amount due and pay by QR\n• Receipt — recent receipts\n• Parcels — parcels waiting for you\n• My info — your room and lease\n• Repair — report a problem with photos\n• Send a slip photo — notify payment\n• ภาษาไทย — เปลี่ยนเป็นภาษาไทย",
+        ),
     )])
 }
 
-async fn bill_for(s: &AppState, org: &OrgLine, invoice_id: i64) -> AppResult<Value> {
+async fn bill_for(s: &AppState, org: &OrgLine, invoice_id: i64, lang: Lang) -> AppResult<Value> {
     // ใช้การ์ดเดียวกับการส่งบิล แต่ไม่ push
     let row: (Option<String>, String, chrono::NaiveDate, f64, f64, String, Option<String>) = sqlx::query_as(
         "SELECT i.doc_no, i.period, i.due_date, i.total,
@@ -536,20 +604,21 @@ async fn bill_for(s: &AppState, org: &OrgLine, invoice_id: i64) -> AppResult<Val
     );
     Ok(card(
         org,
-        &format!("บิลรอบ {period}"),
+        &format!("{} {period}", lang.t("บิลรอบ", "Bill for")),
         &format!(
-            "ห้อง {unit}{}",
+            "{} {unit}{}",
+            lang.t("ห้อง", "Room"),
             doc_no.map(|d| format!(" · {d}")).unwrap_or_default()
         ),
         vec![
             (
-                "ยอดที่ต้องชำระ".into(),
+                lang.t("ยอดที่ต้องชำระ", "Amount due").into(),
                 format!("฿{}", money(total - paid)),
                 true,
             ),
-            ("ครบกำหนด".into(), short_date(due), false),
+            (lang.t("ครบกำหนด", "Due date").into(), lang.date(due), false),
         ],
-        ("ดูบิลและสแกนจ่าย", &url),
+        (lang.t("ดูบิลและสแกนจ่าย", "View bill & pay"), &url),
     ))
 }
 

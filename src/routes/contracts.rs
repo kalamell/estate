@@ -55,7 +55,47 @@ pub const PLACEHOLDERS: &[(&str, &str)] = &[
     ("deposit_text", "เงินประกัน (ตัวอักษร)"),
     ("electric_rate", "ค่าไฟฟ้าต่อหน่วย"),
     ("water_rate", "ค่าน้ำต่อหน่วย"),
+    ("today_en", "วันที่ทำสัญญา (อังกฤษ)"),
+    ("start_date_en", "วันเริ่มเช่า (อังกฤษ)"),
+    ("end_date_en", "วันสิ้นสุดสัญญา (อังกฤษ)"),
+    ("term_en", "ระยะเวลาเช่า (อังกฤษ)"),
 ];
+
+const DEFAULT_LEASE_EN: &str = "RESIDENTIAL LEASE AGREEMENT
+No. {{contract_no}}
+
+Made at {{property_name}} on {{today_en}}
+
+This agreement is made between {{org_name}}, address {{org_address}} (the \"Landlord\"), and {{tenant_name}}, ID/passport no. {{tenant_id_card}}, address {{tenant_address}}, phone {{tenant_phone}} (the \"Tenant\"). The parties agree as follows.
+
+1. Premises
+The Landlord lets and the Tenant rents room {{unit_name}}, floor {{floor}}, at {{property_name}}, {{property_address}}, for residential use only.
+
+2. Term
+{{term_en}}, from {{start_date_en}} to {{end_date_en}}.
+
+3. Rent and utilities
+The Tenant shall pay rent of {{rent}} Baht per month by the due date stated on each invoice. Electricity is charged at {{electric_rate}} Baht per unit and water at {{water_rate}} Baht per unit, according to the meters.
+
+4. Deposit
+The Tenant has paid a security deposit of {{deposit}} Baht. The Landlord will return the deposit after the lease ends and the room is handed back, less any documented damage or unpaid amounts, with a written statement of deductions, within the period required by law.
+
+5. Tenant's obligations
+5.1 Use the room for living only and take reasonable care of it.
+5.2 Make no alterations without the Landlord's written consent.
+5.3 Not sublet or assign the lease.
+5.4 Follow the building rules and not disturb others or act unlawfully.
+
+6. Termination
+If either party breaches this agreement, the other party may give notice to remedy the breach within a reasonable time and, if it is not remedied, terminate the agreement as permitted by law.
+
+7. Communication
+Invoices, receipts and notices delivered through the tenant portal or the LINE account linked by the Tenant have the same effect as written notice.
+
+8. Language
+This agreement may be made in Thai and English. If there is any inconsistency, the Thai version prevails.
+
+Both parties have read and understood this agreement and sign it electronically below.";
 
 const DEFAULT_LEASE: &str = "สัญญาเช่าห้องพักอาศัย
 เลขที่ {{contract_no}}
@@ -99,10 +139,12 @@ async fn ensure_default(db: &SqlitePool, org_id: i64) -> AppResult<()> {
     if n == 0 {
         sqlx::query(
             "INSERT INTO contract_templates (org_id, name, kind, body, is_default)
-             VALUES (?, 'สัญญาเช่าห้องพัก (ร่างตัวอย่าง)', 'lease', ?, 1)",
+             VALUES (?1, 'สัญญาเช่าห้องพัก (ร่างตัวอย่าง)', 'lease', ?2, 1),
+                    (?1, 'Residential Lease (English draft)', 'lease', ?3, 0)",
         )
         .bind(org_id)
         .bind(DEFAULT_LEASE)
+        .bind(DEFAULT_LEASE_EN)
         .execute(db)
         .await?;
     }
@@ -139,6 +181,28 @@ pub fn render(template: &str, vars: &BTreeMap<&str, String>) -> (String, Vec<Str
     }
     out.push_str(rest);
     (out, unknown)
+}
+
+fn term_text_en(start: NaiveDate, end: Option<NaiveDate>) -> String {
+    let Some(end) = end else {
+        return "Month-to-month, no fixed term".into();
+    };
+    let days = (end - start).num_days();
+    let months = ((days as f64) / 30.4).round() as i64;
+    let plural = |n: i64, unit: &str| format!("{n} {unit}{}", if n == 1 { "" } else { "s" });
+    if months >= 1 {
+        if months % 12 == 0 {
+            plural(months / 12, "year")
+        } else {
+            plural(months, "month")
+        }
+    } else {
+        plural(days, "day")
+    }
+}
+
+fn long_date_en(d: NaiveDate) -> String {
+    d.format("%-d %B %Y").to_string()
 }
 
 fn term_text(start: NaiveDate, end: Option<NaiveDate>) -> String {
@@ -228,6 +292,15 @@ async fn variables(
             .unwrap_or_else(|| "ไม่มีกำหนด".into()),
     );
     v.insert("term", term_text(b.start_date, b.end_date));
+    v.insert("term_en", term_text_en(b.start_date, b.end_date));
+    v.insert("today_en", long_date_en(Local::now().date_naive()));
+    v.insert("start_date_en", long_date_en(b.start_date));
+    v.insert(
+        "end_date_en",
+        b.end_date
+            .map(long_date_en)
+            .unwrap_or_else(|| "no fixed end date".into()),
+    );
     v.insert("rent", thai::money(b.price));
     v.insert("rent_text", thai::baht_text(b.price));
     v.insert("deposit", thai::money(b.deposit_amount));
@@ -603,22 +676,29 @@ pub async fn send(
                 token.as_deref().unwrap_or(""),
                 &format!("/contract/{id}"),
             );
+            let lang = crate::i18n::tenant_lang(&st.db, tenant_id).await;
             let bubble = line::card(
                 &org,
-                "สัญญาเช่ารอลงนาม",
-                "กรุณาอ่านสัญญาและลงนามอิเล็กทรอนิกส์ในลิงก์ด้านล่าง",
+                lang.t("สัญญาเช่ารอลงนาม", "Lease ready to sign"),
+                lang.t(
+                    "กรุณาอ่านสัญญาและลงนามอิเล็กทรอนิกส์ในลิงก์ด้านล่าง",
+                    "Please read your lease and sign it electronically using the link below.",
+                ),
                 vec![
-                    ("สัญญา".into(), title, false),
-                    ("เลขที่".into(), doc_no, false),
+                    (lang.t("สัญญา", "Contract").into(), title, false),
+                    (lang.t("เลขที่", "No.").into(), doc_no, false),
                 ],
-                ("อ่านและลงนาม", &url),
+                (lang.t("อ่านและลงนาม", "Read & sign"), &url),
             );
             line::push_to_tenant(
                 &st,
                 &org,
                 tenant_id,
                 "contract",
-                vec![line::flex("สัญญาเช่ารอลงนาม", bubble)],
+                vec![line::flex(
+                    lang.t("สัญญาเช่ารอลงนาม", "Lease ready to sign"),
+                    bubble,
+                )],
                 None,
             )
             .await
@@ -871,6 +951,7 @@ mod tests {
             .map(|(k, _)| (*k, String::new()))
             .collect();
         assert!(render(DEFAULT_LEASE, &known).1.is_empty());
+        assert!(render(DEFAULT_LEASE_EN, &known).1.is_empty());
     }
 
     #[test]
@@ -879,5 +960,14 @@ mod tests {
         assert_eq!(term_text(d("2026-01-01"), Some(d("2027-01-01"))), "1 ปี");
         assert_eq!(term_text(d("2026-01-01"), Some(d("2026-07-01"))), "6 เดือน");
         assert_eq!(term_text(d("2026-01-01"), Some(d("2026-01-10"))), "9 วัน");
+        assert_eq!(
+            term_text_en(d("2026-01-01"), Some(d("2026-02-01"))),
+            "1 month"
+        );
+        assert_eq!(
+            term_text_en(d("2026-01-01"), Some(d("2028-01-01"))),
+            "2 years"
+        );
+        assert_eq!(long_date_en(d("2026-10-05")), "5 October 2026");
     }
 }

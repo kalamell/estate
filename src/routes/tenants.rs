@@ -16,7 +16,7 @@ pub(crate) const COLUMNS: &str =
     "id, full_name, phone, email, id_card, note, tax_id, address, branch_code, portal_token,
      line_user_id IS NOT NULL AS line_linked, line_display_name, line_linked_at,
      consent_at, consent_source, anonymized_at, nationality, gender, birth_date, arrival_date, visa_type,
-     visa_expiry, created_at";
+     visa_expiry, lang, created_at";
 
 /// ค่าเลขบัตรที่ส่งมาแก้ไข: ค่าที่ถูกปิดบัง (มี •) ถือว่าไม่เปลี่ยน
 fn id_card_input(v: &Option<String>) -> Option<String> {
@@ -48,6 +48,9 @@ fn validate(t: &TenantInput) -> AppResult<()> {
                 "สัญชาติต้องเป็นรหัสประเทศ 2 ตัวอักษร เช่น US, CN, JP".into(),
             ));
         }
+    }
+    if let Some(l) = t.lang.as_deref() {
+        super::validate_in("lang", l, crate::i18n::CODES)?;
     }
     if let Some(g) = t.gender.as_deref() {
         super::validate_in("gender", g, &["", "M", "F"])?;
@@ -82,7 +85,7 @@ async fn save_foreign_fields(s: &AppState, id: i64, t: &TenantInput) -> AppResul
     let (set_visa, visa) = opt_date(&t.visa_expiry);
     sqlx::query(
         "UPDATE tenants SET nationality = COALESCE(?, nationality), gender = COALESCE(?, gender),
-            visa_type = COALESCE(?, visa_type),
+            visa_type = COALESCE(?, visa_type), lang = COALESCE(?, lang),
             birth_date = CASE WHEN ? THEN ? ELSE birth_date END,
             arrival_date = CASE WHEN ? THEN ? ELSE arrival_date END,
             visa_expiry = CASE WHEN ? THEN ? ELSE visa_expiry END
@@ -91,6 +94,7 @@ async fn save_foreign_fields(s: &AppState, id: i64, t: &TenantInput) -> AppResul
     .bind(t.nationality.as_deref().map(|n| n.trim().to_uppercase()))
     .bind(t.gender.as_deref())
     .bind(t.visa_type.as_deref().map(str::trim))
+    .bind(t.lang.as_deref())
     .bind(set_birth)
     .bind(birth)
     .bind(set_arrival)
@@ -151,6 +155,14 @@ pub async fn create(
     .fetch_one(&s.db)
     .await?;
     let row: Tenant = row;
+    let mut t = t;
+    if t.lang.is_none()
+        && t.nationality
+            .as_deref()
+            .is_some_and(|n| !n.trim().is_empty() && !n.trim().eq_ignore_ascii_case("TH"))
+    {
+        t.lang = Some("en".into());
+    }
     save_foreign_fields(&s, row.id, &t).await?;
     Ok(Json(
         reload(&s, row.id).await?.masked(ctx.role >= Role::Admin),

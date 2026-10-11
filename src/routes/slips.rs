@@ -16,6 +16,7 @@ use crate::{
     auth::OrgCtx,
     billing::round2,
     error::{AppError, AppResult},
+    i18n::Lang,
     line::{self, OrgLine},
     slip::{self, SlipCheck},
     uploads, AppState,
@@ -373,10 +374,16 @@ pub async fn reject(
     )
     .await;
     if let Some(tenant_id) = notice.tenant_id {
-        let msg = format!(
-            "แจ้งชำระบิลรอบ {} ยังไม่ผ่านการตรวจสอบ\nเหตุผล: {reason}\nกรุณาตรวจสอบและส่งสลิปอีกครั้ง หรือติดต่อเจ้าหน้าที่",
-            notice.period
-        );
+        let msg = match crate::i18n::tenant_lang(&s.db, tenant_id).await {
+            Lang::Th => format!(
+                "แจ้งชำระบิลรอบ {} ยังไม่ผ่านการตรวจสอบ\nเหตุผล: {reason}\nกรุณาตรวจสอบและส่งสลิปอีกครั้ง หรือติดต่อเจ้าหน้าที่",
+                notice.period
+            ),
+            Lang::En => format!(
+                "Your payment for the {} bill could not be confirmed.\nReason: {reason}\nPlease check and send the slip again, or contact our staff.",
+                notice.period
+            ),
+        };
         let st = s.clone();
         let org_id = ctx.org_id;
         tokio::spawn(async move {
@@ -481,14 +488,18 @@ pub(crate) async fn from_line_image(
 ) -> AppResult<Vec<Value>> {
     if tenant_ids.is_empty() {
         return Ok(vec![line::text(
-            "ยังไม่ได้เชื่อมบัญชีผู้เช่า — กรุณาเชื่อมบัญชีก่อน แล้วส่งสลิปได้เลย",
+            "ยังไม่ได้เชื่อมบัญชีผู้เช่า — กรุณาเชื่อมบัญชีก่อน แล้วส่งสลิปได้เลย\nPlease link your LINE account to your room first, then send the slip again.",
         )]);
     }
+    let lang = crate::i18n::tenant_lang(&s.db, tenant_ids[0]).await;
     let (bytes, content_type) = match s.line.content(&org.token, message_id).await {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(error = %e, "ดึงรูปจาก LINE ไม่ได้");
-            return Ok(vec![line::text("ขออภัย ระบบเปิดรูปไม่ได้ กรุณาส่งใหม่อีกครั้ง")]);
+            return Ok(vec![line::text(lang.t(
+                "ขออภัย ระบบเปิดรูปไม่ได้ กรุณาส่งใหม่อีกครั้ง",
+                "Sorry, we couldn't open the image. Please send it again.",
+            ))]);
         }
     };
     let probe = bytes.clone();
@@ -500,8 +511,12 @@ pub(crate) async fn from_line_image(
     .await
     .unwrap_or(false);
     if !is_slip {
-        return Ok(vec![line::text_with_menu(
-            "ไม่พบ QR ของสลิปโอนเงินในรูปนี้\nถ้าเป็นสลิป กรุณาส่งภาพสลิปเต็มใบที่เห็น QR ชัดเจน\nถ้าต้องการแจ้งซ่อม กดเมนู \"แจ้งซ่อม\" ด้านล่าง",
+        return Ok(vec![line::menu(
+            lang,
+            lang.t(
+                "ไม่พบ QR ของสลิปโอนเงินในรูปนี้\nถ้าเป็นสลิป กรุณาส่งภาพสลิปเต็มใบที่เห็น QR ชัดเจน\nถ้าต้องการแจ้งซ่อม กดเมนู \"แจ้งซ่อม\" ด้านล่าง",
+                "We couldn't find a transfer-slip QR code in this image.\nIf it is a slip, please send the full slip with the QR code clearly visible.\nTo report a problem, tap \"Repair\" below.",
+            ),
         )]);
     }
     let placeholders = vec!["?"; tenant_ids.len()].join(",");
@@ -516,8 +531,12 @@ pub(crate) async fn from_line_image(
         q = q.bind(id);
     }
     let Some(invoice_id) = q.fetch_optional(&s.db).await? else {
-        return Ok(vec![line::text_with_menu(
-            "ได้รับรูปสลิปแล้ว แต่ไม่พบบิลค้างชำระที่รอแจ้งโอน\nถ้ามีข้อสงสัย ติดต่อเจ้าหน้าที่ได้เลย",
+        return Ok(vec![line::menu(
+            lang,
+            lang.t(
+                "ได้รับรูปสลิปแล้ว แต่ไม่พบบิลค้างชำระที่รอแจ้งโอน\nถ้ามีข้อสงสัย ติดต่อเจ้าหน้าที่ได้เลย",
+                "We received your slip, but there is no unpaid bill waiting for payment.\nPlease contact our staff if you have any questions.",
+            ),
         )]);
     };
     let ext = match content_type.as_str() {
@@ -543,6 +562,23 @@ pub(crate) async fn from_line_image(
         "line",
     )
     .await?;
+    let due = invoice.remaining() + invoice.late_fee;
+    if lang == Lang::En {
+        let label = format!("the {} bill for room {}", invoice.period, invoice.unit_name);
+        let msg = match (r.receipt_id.is_some(), r.check.result.as_str()) {
+            (true, _) => format!("✅ Payment for {label} received — thank you!\nYour receipt will be sent in this chat."),
+            (_, "duplicate") => format!(
+                "⚠️ This slip has already been used for another payment, so it can't be applied to {label}.\nOur staff will check and get back to you."
+            ),
+            (_, "mismatch") => format!(
+                "We received your slip for {label}, but the amount doesn't match the amount due.\nOur staff will check and let you know."
+            ),
+            _ => format!(
+                "We received your slip for {label} (฿{due:.2}) 🙏\nOur staff will confirm it and send your receipt soon."
+            ),
+        };
+        return Ok(vec![line::menu(lang, msg)]);
+    }
     let label = format!("บิลรอบ {} ห้อง {}", invoice.period, invoice.unit_name);
     let msg = match (r.receipt_id.is_some(), r.check.result.as_str()) {
         (true, _) => format!("✅ ได้รับชำระ{label} เรียบร้อย ขอบคุณครับ/ค่ะ\nใบเสร็จจะส่งให้ทางแชตนี้"),
@@ -553,8 +589,7 @@ pub(crate) async fn from_line_image(
             "ได้รับสลิปสำหรับ{label}แล้ว แต่ยอดเงินไม่ตรงกับยอดค้างชำระ\nเจ้าหน้าที่จะตรวจสอบและแจ้งผลอีกครั้ง"
         ),
         _ => format!(
-            "ได้รับสลิปสำหรับ{label} ยอด {:.2} บาทแล้ว 🙏\nเจ้าหน้าที่จะตรวจสอบและส่งใบเสร็จให้เร็วที่สุด",
-            invoice.remaining() + invoice.late_fee
+            "ได้รับสลิปสำหรับ{label} ยอด {due:.2} บาทแล้ว 🙏\nเจ้าหน้าที่จะตรวจสอบและส่งใบเสร็จให้เร็วที่สุด"
         ),
     };
     Ok(vec![line::text_with_menu(msg)])

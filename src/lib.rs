@@ -8,6 +8,7 @@ pub mod crypto;
 pub mod db;
 pub mod docs;
 pub mod error;
+pub mod i18n;
 pub mod ical;
 pub mod line;
 pub mod models;

@@ -13,6 +13,7 @@ use crate::{
     audit,
     auth::{self, OrgCtx},
     error::{AppError, AppResult},
+    i18n::Lang,
     line::{self, OrgLine},
     uploads, AppState,
 };
@@ -20,12 +21,16 @@ use crate::{
 pub const KINDS: &[&str] = &["parcel", "letter", "food", "large", "other"];
 
 fn kind_label(kind: &str) -> &'static str {
+    kind_label_in(kind, Lang::Th)
+}
+
+fn kind_label_in(kind: &str, lang: Lang) -> &'static str {
     match kind {
-        "letter" => "จดหมาย/เอกสาร",
-        "food" => "อาหาร/ของสด",
-        "large" => "พัสดุขนาดใหญ่",
-        "other" => "อื่น ๆ",
-        _ => "พัสดุ",
+        "letter" => lang.t("จดหมาย/เอกสาร", "Letter / documents"),
+        "food" => lang.t("อาหาร/ของสด", "Food / fresh items"),
+        "large" => lang.t("พัสดุขนาดใหญ่", "Large parcel"),
+        "other" => lang.t("อื่น ๆ", "Other"),
+        _ => lang.t("พัสดุ", "Parcel"),
     }
 }
 
@@ -200,23 +205,35 @@ pub async fn create(
     Ok(Json(fetch(&s, ctx.org_id, id).await?))
 }
 
-fn parcel_rows(p: &Parcel) -> Vec<(String, String, bool)> {
-    let mut rows = vec![("ประเภท".into(), kind_label(&p.kind).into(), false)];
+fn parcel_rows(p: &Parcel, lang: Lang) -> Vec<(String, String, bool)> {
+    let mut rows = vec![(
+        lang.t("ประเภท", "Type").into(),
+        kind_label_in(&p.kind, lang).into(),
+        false,
+    )];
     if !p.carrier.is_empty() {
-        rows.push(("ขนส่ง".into(), p.carrier.clone(), false));
+        rows.push((lang.t("ขนส่ง", "Carrier").into(), p.carrier.clone(), false));
     }
     if !p.tracking_no.is_empty() {
-        rows.push(("เลขพัสดุ".into(), p.tracking_no.clone(), false));
+        rows.push((
+            lang.t("เลขพัสดุ", "Tracking no.").into(),
+            p.tracking_no.clone(),
+            false,
+        ));
     }
     rows.push((
-        "รับไว้เมื่อ".into(),
+        lang.t("รับไว้เมื่อ", "Received").into(),
         p.received_at
             .get(..16)
             .unwrap_or(&p.received_at)
             .to_string(),
         false,
     ));
-    rows.push(("รหัสรับพัสดุ".into(), p.pickup_code.clone(), true));
+    rows.push((
+        lang.t("รหัสรับพัสดุ", "Pickup code").into(),
+        p.pickup_code.clone(),
+        true,
+    ));
     rows
 }
 
@@ -234,19 +251,30 @@ async fn notify(s: &AppState, org: &OrgLine, id: i64) -> AppResult<()> {
         .fetch_one(&s.db)
         .await?;
     let url = line::portal_url(s, token.as_deref().unwrap_or(""), "");
+    let lang = crate::i18n::tenant_lang(&s.db, tenant_id).await;
     let bubble = line::card(
         org,
-        "📦 มีพัสดุมาถึงคุณ",
-        &format!("{} — แสดงรหัสรับพัสดุกับเจ้าหน้าที่เมื่อมารับ", p.property_name),
-        parcel_rows(&p),
-        ("ดูรายการพัสดุ", &url),
+        lang.t("📦 มีพัสดุมาถึงคุณ", "📦 You have a parcel"),
+        &format!(
+            "{} — {}",
+            p.property_name,
+            lang.t(
+                "แสดงรหัสรับพัสดุกับเจ้าหน้าที่เมื่อมารับ",
+                "show the pickup code to our staff when you collect it"
+            )
+        ),
+        parcel_rows(&p, lang),
+        (lang.t("ดูรายการพัสดุ", "View parcels"), &url),
     );
     line::push_to_tenant(
         s,
         org,
         tenant_id,
         "parcel",
-        vec![line::flex("มีพัสดุมาถึงคุณ", bubble)],
+        vec![line::flex(
+            lang.t("มีพัสดุมาถึงคุณ", "You have a parcel"),
+            bubble,
+        )],
         None,
     )
     .await?;
@@ -403,6 +431,7 @@ pub(crate) async fn chat_reply(
     s: &AppState,
     org: &OrgLine,
     tenant_ids: &str,
+    lang: Lang,
 ) -> AppResult<Vec<Value>> {
     let rows: Vec<Parcel> = sqlx::query_as(&format!(
         "{SELECT} WHERE pc.org_id = ? AND pc.tenant_id IN ({tenant_ids}) AND pc.status = 'waiting'
@@ -412,7 +441,10 @@ pub(crate) async fn chat_reply(
     .fetch_all(&s.db)
     .await?;
     if rows.is_empty() {
-        return Ok(vec![line::text_with_menu("ตอนนี้ไม่มีพัสดุรอรับครับ/ค่ะ 📭")]);
+        return Ok(vec![line::menu(
+            lang,
+            lang.t("ตอนนี้ไม่มีพัสดุรอรับครับ/ค่ะ 📭", "No parcels waiting for you 📭"),
+        )]);
     }
     let token: Option<String> = sqlx::query_scalar(&format!(
         "SELECT portal_token FROM tenants WHERE id IN ({tenant_ids}) AND portal_token IS NOT NULL LIMIT 1"
@@ -426,19 +458,22 @@ pub(crate) async fn chat_reply(
         .map(|p| {
             line::card(
                 org,
-                &format!("📦 {}", kind_label(&p.kind)),
+                &format!("📦 {}", kind_label_in(&p.kind, lang)),
                 &p.property_name,
-                parcel_rows(p),
-                ("ดูในพอร์ทัล", &url),
+                parcel_rows(p, lang),
+                (lang.t("ดูในพอร์ทัล", "Open my page"), &url),
             )
         })
         .collect();
-    let mut msgs = vec![line::text(format!(
-        "มีพัสดุรอรับ {} ชิ้น — แสดงรหัสรับพัสดุกับเจ้าหน้าที่ได้เลย",
-        rows.len()
-    ))];
+    let mut msgs = vec![line::text(match lang {
+        Lang::Th => format!("มีพัสดุรอรับ {} ชิ้น — แสดงรหัสรับพัสดุกับเจ้าหน้าที่ได้เลย", rows.len()),
+        Lang::En => format!(
+            "{} parcel(s) waiting — show the pickup code to our staff.",
+            rows.len()
+        ),
+    })];
     msgs.push(line::flex(
-        "พัสดุรอรับ",
+        lang.t("พัสดุรอรับ", "Parcels waiting"),
         json!({ "type": "carousel", "contents": bubbles }),
     ));
     Ok(msgs)

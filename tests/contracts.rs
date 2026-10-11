@@ -14,7 +14,7 @@ async fn contract_draft_send_and_sign() {
     let (_, t) = owner
         .call(Method::GET, "/api/contract-templates", None)
         .await;
-    assert_eq!(t["templates"].as_array().unwrap().len(), 1);
+    assert_eq!(t["templates"].as_array().unwrap().len(), 2);
     assert!(t["placeholders"].as_array().unwrap().len() > 10);
     let (st, err) = owner
         .call(

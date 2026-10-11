@@ -157,6 +157,9 @@ pub struct RequestInput {
     /// ยินยอมให้เก็บและใช้ข้อมูลส่วนบุคคลเพื่อการจอง (PDPA)
     #[serde(default)]
     consent: bool,
+    /// ภาษาที่แขกใช้จอง (th / en) — ใช้เป็นภาษาเริ่มต้นของผู้เช่าที่สร้างตอนอนุมัติ
+    #[serde(default)]
+    lang: Option<String>,
 }
 
 fn one() -> i64 {
@@ -235,8 +238,8 @@ pub async fn create_request(
     };
     sqlx::query(
         "INSERT INTO booking_requests (org_id, property_id, unit_id, token, check_in, check_out, nights, rate, total,
-            deposit_amount, guests, guest_name, phone, email, note, expires_at, consent_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now', '+24 hours'), datetime('now'))",
+            deposit_amount, guests, guest_name, phone, email, note, expires_at, consent_at, lang)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now', '+24 hours'), datetime('now'), ?)",
     )
     .bind(p.org_id)
     .bind(p.id)
@@ -253,6 +256,7 @@ pub async fn create_request(
     .bind(&phone)
     .bind(r.email.trim())
     .bind(r.note.trim().chars().take(1000).collect::<String>())
+    .bind(crate::i18n::Lang::from_code(r.lang.as_deref().unwrap_or("th")).code())
     .execute(&s.db)
     .await?;
     Ok(Json(json!({ "token": token })))
@@ -457,7 +461,8 @@ pub async fn approve(
         Some(id) => id,
         None => {
             sqlx::query_scalar(
-                "INSERT INTO tenants (org_id, full_name, phone, email, note, portal_token) VALUES (?,?,?,?,?,?) RETURNING id",
+                "INSERT INTO tenants (org_id, full_name, phone, email, note, portal_token, lang)
+                 VALUES (?,?,?,?,?,?, (SELECT lang FROM booking_requests WHERE id = ?)) RETURNING id",
             )
             .bind(ctx.org_id)
             .bind(&r.guest_name)
@@ -465,6 +470,7 @@ pub async fn approve(
             .bind(&r.email)
             .bind("จองผ่านหน้าเว็บ")
             .bind(super::tenants::new_portal_token())
+            .bind(id)
             .fetch_one(&mut *tx)
             .await?
         }

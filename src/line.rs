@@ -7,9 +7,10 @@ use serde_json::{json, Value};
 use sha2::Sha256;
 use sqlx::SqlitePool;
 
+use crate::i18n::Lang;
 use crate::{
     error::{AppError, AppResult},
-    thai::{money, short_date},
+    thai::money,
     AppState,
 };
 
@@ -259,7 +260,16 @@ pub fn text(msg: impl Into<String>) -> Value {
 
 /// ข้อความพร้อมปุ่มลัดคำสั่ง
 pub fn text_with_menu(msg: impl Into<String>) -> Value {
-    let items: Vec<Value> = ["บิล", "ใบเสร็จ", "พัสดุ", "ข้อมูลของฉัน", "แจ้งซ่อม"]
+    menu(Lang::Th, msg)
+}
+
+/// ข้อความพร้อมปุ่มลัดคำสั่งตามภาษาของผู้เช่า
+pub fn menu(lang: Lang, msg: impl Into<String>) -> Value {
+    let labels: [&str; 5] = match lang {
+        Lang::Th => ["บิล", "ใบเสร็จ", "พัสดุ", "ข้อมูลของฉัน", "แจ้งซ่อม"],
+        Lang::En => ["Bill", "Receipt", "Parcels", "My info", "Repair"],
+    };
+    let items: Vec<Value> = labels
         .iter()
         .map(
             |t| json!({ "type": "action", "action": { "type": "message", "label": t, "text": t } }),
@@ -418,7 +428,7 @@ const BILL_SELECT: &str = "SELECT i.id, i.doc_no, i.period, i.due_date, i.total,
     FROM invoices i JOIN units u ON u.id = i.unit_id JOIN properties p ON p.id = u.property_id
     LEFT JOIN bookings b ON b.id = i.booking_id LEFT JOIN tenants t ON t.id = b.tenant_id";
 
-fn bill_bubble(state: &AppState, org: &OrgLine, b: &BillRow, heading: &str) -> Value {
+fn bill_bubble(state: &AppState, org: &OrgLine, b: &BillRow, heading: &str, lang: Lang) -> Value {
     let items: Vec<crate::billing::LineItem> = serde_json::from_str(&b.items).unwrap_or_default();
     let mut rows: Vec<(String, String, bool)> = items
         .iter()
@@ -426,21 +436,30 @@ fn bill_bubble(state: &AppState, org: &OrgLine, b: &BillRow, heading: &str) -> V
         .map(|i| (i.label.clone(), format!("฿{}", money(i.amount)), false))
         .collect();
     if b.paid > 0.0 {
-        rows.push(("ชำระแล้ว".into(), format!("-฿{}", money(b.paid)), false));
+        rows.push((
+            lang.t("ชำระแล้ว", "Paid").into(),
+            format!("-฿{}", money(b.paid)),
+            false,
+        ));
     }
     rows.push((
-        "ยอดที่ต้องชำระ".into(),
+        lang.t("ยอดที่ต้องชำระ", "Amount due").into(),
         format!("฿{}", money(b.total - b.paid)),
         true,
     ));
-    rows.push(("ครบกำหนด".into(), short_date(b.due_date), false));
+    rows.push((
+        lang.t("ครบกำหนด", "Due date").into(),
+        lang.date(b.due_date),
+        false,
+    ));
     let url = b
         .portal_token
         .as_deref()
         .map(|t| portal_url(state, t, &format!("?invoice={}", b.id)))
         .unwrap_or_else(|| state.public_url.clone());
     let subtitle = format!(
-        "ห้อง {} · {}{}",
+        "{} {} · {}{}",
+        lang.t("ห้อง", "Room"),
         b.unit_name,
         b.property_name,
         b.doc_no
@@ -450,10 +469,10 @@ fn bill_bubble(state: &AppState, org: &OrgLine, b: &BillRow, heading: &str) -> V
     );
     card(
         org,
-        &format!("{heading} รอบ {}", b.period),
+        &format!("{heading} {} {}", lang.t("รอบ", "for"), b.period),
         &subtitle,
         rows,
-        ("ดูบิลและสแกนจ่าย", &url),
+        (lang.t("ดูบิลและสแกนจ่าย", "View bill & pay"), &url),
     )
 }
 
@@ -472,24 +491,33 @@ pub async fn send_invoice(
     let tenant_id = b
         .tenant_id
         .ok_or_else(|| AppError::BadRequest("บิลนี้ไม่ได้ผูกกับผู้เช่า".into()))?;
+    let lang = crate::i18n::tenant_lang(&state.db, tenant_id).await;
     let heading = match kind {
-        "reminder" => "แจ้งเตือนค่าเช่า",
-        _ => "ใบแจ้งหนี้",
+        "reminder" => lang.t("แจ้งเตือนค่าเช่า", "Rent reminder"),
+        _ => lang.t("ใบแจ้งหนี้", "Invoice"),
     };
-    let alt = format!(
-        "{heading} รอบ {} ยอด ฿{} ครบกำหนด {}",
-        b.period,
-        money(b.total - b.paid),
-        short_date(b.due_date)
-    );
-    let mut messages = vec![flex(alt, bill_bubble(state, org, &b, heading))];
+    let alt = match lang {
+        Lang::Th => format!(
+            "{heading} รอบ {} ยอด ฿{} ครบกำหนด {}",
+            b.period,
+            money(b.total - b.paid),
+            lang.date(b.due_date)
+        ),
+        Lang::En => format!(
+            "{heading} for {}: ฿{} due {}",
+            b.period,
+            money(b.total - b.paid),
+            lang.date(b.due_date)
+        ),
+    };
+    let mut messages = vec![flex(alt, bill_bubble(state, org, &b, heading, lang))];
     if kind == "reminder" {
         messages.insert(
             0,
             text(
                 dedupe
-                    .map(reminder_text)
-                    .unwrap_or("แจ้งเตือนยอดค้างชำระ")
+                    .map(|k| reminder_text(k, lang))
+                    .unwrap_or(lang.t("แจ้งเตือนยอดค้างชำระ", "Payment reminder"))
                     .to_string(),
             ),
         );
@@ -497,11 +525,17 @@ pub async fn send_invoice(
     push_to_tenant(state, org, tenant_id, kind, messages, dedupe).await
 }
 
-fn reminder_text(key: &str) -> &'static str {
+fn reminder_text(key: &str, lang: Lang) -> &'static str {
     if key.ends_with(":due_soon") {
-        "ค่าเช่าจะครบกำหนดชำระพรุ่งนี้ครับ/ค่ะ"
+        lang.t(
+            "ค่าเช่าจะครบกำหนดชำระพรุ่งนี้ครับ/ค่ะ",
+            "Friendly reminder: your rent is due tomorrow.",
+        )
     } else {
-        "บิลนี้เกินกำหนดชำระแล้ว กรุณาชำระโดยเร็ว หากชำระแล้วขออภัยและขอบคุณครับ/ค่ะ"
+        lang.t(
+            "บิลนี้เกินกำหนดชำระแล้ว กรุณาชำระโดยเร็ว หากชำระแล้วขออภัยและขอบคุณครับ/ค่ะ",
+            "This bill is now overdue. Please pay as soon as possible — if you have already paid, thank you and please ignore this message.",
+        )
     }
 }
 
@@ -522,6 +556,7 @@ pub async fn send_receipt(state: &AppState, org: &OrgLine, receipt_id: i64) -> A
     .fetch_one(&state.db)
     .await?;
     let tenant_id = tenant_id.ok_or_else(|| AppError::BadRequest("ใบเสร็จนี้ไม่ได้ผูกกับผู้เช่า".into()))?;
+    let lang = crate::i18n::tenant_lang(&state.db, tenant_id).await;
     let url = portal_url(
         state,
         portal_token.as_deref().unwrap_or(""),
@@ -529,20 +564,34 @@ pub async fn send_receipt(state: &AppState, org: &OrgLine, receipt_id: i64) -> A
     );
     let bubble = card(
         org,
-        "ได้รับชำระเงินแล้ว ขอบคุณครับ/ค่ะ",
-        &format!("ห้อง {unit_name} · ใบเสร็จ {doc_no}"),
+        lang.t(
+            "ได้รับชำระเงินแล้ว ขอบคุณครับ/ค่ะ",
+            "Payment received — thank you!",
+        ),
+        &format!(
+            "{} {unit_name} · {} {doc_no}",
+            lang.t("ห้อง", "Room"),
+            lang.t("ใบเสร็จ", "Receipt")
+        ),
         vec![
-            ("จำนวนเงิน".into(), format!("฿{}", money(total)), true),
-            ("วันที่".into(), short_date(issue_date), false),
+            (
+                lang.t("จำนวนเงิน", "Amount").into(),
+                format!("฿{}", money(total)),
+                true,
+            ),
+            (lang.t("วันที่", "Date").into(), lang.date(issue_date), false),
         ],
-        ("ดูใบเสร็จ", &url),
+        (lang.t("ดูใบเสร็จ", "View receipt"), &url),
     );
     push_to_tenant(
         state,
         org,
         tenant_id,
         "receipt",
-        vec![flex(format!("ใบเสร็จ {doc_no} ฿{}", money(total)), bubble)],
+        vec![flex(
+            format!("{} {doc_no} ฿{}", lang.t("ใบเสร็จ", "Receipt"), money(total)),
+            bubble,
+        )],
         None,
     )
     .await
@@ -551,19 +600,24 @@ pub async fn send_receipt(state: &AppState, org: &OrgLine, receipt_id: i64) -> A
 pub async fn send_portal_link(state: &AppState, org: &OrgLine, tenant_id: i64) -> AppResult<()> {
     let t = tenant(&state.db, org.org_id, tenant_id).await?;
     let url = portal_url(state, t.portal_token.as_deref().unwrap_or(""), "");
+    let lang = crate::i18n::tenant_lang(&state.db, tenant_id).await;
+    let title = lang.t("ข้อมูลห้องพักของคุณ", "Your room");
     let bubble = card(
         org,
-        "ข้อมูลห้องพักของคุณ",
-        "ดูบิล ใบเสร็จ สถานะการแจ้งซ่อม และประกาศจากหอพักได้ที่ลิงก์นี้",
+        title,
+        lang.t(
+            "ดูบิล ใบเสร็จ สถานะการแจ้งซ่อม และประกาศจากหอพักได้ที่ลิงก์นี้",
+            "Bills, receipts, repair requests and announcements — all in one link.",
+        ),
         vec![],
-        ("เปิดดูข้อมูลของฉัน", &url),
+        (lang.t("เปิดดูข้อมูลของฉัน", "Open my page"), &url),
     );
     push_to_tenant(
         state,
         org,
         tenant_id,
         "portal_link",
-        vec![flex("ข้อมูลห้องพักของคุณ", bubble)],
+        vec![flex(title, bubble)],
         None,
     )
     .await
@@ -592,19 +646,26 @@ pub async fn send_ticket_reply(
         &format!("?tab=tickets&ticket={ticket_id}"),
     );
     let preview: String = body.chars().take(200).collect();
+    let lang = crate::i18n::tenant_lang(&state.db, tenant_id).await;
     let bubble = card(
         org,
-        "ทีมงานตอบกลับเรื่องแจ้งของคุณ",
+        lang.t(
+            "ทีมงานตอบกลับเรื่องแจ้งของคุณ",
+            "Our team replied to your request",
+        ),
         &format!("{title}\n\n{preview}"),
         vec![],
-        ("ดูรายละเอียด", &url),
+        (lang.t("ดูรายละเอียด", "View details"), &url),
     );
     push_to_tenant(
         state,
         org,
         tenant_id,
         "ticket_reply",
-        vec![flex(format!("ตอบกลับ: {title}"), bubble)],
+        vec![flex(
+            format!("{}: {title}", lang.t("ตอบกลับ", "Reply")),
+            bubble,
+        )],
         None,
     )
     .await

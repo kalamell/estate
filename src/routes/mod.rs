@@ -243,6 +243,7 @@ pub fn api_router() -> Router<AppState> {
             post(subscription::void),
         )
         .route("/api/portal/:token/consent", post(portal::consent))
+        .route("/api/portal/:token/lang", post(portal::set_lang))
         .route(
             "/api/portal/:token/privacy-requests",
             post(portal::privacy_request),

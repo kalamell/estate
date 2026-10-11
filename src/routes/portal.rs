@@ -134,7 +134,10 @@ pub async fn home(State(s): State<AppState>, Path(token): Path<String>) -> AppRe
     let invoices = tenant_invoices(&s.db, t.tenant_id).await?;
     let receipts = receipts::for_tenant(&s.db, t.tenant_id).await?;
     Ok(Json(json!({
-        "tenant": { "full_name": t.full_name, "phone": t.phone },
+        "tenant": {
+            "full_name": t.full_name, "phone": t.phone,
+            "lang": crate::i18n::tenant_lang(&s.db, t.tenant_id).await.code(),
+        },
         "org": { "name": org_name, "phone": org_phone, "theme": line_org.theme },
         "line": {
             "enabled": line_org.ready() && !line_org.basic_id.is_empty(),
@@ -265,6 +268,27 @@ pub async fn line_link(
     Ok(Json(
         super::line::issue_link_code(&s, t.org_id, t.tenant_id).await?,
     ))
+}
+
+#[derive(serde::Deserialize)]
+pub struct LangInput {
+    lang: String,
+}
+
+/// ผู้เช่าเลือกภาษา (ใช้กับพอร์ทัลและข้อความ LINE)
+pub async fn set_lang(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+    Json(i): Json<LangInput>,
+) -> AppResult<Json<Value>> {
+    super::validate_in("lang", &i.lang, crate::i18n::CODES)?;
+    let t = resolve(&s.db, &token).await?;
+    sqlx::query("UPDATE tenants SET lang = ? WHERE id = ?")
+        .bind(&i.lang)
+        .bind(t.tenant_id)
+        .execute(&s.db)
+        .await?;
+    Ok(Json(json!({ "lang": i.lang })))
 }
 
 /// ผู้เช่ายอมรับประกาศความเป็นส่วนตัว
