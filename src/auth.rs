@@ -227,6 +227,36 @@ where
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let ctx = load_org_ctx(parts, state).await?;
+        if !parts.method.is_safe() {
+            ctx.require_writable()?;
+        }
+        Ok(ctx)
+    }
+}
+
+/// เหมือน [`OrgCtx`] แต่ไม่บล็อกการเขียนเมื่อบัญชีหมดอายุ — ใช้กับหน้าชำระค่าแพ็กเกจเท่านั้น
+pub struct BillingCtx(pub OrgCtx);
+
+#[async_trait]
+impl<S> FromRequestParts<S> for BillingCtx
+where
+    AppState: FromRef<S>,
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        Ok(BillingCtx(load_org_ctx(parts, state).await?))
+    }
+}
+
+async fn load_org_ctx<S>(parts: &mut Parts, state: &S) -> AppResult<OrgCtx>
+where
+    AppState: FromRef<S>,
+    S: Send + Sync,
+{
+    {
         let user = AuthUser::from_request_parts(parts, state).await?;
         let db = AppState::from_ref(state).db;
         let org_id: i64 = parts
@@ -247,7 +277,7 @@ where
 
         let row: OrgRow = sqlx::query_as(
             "SELECT o.id AS org_id, m.role, o.status,
-                    (o.ends_at IS NOT NULL AND o.ends_at < date('now')) AS expired,
+                    (o.ends_at IS NOT NULL AND date(o.ends_at, '+' || (SELECT grace_days FROM platform_settings WHERE id = 1) || ' days') < date('now')) AS expired,
                     p.max_properties, p.max_units, p.max_members, p.features
              FROM organizations o
              JOIN org_members m ON m.org_id = o.id AND m.user_id = ?
@@ -272,9 +302,6 @@ where
             max_members: row.max_members,
             features: row.features,
         };
-        if !parts.method.is_safe() {
-            ctx.require_writable()?;
-        }
         Ok(ctx)
     }
 }

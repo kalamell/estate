@@ -17,6 +17,7 @@ mod properties;
 mod receipts;
 mod reports;
 mod stay;
+mod subscription;
 mod tenants;
 mod tickets;
 mod units;
@@ -135,6 +136,42 @@ pub fn api_router() -> Router<AppState> {
         )
         .route("/api/privacy/retention", get(privacy::retention))
         .route("/api/audit-logs", get(audit_logs))
+        .route("/api/billing", get(subscription::overview))
+        .route("/api/billing/checkout", post(subscription::checkout))
+        .route("/api/billing/invoices/:id", get(subscription::invoice))
+        .route(
+            "/api/billing/invoices/:id/slip",
+            post(subscription::upload_slip).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
+        .route(
+            "/api/billing/invoices/:id/cancel",
+            post(subscription::cancel),
+        )
+        .route("/api/admin/billing", get(subscription::admin_overview))
+        .route(
+            "/api/admin/billing/settings",
+            axum::routing::put(subscription::update_settings),
+        )
+        .route(
+            "/api/admin/billing/invoices",
+            post(subscription::admin_issue),
+        )
+        .route(
+            "/api/admin/billing/invoices/:id",
+            get(subscription::admin_invoice),
+        )
+        .route(
+            "/api/admin/billing/invoices/:id/approve",
+            post(subscription::approve),
+        )
+        .route(
+            "/api/admin/billing/invoices/:id/reject",
+            post(subscription::reject),
+        )
+        .route(
+            "/api/admin/billing/invoices/:id/void",
+            post(subscription::void),
+        )
         .route("/api/portal/:token/consent", post(portal::consent))
         .route(
             "/api/portal/:token/privacy-requests",
@@ -286,7 +323,13 @@ pub(crate) fn validate_in(
 
 pub fn spawn_background(state: crate::AppState) {
     calendar::spawn_sync(state.clone());
+    subscription::spawn_renewals(state.clone());
     housekeeping::spawn_auto_tasks(state);
+}
+
+/// ออกใบแจ้งหนี้ต่ออายุแพ็กเกจ (เปิดให้ test เรียกได้)
+pub async fn run_subscription_renewals(state: &crate::AppState) -> crate::error::AppResult<usize> {
+    subscription::run_renewals(state).await
 }
 
 /// งานแม่บ้านอัตโนมัติ (เปิดให้ test เรียกได้)

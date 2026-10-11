@@ -355,6 +355,7 @@ pub struct Package {
     pub name: String,
     pub description: String,
     pub price_monthly: f64,
+    pub price_yearly: f64,
     pub max_properties: i64,
     pub max_units: i64,
     pub max_members: i64,
@@ -372,6 +373,9 @@ pub struct PackageInput {
     #[serde(default)]
     pub description: String,
     pub price_monthly: f64,
+    /// 0 = คิดจากราคารายเดือน × จำนวนเดือนที่ตั้งไว้ในระบบ
+    #[serde(default)]
+    pub price_yearly: f64,
     pub max_properties: i64,
     pub max_units: i64,
     pub max_members: i64,

@@ -53,7 +53,9 @@ async fn package_limits_and_features_are_enforced() {
     a.register("a@test.local", "Org A").await;
     let (_, org) = a.call(Method::GET, "/api/org", None).await;
     assert_eq!(org["package"]["name"], "Starter");
-    assert_eq!(org["org"]["status"], "trial");
+    // แพ็กเกจฟรีใช้งานได้ทันทีและไม่มีวันหมดอายุ
+    assert_eq!(org["org"]["status"], "active");
+    assert!(org["org"]["ends_at"].is_null());
 
     let (st, _) = a
         .call(

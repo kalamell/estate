@@ -67,25 +67,29 @@ fn validate_credentials(email: &str, password: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// สร้างองค์กรใหม่ด้วยแพ็กเกจเริ่มต้น (ทดลองใช้ 14 วัน) และตั้งผู้ใช้เป็นเจ้าของ
+/// สร้างองค์กรใหม่ด้วยแพ็กเกจเริ่มต้นและตั้งผู้ใช้เป็นเจ้าของ
+/// (แพ็กเกจเสียเงินได้ทดลองใช้ 14 วัน, แพ็กเกจฟรีใช้ได้ไม่มีวันหมดอายุ)
 pub async fn create_org_for(db: &SqlitePool, user_id: i64, name: &str) -> AppResult<i64> {
     let name = name.trim();
     if name.is_empty() {
         return Err(AppError::BadRequest("กรุณาระบุชื่อองค์กร".into()));
     }
-    let package_id: i64 = sqlx::query_scalar(
-        "SELECT id FROM packages WHERE is_active = 1 ORDER BY is_default DESC, sort_order, id LIMIT 1",
+    let (package_id, price): (i64, f64) = sqlx::query_as(
+        "SELECT id, price_monthly FROM packages WHERE is_active = 1 ORDER BY is_default DESC, sort_order, id LIMIT 1",
     )
     .fetch_optional(db)
     .await?
     .ok_or_else(|| AppError::Conflict("ระบบยังไม่มีแพ็กเกจที่เปิดใช้งาน".into()))?;
     let mut tx = db.begin().await?;
     let org_id: i64 = sqlx::query_scalar(
-        "INSERT INTO organizations (name, package_id, status, ends_at) VALUES (?, ?, 'trial', date('now', '+14 days'))
+        "INSERT INTO organizations (name, package_id, status, ends_at)
+         VALUES (?1, ?2, CASE WHEN ?3 > 0 THEN 'trial' ELSE 'active' END,
+                 CASE WHEN ?3 > 0 THEN date('now', '+14 days') END)
          RETURNING id",
     )
     .bind(name)
     .bind(package_id)
+    .bind(price)
     .fetch_one(&mut *tx)
     .await?;
     sqlx::query("INSERT INTO org_members (org_id, user_id, role) VALUES (?, ?, 'owner')")

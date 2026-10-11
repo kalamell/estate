@@ -41,7 +41,7 @@ async fn property_by_slug(db: &SqlitePool, slug: &str) -> AppResult<StayProperty
         "SELECT p.id, p.org_id, p.name, p.address, p.lat, p.lng, p.booking_intro, p.check_in_time, p.check_out_time,
                 p.min_nights, p.deposit_percent, o.name AS org_name, o.phone AS org_phone, o.theme,
                 pk.features,
-                (o.status IN ('trial','active') AND (o.ends_at IS NULL OR o.ends_at >= date('now'))) AS active
+                (o.status IN ('trial','active') AND (o.ends_at IS NULL OR date(o.ends_at, '+' || (SELECT grace_days FROM platform_settings WHERE id = 1) || ' days') >= date('now'))) AS active
          FROM properties p JOIN organizations o ON o.id = p.org_id JOIN packages pk ON pk.id = o.package_id
          WHERE p.booking_slug = ? AND p.booking_enabled = 1",
     )

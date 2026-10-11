@@ -62,6 +62,7 @@ pub async fn get(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<Value
             "features": ctx.features,
         },
         "usage": { "properties": properties, "units": units, "members": members },
+        "billing": super::subscription::summary(&s.db, ctx.org_id).await?,
         "role": role,
     })))
 }

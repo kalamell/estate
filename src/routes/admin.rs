@@ -57,7 +57,12 @@ fn validate_package(p: &PackageInput) -> AppResult<()> {
     if p.name.trim().is_empty() {
         return Err(AppError::BadRequest("กรุณาระบุชื่อแพ็กเกจ".into()));
     }
-    if p.price_monthly < 0.0 || p.max_properties < 1 || p.max_units < 1 || p.max_members < 1 {
+    if p.price_monthly < 0.0
+        || p.price_yearly < 0.0
+        || p.max_properties < 1
+        || p.max_units < 1
+        || p.max_members < 1
+    {
         return Err(AppError::BadRequest(
             "ราคาและขีดจำกัดต้องไม่ติดลบ และขีดจำกัดอย่างน้อย 1".into(),
         ));
@@ -75,18 +80,19 @@ async fn save_package(s: &AppState, id: Option<i64>, p: PackageInput) -> AppResu
     }
     let sql = match id {
         Some(_) => {
-            "UPDATE packages SET name=?, description=?, price_monthly=?, max_properties=?, max_units=?,
+            "UPDATE packages SET name=?, description=?, price_monthly=?, price_yearly=?, max_properties=?, max_units=?,
                 max_members=?, features=?, is_active=?, is_default=?, sort_order=? WHERE id=? RETURNING id"
         }
         None => {
-            "INSERT INTO packages (name, description, price_monthly, max_properties, max_units, max_members,
-                features, is_active, is_default, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id"
+            "INSERT INTO packages (name, description, price_monthly, price_yearly, max_properties, max_units, max_members,
+                features, is_active, is_default, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id"
         }
     };
     let mut q = sqlx::query_scalar::<_, i64>(sql)
         .bind(p.name.trim())
         .bind(&p.description)
         .bind(p.price_monthly)
+        .bind(p.price_yearly)
         .bind(p.max_properties)
         .bind(p.max_units)
         .bind(p.max_members)
