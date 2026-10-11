@@ -265,16 +265,26 @@ function Header() {
   )
 }
 
+/** จำสถานะย่อ/ขยายเมนูซ้ายไว้ (คอมโพเนนต์ sidebar เขียน cookie นี้ทุกครั้งที่สลับ) */
+function sidebarDefaultOpen() {
+  try {
+    return !document.cookie.split('; ').includes('sidebar_state=false')
+  } catch {
+    return true
+  }
+}
+
 export function AppShell() {
   const { orgId } = useSession()
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={sidebarDefaultOpen()}>
       <BookingDialogProvider>
         <AppSidebar />
         <SidebarInset className="min-w-0">
           <Header />
           <BillingBanner />
-          <main className="mx-auto w-full max-w-7xl flex-1 p-4 pb-24 sm:pb-8 lg:p-8">
+          {/* ไม่จำกัดความกว้าง: ย่อเมนูซ้ายแล้วเนื้อหาขยายเต็มพื้นที่ */}
+          <main className="w-full flex-1 p-4 pb-24 sm:pb-8 lg:p-8">
             <Outlet key={orgId ?? 'none'} />
           </main>
         </SidebarInset>
