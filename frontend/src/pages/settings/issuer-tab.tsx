@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { Info, Loader2, Save } from 'lucide-react'
 import { api, type OrgInfo, type OrgLegal } from '@/lib/api'
 import { invalidate } from '@/lib/query'
-import { orgLegalOf } from '@/lib/docs'
+import { orgLegalOf, orgThemeOf } from '@/lib/docs'
 import { useSession } from '@/contexts/session'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,7 @@ function IssuerForm({ info }: { info: OrgInfo }) {
     mutationFn: () =>
       api.updateOrg({
         name: info.org.name,
+        theme: orgThemeOf(info),
         ...form,
         tax_id: taxDigits,
         legal_name: form.legal_name.trim(),

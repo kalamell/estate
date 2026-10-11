@@ -64,7 +64,7 @@ export function PrintShell({
         <span className="truncate text-sm text-[#6b675f]">{title}</span>
         <Button
           size="sm"
-          className="ml-auto bg-[#1f5135] text-[#faf9f6] hover:bg-[#1f5135]/90"
+          className="ml-auto bg-[#1c1b19] text-white hover:bg-[#1c1b19]/90"
           onClick={() => window.print()}
           disabled={loading || !!error}
         >

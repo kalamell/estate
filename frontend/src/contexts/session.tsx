@@ -6,6 +6,7 @@ import {
   getOrgId,
   setOrgId,
   type Features,
+  type LineSettings,
   type Me,
   type OrgInfo,
   type OrgSummary,
@@ -14,6 +15,7 @@ import {
 } from '@/lib/api'
 import { queryClient } from '@/lib/query'
 import { today } from '@/lib/format'
+import { useOrgColorTheme } from '@/components/theme-provider'
 
 /** ดึงข้อมูลผู้ใช้ปัจจุบัน — คืน null เมื่อยังไม่ได้เข้าสู่ระบบ */
 export function useMe() {
@@ -46,6 +48,10 @@ interface Session {
   readOnly: boolean
   features: Features
   featuresLoaded: boolean
+  /** การตั้งค่า LINE OA (null = backend ยังไม่ส่งมา) */
+  line: LineSettings | null
+  /** LINE OA เปิดใช้งานและตั้งค่าครบ */
+  lineReady: boolean
 }
 
 const SessionContext = createContext<Session | null>(null)
@@ -83,6 +89,8 @@ export function SessionProvider({ me, children }: { me: Me; children: ReactNode 
     enabled: orgId != null,
     staleTime: 60_000,
   })
+  // ธีมสีค่าเริ่มต้นขององค์กร
+  useOrgColorTheme(orgInfo?.org.theme)
 
   const value = useMemo<Session>(() => {
     const role = orgInfo?.role ?? org?.role ?? null
@@ -102,6 +110,8 @@ export function SessionProvider({ me, children }: { me: Me; children: ReactNode 
       readOnly,
       features: orgInfo?.package.features ?? ALL_FEATURES,
       featuresLoaded: !!orgInfo,
+      line: orgInfo?.org.line ?? null,
+      lineReady: !!orgInfo?.org.line?.enabled,
     }
   }, [me.user, orgs, org, orgId, switchOrg, orgInfo])
 

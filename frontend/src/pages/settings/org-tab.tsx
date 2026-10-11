@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Field } from '@/components/common'
-import { orgLegalOf } from '@/lib/docs'
+import { orgLegalOf, orgThemeOf } from '@/lib/docs'
 
 export function OrgTab() {
   const { orgInfo } = useSession()
@@ -25,7 +25,7 @@ function OrgForm({ info: orgInfo }: { info: OrgInfo }) {
   const [name, setName] = useState(orgInfo.org.name)
 
   const save = useMutation({
-    mutationFn: () => api.updateOrg({ ...orgLegalOf(orgInfo), name: name.trim() }),
+    mutationFn: () => api.updateOrg({ ...orgLegalOf(orgInfo), name: name.trim(), theme: orgThemeOf(orgInfo) }),
     onSuccess: async (info) => {
       toast.success('บันทึกชื่อองค์กรแล้ว')
       queryClient.setQueryData<Me | null>(['me'], (me) =>

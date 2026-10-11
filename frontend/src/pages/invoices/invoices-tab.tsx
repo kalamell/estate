@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { AlertTriangle, FilePlus2, Loader2, Plus, ReceiptText } from 'lucide-react'
+import { AlertTriangle, FilePlus2, Loader2, Plus, ReceiptText, Send } from 'lucide-react'
 import { api } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { baht, thDate, thPeriod, thisPeriod } from '@/lib/format'
@@ -14,7 +14,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { EmptyState, Field, InvoiceStatusBadge, StatCard } from '@/components/common'
+import { useConfirm } from '@/components/confirm'
+import { LineIcon } from '@/components/line'
 import { InvoiceDialog } from './invoice-dialog'
+import { SendLineButton, useLinkedTenantNames } from './send-line'
 import { ManualInvoiceDialog } from './manual-invoice-dialog'
 import { ALL, PeriodFilter, PropertyFilter } from './filters'
 
@@ -26,7 +29,10 @@ const STATUSES: Record<string, string> = {
 }
 
 export function InvoicesTab({ initialStatus }: { initialStatus?: string }) {
-  const { readOnly } = useSession()
+  const { readOnly, lineReady } = useSession()
+  const confirm = useConfirm()
+  const linkedNames = useLinkedTenantNames()
+  const [lineResult, setLineResult] = useState<{ sent: number; skipped: string[] } | null>(null)
   const initial = initialStatus && STATUSES[initialStatus] ? initialStatus : ALL
   const [propertyId, setPropertyId] = useState(ALL)
   // ดูบิลเกินกำหนด → แสดงทุกรอบบิล
@@ -74,6 +80,26 @@ export function InvoicesTab({ initialStatus }: { initialStatus?: string }) {
     },
   })
 
+  const sendAll = useMutation({
+    mutationFn: () => api.sendInvoicesLine(Number(propertyId), period),
+    onSuccess: (r) => {
+      setLineResult(r)
+      toast.success(`ส่งแล้ว ${r.sent} · ข้าม ${r.skipped.length}`)
+    },
+  })
+  const askSendAll = async () => {
+    if (propertyId === ALL) return toast.error('เลือกโครงการก่อน')
+    if (!period) return toast.error('เลือกรอบบิลก่อน')
+    if (
+      await confirm({
+        title: `ส่งบิลรอบ ${thPeriod(period)} ทาง LINE?`,
+        description: 'ส่งใบแจ้งหนี้ที่ยังไม่ชำระของรอบนี้ให้ผู้เช่าที่เชื่อม LINE แล้ว ผู้เช่าที่ยังไม่เชื่อมจะถูกข้าม',
+        confirmText: 'ส่งทาง LINE',
+      })
+    )
+      sendAll.mutate()
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end gap-3">
@@ -94,7 +120,19 @@ export function InvoicesTab({ initialStatus }: { initialStatus?: string }) {
             </SelectContent>
           </Select>
         </Field>
-        <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+        <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
+          {lineReady && (
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              disabled={readOnly || sendAll.isPending}
+              onClick={() => void askSendAll()}
+              title={propertyId === ALL || !period ? 'เลือกโครงการและรอบบิลก่อน' : undefined}
+            >
+              {sendAll.isPending ? <Loader2 className="animate-spin" /> : <LineIcon />}
+              ส่งบิลรอบนี้ทาง LINE
+            </Button>
+          )}
           <Button variant="outline" className="flex-1 sm:flex-none" disabled={readOnly} onClick={() => setManualOpen(true)}>
             <Plus /> สร้างใบแจ้งหนี้
           </Button>
@@ -124,6 +162,34 @@ export function InvoicesTab({ initialStatus }: { initialStatus?: string }) {
               ))}
             </ul>
           </AlertDescription>
+        </Alert>
+      )}
+
+      {lineResult && (
+        <Alert className={lineResult.skipped.length ? 'border-warning/40 bg-warning/10' : 'border-success/30 bg-success/5'}>
+          <Send className={lineResult.skipped.length ? 'text-warning' : 'text-success'} />
+          <AlertTitle className="flex items-center gap-2">
+            ส่งบิลทาง LINE แล้ว {lineResult.sent} ใบ · ข้าม {lineResult.skipped.length}
+            <button
+              type="button"
+              className="ml-auto text-xs font-normal text-muted-foreground hover:text-foreground"
+              onClick={() => setLineResult(null)}
+            >
+              ปิด
+            </button>
+          </AlertTitle>
+          {lineResult.skipped.length > 0 && (
+            <AlertDescription>
+              <details>
+                <summary className="cursor-pointer select-none">ดูเหตุผลที่ข้าม ({lineResult.skipped.length})</summary>
+                <ul className="mt-1 ml-4 list-disc">
+                  {lineResult.skipped.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </details>
+            </AlertDescription>
+          )}
         </Alert>
       )}
 
@@ -163,7 +229,8 @@ export function InvoicesTab({ initialStatus }: { initialStatus?: string }) {
                 <TableHead className="hidden md:table-cell">รอบ</TableHead>
                 <TableHead className="hidden sm:table-cell">ครบกำหนด</TableHead>
                 <TableHead className="text-right">ยอด</TableHead>
-                <TableHead className="pr-4">สถานะ</TableHead>
+                <TableHead className={lineReady ? 'sm:pr-2 pr-4' : 'pr-4'}>สถานะ</TableHead>
+                {lineReady && <TableHead className="hidden w-10 pr-4 sm:table-cell"><span className="sr-only">ส่งทาง LINE</span></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -199,9 +266,26 @@ export function InvoicesTab({ initialStatus }: { initialStatus?: string }) {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="pr-4">
+                    <TableCell className={lineReady ? 'pr-4 sm:pr-2' : 'pr-4'}>
                       <InvoiceStatusBadge status={i.status} overdueDays={i.overdue_days} />
                     </TableCell>
+                    {lineReady && (
+                      <TableCell className="hidden pr-4 text-right sm:table-cell" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                        <SendLineButton
+                          kind="invoice"
+                          id={i.id}
+                          reason={
+                            isVoid
+                              ? 'ใบแจ้งหนี้ถูกยกเลิก'
+                              : !i.tenant_name
+                                ? 'ไม่มีผู้เช่า'
+                                : linkedNames && !linkedNames.has(i.tenant_name)
+                                  ? 'ผู้เช่ายังไม่ได้เชื่อม LINE'
+                                  : null
+                          }
+                        />
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })}

@@ -22,9 +22,10 @@ import { EmptyState, Field, StatCard, ToneBadge } from '@/components/common'
 import { ReasonDialog } from '@/components/reason-dialog'
 import { ALL, PeriodFilter, PropertyFilter } from './filters'
 import { printHref } from '@/lib/docs'
+import { SendLineButton } from './send-line'
 
 export function ReceiptsTab() {
-  const { canManage, readOnly } = useSession()
+  const { canManage, readOnly, lineReady } = useSession()
   const [propertyId, setPropertyId] = useState(ALL)
   const [period, setPeriod] = useState(thisPeriod())
   const [status, setStatus] = useState(ALL)
@@ -153,6 +154,9 @@ export function ReceiptsTab() {
                           <Printer />
                         </a>
                       </Button>
+                      {lineReady && (
+                        <SendLineButton kind="receipt" id={r.id} reason={isVoid ? 'ใบเสร็จถูกยกเลิก' : null} />
+                      )}
                       {canManage && !isVoid && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

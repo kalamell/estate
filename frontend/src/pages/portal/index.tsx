@@ -1,11 +1,12 @@
 // พอร์ทัลผู้เช่า (สาธารณะ ไม่ต้องล็อกอิน) — /p/:token
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowLeft,
   CalendarDays,
+  CheckCircle2,
   ChevronRight,
   FileText,
   Home,
@@ -35,6 +36,9 @@ import { PromptPayQR } from '@/components/promptpay-qr'
 import { ORG_CATEGORIES } from '@/components/tickets/labels'
 import { MessageThread, PhotoGrid, PhotoPicker, ReplyBox, TicketStatusBadge } from '@/components/tickets/parts'
 import { timeAgo } from '@/lib/docs'
+import { addFriendUrl } from '@/lib/line'
+import { useForcedColorTheme } from '@/components/theme-provider'
+import { LineIcon } from '@/components/line'
 
 type Tab = 'home' | 'bills' | 'repair'
 const TABS: { v: Tab; label: string; icon: LucideIcon }[] = [
@@ -45,12 +49,34 @@ const TABS: { v: Tab; label: string; icon: LucideIcon }[] = [
 
 const silent = { meta: { silent: true }, retry: false } as const
 
+/** ค่า ?tab= ที่รองรับ (รวมลิงก์จากข้อความ LINE: receipts, tickets) */
+const TAB_ALIAS: Record<string, Tab> = {
+  home: 'home',
+  bills: 'bills',
+  receipts: 'bills',
+  repair: 'repair',
+  tickets: 'repair',
+}
+
 export default function PortalPage() {
   const { token = '' } = useParams()
   const [params, setParams] = useSearchParams()
-  const tab = (TABS.find((t) => t.v === params.get('tab'))?.v ?? 'home') as Tab
+  // deep link: ?invoice=<id> → แท็บบิล, ?ticket=<id> → แท็บแจ้งซ่อม
+  const tab: Tab = params.get('invoice')
+    ? 'bills'
+    : params.get('ticket')
+      ? 'repair'
+      : (TAB_ALIAS[params.get('tab') ?? ''] ?? 'home')
   const setTab = (t: Tab) => setParams(t === 'home' ? {} : { tab: t })
-  const home = useQuery({ queryKey: ['portal', token], queryFn: () => api.portal.home(token), ...silent })
+  const home = useQuery({
+    queryKey: ['portal', token],
+    queryFn: () => api.portal.home(token),
+    ...silent,
+    // กลับมาจากแอป LINE หลังเชื่อมบัญชี → โหลดสถานะใหม่
+    refetchOnWindowFocus: true,
+  })
+  // พอร์ทัลใช้ธีมขององค์กรเสมอ (ไม่ใช้ค่าที่ผู้ใช้เลือกเอง)
+  useForcedColorTheme(home.data ? (home.data.org.theme ?? 'ink') : undefined)
 
   if (home.isLoading)
     return (
@@ -101,7 +127,7 @@ export default function PortalPage() {
 
       <main className="mx-auto max-w-lg space-y-4 p-4">
         {tab === 'home' && <HomeTab token={token} d={d} goBills={() => setTab('bills')} />}
-        {tab === 'bills' && <BillsTab token={token} d={d} />}
+        {tab === 'bills' && <BillsTab token={token} d={d} focusReceipts={params.get('tab') === 'receipts'} />}
         {tab === 'repair' && <RepairTab token={token} />}
       </main>
 
@@ -185,6 +211,8 @@ function HomeTab({ token, d, goBills }: { token: string; d: PortalHome; goBills:
         <p className="text-sm text-muted-foreground">สวัสดี</p>
         <h1 className="text-xl font-semibold">คุณ{d.tenant.full_name}</h1>
       </div>
+
+      <PortalLineCard token={token} line={d.line} />
 
       <Card className={cn('gap-0 overflow-hidden py-0', oldest && oldest.overdue_days > 0 && 'border-warning/50')}>
         <div className="p-5">
@@ -270,8 +298,15 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-function BillsTab({ token, d }: { token: string; d: PortalHome }) {
-  const [openId, setOpenId] = useState<number | null>(null)
+function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; focusReceipts?: boolean }) {
+  const [params, setParams] = useSearchParams()
+  const openId = Number(params.get('invoice')) || null
+  const setOpenId = (id: number | null) =>
+    setParams(id ? { tab: 'bills', invoice: String(id) } : { tab: 'bills' }, { replace: true })
+  const receiptsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (focusReceipts) receiptsRef.current?.scrollIntoView({ block: 'start' })
+  }, [focusReceipts])
   const invoices = [...d.invoices].sort((a, b) => b.due_date.localeCompare(a.due_date))
   const receipts = [...d.receipts].sort((a, b) => b.issue_date.localeCompare(a.issue_date))
   return (
@@ -310,7 +345,9 @@ function BillsTab({ token, d }: { token: string; d: PortalHome }) {
         </Card>
       )}
 
-      <SectionHead icon={Receipt}>ใบเสร็จรับเงิน</SectionHead>
+      <div ref={receiptsRef} className="scroll-mt-4">
+        <SectionHead icon={Receipt}>ใบเสร็จรับเงิน</SectionHead>
+      </div>
       {!receipts.length ? (
         <Card>
           <EmptyState icon={Receipt} title="ยังไม่มีใบเสร็จ" />
@@ -416,7 +453,10 @@ function PortalInvoiceDialog({ token, id, onClose }: { token: string; id: number
 
 function RepairTab({ token }: { token: string }) {
   const [creating, setCreating] = useState(false)
-  const [openId, setOpenId] = useState<number | null>(null)
+  const [params, setParams] = useSearchParams()
+  const openId = Number(params.get('ticket')) || null
+  const setOpenId = (id: number | null) =>
+    setParams(id ? { tab: 'repair', ticket: String(id) } : { tab: 'repair' }, { replace: true })
   const tickets = useQuery({
     queryKey: ['portal', token, 'tickets'],
     queryFn: () => api.portal.tickets(token),
@@ -589,5 +629,73 @@ function TicketView({ token, id, onBack }: { token: string; id: number; onBack: 
         </>
       )}
     </div>
+  )
+}
+
+/** การ์ดชวนเชื่อม LINE (แสดงเมื่อองค์กรเปิดใช้ LINE OA) */
+function PortalLineCard({ token, line }: { token: string; line: PortalHome['line'] }) {
+  const link = useMutation({
+    mutationFn: () => api.portal.lineLink(token),
+    meta: { silent: true },
+    onSuccess: (r) => {
+      window.location.href = r.link_url
+    },
+    onError: (e) => toast.error((e as Error).message || 'สร้างลิงก์เชื่อมบัญชีไม่สำเร็จ'),
+  })
+  if (!line?.enabled) return null
+  if (line.linked)
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border bg-card px-4 py-3 text-sm">
+        <LineIcon className="size-5" />
+        <span className="min-w-0 flex-1 truncate">
+          เชื่อม LINE แล้ว{line.display_name ? ` (${line.display_name})` : ''}
+        </span>
+        <CheckCircle2 className="size-4 shrink-0 text-success" />
+      </div>
+    )
+  const friend = addFriendUrl(line)
+  return (
+    <Card className="gap-4 px-5 py-5">
+      <div className="flex items-start gap-3">
+        <LineIcon className="size-9" />
+        <div className="min-w-0">
+          <h2 className="font-semibold">รับบิลและแจ้งเตือนทาง LINE</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            ไม่พลาดบิลใหม่ ใบเสร็จ และการตอบเรื่องแจ้งซ่อม — ส่งตรงถึงแชทของคุณ
+          </p>
+        </div>
+      </div>
+      <ol className="grid gap-2 text-sm">
+        <li className="flex gap-2.5">
+          <span className="grid size-5 shrink-0 place-items-center rounded-full border text-[11px] font-semibold">1</span>
+          <span>
+            กด <b>แอดเพื่อน</b> แล้วเพิ่ม {line.basic_id || 'LINE OA'} เป็นเพื่อน
+          </span>
+        </li>
+        <li className="flex gap-2.5">
+          <span className="grid size-5 shrink-0 place-items-center rounded-full border text-[11px] font-semibold">2</span>
+          <span>
+            กลับมาที่หน้านี้ กด <b>เชื่อมบัญชี</b> แล้วกด “ส่ง” ข้อความในแชท
+          </span>
+        </li>
+      </ol>
+      <div className="grid grid-cols-2 gap-2">
+        {friend ? (
+          <Button asChild variant="outline" className="h-12">
+            <a href={friend} target="_blank" rel="noreferrer">
+              1. แอดเพื่อน
+            </a>
+          </Button>
+        ) : (
+          <Button variant="outline" className="h-12" disabled>
+            1. แอดเพื่อน
+          </Button>
+        )}
+        <Button className="h-12" disabled={link.isPending} onClick={() => link.mutate()}>
+          {link.isPending && <Loader2 className="animate-spin" />}
+          2. เชื่อมบัญชี
+        </Button>
+      </div>
+    </Card>
   )
 }

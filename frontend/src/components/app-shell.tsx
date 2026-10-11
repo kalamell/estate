@@ -82,7 +82,10 @@ function AppSidebar() {
   return (
     <Sidebar collapsible="offcanvas" className="border-r-0">
       <SidebarHeader className="gap-3 p-3">
-        <Logo className="px-2 pt-2 pb-1 text-[#faf9f6]" />
+        <Logo
+          className="px-2 pt-2 pb-1 text-sidebar-accent-foreground"
+          markClassName="bg-sidebar-mark text-sidebar-mark-foreground"
+        />
         <OrgSwitcher />
       </SidebarHeader>
       <SidebarContent>

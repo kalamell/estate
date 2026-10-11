@@ -25,6 +25,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Field, InvoiceStatusBadge, ToneBadge } from '@/components/common'
 import { PromptPayQR } from '@/components/promptpay-qr'
 import { ReasonDialog } from '@/components/reason-dialog'
+import { LineIcon } from '@/components/line'
+import { SendLineButton } from './send-line'
 
 type Mode = 'view' | 'pay' | 'paid'
 
@@ -39,7 +41,7 @@ export function InvoiceDialog({ id, onClose }: { id: number | null; onClose: () 
 }
 
 function InvoiceBody({ id }: { id: number }) {
-  const { readOnly, canManage } = useSession()
+  const { readOnly, canManage, line, lineReady } = useSession()
   const [mode, setMode] = useState<Mode>('view')
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [voidOpen, setVoidOpen] = useState(false)
@@ -86,10 +88,19 @@ function InvoiceBody({ id }: { id: number }) {
             )}
           </DialogDescription>
         </div>
+        {lineReady && line?.auto_receipt && (
+          <p className="mx-auto flex max-w-sm items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-left text-sm text-muted-foreground">
+            <LineIcon className="mt-0.5" />
+            ระบบส่งใบเสร็จทาง LINE ให้ผู้เช่าแล้ว (ถ้าเชื่อมบัญชีไว้)
+          </p>
+        )}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
           <Button variant="ghost" onClick={() => setMode('view')}>
             กลับไปที่ใบแจ้งหนี้
           </Button>
+          {receipt && lineReady && !line?.auto_receipt && (
+            <SendLineButton kind="receipt" id={receipt.id} withLabel className="w-full sm:w-auto" />
+          )}
           {receipt && (
             <Button asChild>
               <a href={printHref('receipt', receipt.id)} target="_blank" rel="noreferrer">
@@ -201,6 +212,7 @@ function InvoiceBody({ id }: { id: number }) {
             <Ban /> ยกเลิก
           </Button>
         )}
+        {lineReady && !isVoid && <SendLineButton kind="invoice" id={inv.id} withLabel />}
         {unpaid && (
           <Button className="ml-auto" disabled={readOnly} onClick={() => setMode('pay')}>
             <HandCoins /> รับชำระ

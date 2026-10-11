@@ -1,4 +1,5 @@
 import { ApiError, type OrgInfo, type OrgLegal } from './api'
+import { DEFAULT_COLOR_THEME, isColorTheme, type ColorThemeId } from './themes'
 
 /** ลิงก์หน้าพิมพ์เอกสาร (เปิดแท็บใหม่ + สั่งพิมพ์อัตโนมัติ) */
 export const printHref = (kind: 'invoice' | 'receipt' | 'move-out', id: number) =>
@@ -26,6 +27,10 @@ export function orgLegalOf(info: OrgInfo): OrgLegal {
     receipt_note: o.receipt_note ?? '',
   }
 }
+
+/** ธีมสีขององค์กร (ค่าเริ่มต้น ink) — ส่งกลับไปพร้อม PUT /api/org เพื่อไม่ให้ค่าหาย */
+export const orgThemeOf = (info: OrgInfo): ColorThemeId =>
+  isColorTheme(info.org.theme) ? info.org.theme : DEFAULT_COLOR_THEME
 
 export const timeAgo = (iso: string) => {
   const d = new Date(iso)

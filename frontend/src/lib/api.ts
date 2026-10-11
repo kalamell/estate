@@ -2,6 +2,9 @@
 // - ใช้คุกกี้ HttpOnly ที่เซิร์ฟเวอร์ตั้งให้ (same-origin, credentials: 'include')
 // - ทุกคำขอที่ผูกกับองค์กรจะส่ง header X-Org-Id
 
+import type { ColorThemeId } from './themes'
+export type { ColorThemeId } from './themes'
+
 // ===================== Types: auth / SaaS =====================
 
 export type Role = 'owner' | 'admin' | 'staff'
@@ -55,9 +58,78 @@ export interface OrgProfile extends Partial<OrgLegal> {
   status: OrgStatus
   ends_at: string | null
   created_at: string
+  /** ธีมสีค่าเริ่มต้นขององค์กร */
+  theme?: ColorThemeId | string
+  /** การตั้งค่า LINE Official Account */
+  line?: LineSettings
 }
 
-export type OrgUpdate = { name: string } & OrgLegal
+export type OrgUpdate = { name: string; theme?: ColorThemeId } & OrgLegal
+
+// ----- LINE OA -----
+export interface LineSettings {
+  enabled: boolean
+  channel_id: string
+  /** เช่น "@123abcde" */
+  basic_id: string
+  has_secret: boolean
+  has_token: boolean
+  webhook_url: string
+  auto_invoice: boolean
+  auto_receipt: boolean
+  auto_ticket_reply: boolean
+  auto_remind: boolean
+  linked_tenants: number
+  add_friend_url: string | null
+}
+
+export interface LineSettingsInput {
+  enabled: boolean
+  channel_id: string
+  basic_id: string
+  /** ส่งเฉพาะเมื่อผู้ใช้กรอกค่าใหม่ (ไม่ส่ง = ใช้ค่าเดิม) */
+  channel_secret?: string
+  channel_access_token?: string
+  auto_invoice: boolean
+  auto_receipt: boolean
+  auto_ticket_reply: boolean
+  auto_remind: boolean
+}
+
+export interface LineBotInfo {
+  display_name: string
+  basic_id: string
+  picture_url: string | null
+}
+
+export type LineMessageKind =
+  | 'invoice'
+  | 'receipt'
+  | 'ticket_reply'
+  | 'reminder'
+  | 'portal_link'
+  | 'reply'
+  | 'welcome'
+  | 'linked'
+
+export interface LineMessage {
+  id: number
+  tenant_id: number | null
+  tenant_name: string | null
+  kind: LineMessageKind | string
+  status: 'sent' | 'failed'
+  error: string | null
+  created_at: string
+}
+
+/** โค้ดเชื่อมบัญชี LINE ของผู้เช่า */
+export interface LineLinkCode {
+  code: string
+  /** เปิดแชท OA พร้อมข้อความ "เชื่อมบัญชี <code>" */
+  link_url: string
+  add_friend_url: string | null
+  expires_at: string
+}
 
 export interface OrgInfo {
   org: OrgProfile
@@ -222,6 +294,9 @@ export interface Tenant {
   branch_code: string
   portal_token: string | null
   created_at: string
+  line_linked?: boolean
+  line_display_name?: string | null
+  line_linked_at?: string | null
 }
 
 export type TenantInput = Pick<
@@ -507,7 +582,14 @@ export interface ReportSummary {
 // ----- Tenant portal -----
 export interface PortalHome {
   tenant: { full_name: string; phone: string }
-  org: { name: string; phone: string }
+  org: { name: string; phone: string; theme?: ColorThemeId | string }
+  line?: {
+    enabled: boolean
+    basic_id: string
+    add_friend_url: string | null
+    linked: boolean
+    display_name: string | null
+  }
   property: { name: string; address: string } | null
   unit: { name: string; floor: number } | null
   booking: {
@@ -682,6 +764,11 @@ export const api = {
   updateMember: (userId: number, role: Role) => put<Member>(`/api/org/members/${userId}`, { role }),
   removeMember: (userId: number) => del(`/api/org/members/${userId}`),
 
+  // LINE OA
+  updateLine: (b: LineSettingsInput) => put<LineSettings>('/api/org/line', b),
+  testLine: () => post<{ ok: boolean; bot: LineBotInfo }>('/api/org/line/test'),
+  lineMessages: (limit = 50) => get<LineMessage[]>('/api/line/messages', { limit }),
+
   // domain
   dashboard: () => get<Dashboard>('/api/dashboard'),
   properties: () => get<Property[]>('/api/properties'),
@@ -700,6 +787,9 @@ export const api = {
   deleteTenant: (id: number) => del(`/api/tenants/${id}`),
   regenPortalToken: (id: number) =>
     post<{ portal_token: string }>(`/api/tenants/${id}/portal-token`),
+  tenantLineLink: (id: number) => post<LineLinkCode>(`/api/tenants/${id}/line-link`),
+  unlinkTenantLine: (id: number) => del(`/api/tenants/${id}/line`),
+  sendTenantPortalLine: (id: number) => post<{ sent: boolean }>(`/api/tenants/${id}/line/send-portal`),
 
   bookings: (f: { unit_id?: number; property_id?: number; status?: string } = {}) =>
     get<Booking[]>('/api/bookings', f),
@@ -721,11 +811,15 @@ export const api = {
   payInvoice: (id: number, b: PayInput) =>
     post<{ invoice: Invoice; receipt: Receipt }>(`/api/invoices/${id}/pay`, b),
   voidInvoice: (id: number, reason: string) => post<Invoice>(`/api/invoices/${id}/void`, { reason }),
+  sendInvoiceLine: (id: number) => post<{ sent: boolean }>(`/api/invoices/${id}/send-line`),
+  sendInvoicesLine: (property_id: number, period: string) =>
+    post<{ sent: number; skipped: string[] }>('/api/invoices/send-line', { property_id, period }),
 
   receipts: (f: { property_id?: number | string; period?: string; status?: string } = {}) =>
     get<Receipt[]>('/api/receipts', f),
   receipt: (id: number) => get<{ receipt: Receipt }>(`/api/receipts/${id}`),
   voidReceipt: (id: number, reason: string) => post<Receipt>(`/api/receipts/${id}/void`, { reason }),
+  sendReceiptLine: (id: number) => post<{ sent: boolean }>(`/api/receipts/${id}/send-line`),
 
   tickets: (f: { status?: string; property_id?: number | string; category?: string } = {}) =>
     get<Ticket[]>('/api/tickets', f),
@@ -770,6 +864,7 @@ export const api = {
       get<TicketDetail>(`/api/portal/${enc(token)}/tickets/${id}`, undefined, false),
     reply: (token: string, id: number, fd: FormData) =>
       form<unknown>(`/api/portal/${enc(token)}/tickets/${id}/messages`, fd, false),
+    lineLink: (token: string) => post<LineLinkCode>(`/api/portal/${enc(token)}/line-link`, {}, false),
   },
 
   // super admin (ไม่ต้องใช้ X-Org-Id)

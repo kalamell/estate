@@ -20,6 +20,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState, StatCard, StatCardSkeleton } from '@/components/common'
 import { cn } from '@/lib/utils'
 import { LeafletMap } from '@/components/leaflet-map'
+import { LineIcon } from '@/components/line'
+import { useSession } from '@/contexts/session'
 
 export default function DashboardPage() {
   const dash = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
@@ -65,7 +67,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <AttentionRow
           to="/invoices?status=overdue"
           icon={AlertTriangle}
@@ -86,6 +88,7 @@ export default function DashboardPage() {
           detail={d ? `${d.open_tickets} รายการที่ยังไม่ปิด` : ''}
           empty="ไม่มีงานค้าง"
         />
+        <LineCard />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -241,6 +244,45 @@ function AttentionRow({
         <div className="text-sm text-muted-foreground tabular-nums">
           {loading ? <Skeleton className="mt-1 h-4 w-32" /> : active ? detail : empty}
         </div>
+      </div>
+      <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  )
+}
+
+/** การ์ดสรุป LINE OA: ผู้เช่าที่เชื่อมแล้ว / ทั้งหมด */
+function LineCard() {
+  const { line, lineReady, canManage } = useSession()
+  const tenants = useQuery({ queryKey: ['tenants'], queryFn: api.tenants, meta: { silent: true } })
+  const total = tenants.data?.length ?? 0
+  const linked = tenants.data ? tenants.data.filter((t) => t.line_linked).length : (line?.linked_tenants ?? 0)
+  const pct = total ? Math.round((linked / total) * 100) : 0
+  return (
+    <Link
+      to={lineReady ? '/tenants' : canManage ? '/settings?tab=line' : '/tenants'}
+      className={cn(
+        'group flex items-center gap-4 rounded-lg border border-l-4 bg-card px-4 py-3.5 transition-colors hover:bg-muted/50 sm:col-span-2 lg:col-span-1',
+        lineReady ? 'border-l-success' : 'border-l-border',
+      )}
+    >
+      <LineIcon className={cn('size-5', !lineReady && 'opacity-60 grayscale')} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          LINE OA
+          {lineReady && line?.basic_id && <span className="truncate text-xs font-normal text-muted-foreground">{line.basic_id}</span>}
+        </div>
+        {lineReady ? (
+          <div className="flex items-center gap-2.5 text-sm text-muted-foreground tabular-nums">
+            <span className="whitespace-nowrap">
+              เชื่อมแล้ว <span className="font-medium text-foreground">{linked}</span> / {total} ผู้เช่า
+            </span>
+            <Progress value={pct} className="h-1 max-w-24 flex-1" aria-label="สัดส่วนผู้เช่าที่เชื่อม LINE" />
+          </div>
+        ) : (
+          <div className="truncate text-sm text-muted-foreground">
+            {canManage ? 'ยังไม่ได้ตั้งค่า — ตั้งค่าเพื่อส่งบิลทาง LINE' : 'ยังไม่ได้ตั้งค่า LINE OA'}
+          </div>
+        )}
       </div>
       <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
     </Link>

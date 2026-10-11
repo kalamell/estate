@@ -221,10 +221,18 @@ export function LogoMark({ className }: { className?: string }) {
   )
 }
 
-export function Logo({ className, subtitle = true }: { className?: string; subtitle?: boolean }) {
+export function Logo({
+  className,
+  subtitle = true,
+  markClassName,
+}: {
+  className?: string
+  subtitle?: boolean
+  markClassName?: string
+}) {
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      <LogoMark />
+      <LogoMark className={markClassName} />
       <div className="leading-tight">
         <div className="font-semibold tracking-tight">Estate</div>
         {subtitle && <div className="text-xs opacity-70">บริหารห้องเช่าครบวงจร</div>}

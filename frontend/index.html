@@ -21,6 +21,11 @@
         var t = localStorage.getItem('estate-theme')
         if (t === 'dark' || ((!t || t === 'system') && matchMedia('(prefers-color-scheme: dark)').matches))
           document.documentElement.classList.add('dark')
+        // ธีมสี: ค่าที่ผู้ใช้เลือก (ยกเว้นพอร์ทัลผู้เช่า) → ธีมองค์กรล่าสุด → ink
+        var ids = ['ink', 'navy', 'terracotta', 'ocean', 'mono']
+        var c = location.pathname.indexOf('/p/') === 0 ? null : localStorage.getItem('estate-color-theme')
+        if (ids.indexOf(c) < 0) c = location.pathname.indexOf('/p/') === 0 ? 'ink' : localStorage.getItem('estate-org-theme')
+        document.documentElement.setAttribute('data-theme', ids.indexOf(c) < 0 ? 'ink' : c)
       } catch (e) {}
     </script>
   </head>

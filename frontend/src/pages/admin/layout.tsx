@@ -18,26 +18,26 @@ export default function AdminLayout() {
   const { user, orgs } = useSession()
   return (
     <div className="min-h-svh bg-background">
-      <header className="sticky top-0 z-20 border-b border-[#2e2c28] bg-[#1c1b19] text-[#faf9f6]">
+      <header className="sticky top-0 z-20 border-b border-sidebar-border bg-sidebar text-sidebar-accent-foreground">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 lg:px-8">
           {orgs.length > 0 && (
-            <Button asChild variant="ghost" size="icon" className="text-[#d9d5cc] hover:bg-[#2a2926] hover:text-white" aria-label="กลับไปที่แอป">
+            <Button asChild variant="ghost" size="icon" className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-white" aria-label="กลับไปที่แอป">
               <Link to="/">
                 <ArrowLeft />
               </Link>
             </Button>
           )}
-          <div className="grid size-8 place-items-center rounded-md border border-[#2e2c28] bg-[#2a2926] text-[#8fb59b]">
+          <div className="grid size-8 place-items-center rounded-md border border-sidebar-border bg-sidebar-accent text-sidebar-primary">
             <ShieldCheck className="size-4" />
           </div>
           <div className="leading-tight">
             <div className="flex items-center gap-2 font-semibold">
               Estate Console
-              <Badge variant="outline" className="border-[#8fb59b]/40 text-[10px] font-medium text-[#8fb59b]">
+              <Badge variant="outline" className="border-sidebar-primary/40 text-[10px] font-medium text-sidebar-primary">
                 Super Admin
               </Badge>
             </div>
-            <div className="text-xs text-[#8c877d]">จัดการแพ็กเกจ ลูกค้า และผู้ใช้ทั้งระบบ</div>
+            <div className="text-xs text-sidebar-muted">จัดการแพ็กเกจ ลูกค้า และผู้ใช้ทั้งระบบ</div>
           </div>
           <div className="ml-auto">
             <CompactUserMenu user={user} showSettings={orgs.length > 0} />
@@ -53,8 +53,8 @@ export default function AdminLayout() {
                 cn(
                   'flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-sm transition-colors',
                   isActive
-                    ? 'border-[#8fb59b] font-medium text-[#faf9f6]'
-                    : 'border-transparent text-[#8c877d] hover:text-[#d9d5cc]',
+                    ? 'border-sidebar-primary font-medium text-sidebar-accent-foreground'
+                    : 'border-transparent text-sidebar-muted hover:text-sidebar-foreground',
                 )
               }
             >

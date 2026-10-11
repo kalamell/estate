@@ -1,18 +1,23 @@
 import { useSearchParams } from 'react-router-dom'
-import { Building2, FileText, Package, Users } from 'lucide-react'
+import { Building2, FileText, MessageCircle, Package, Palette, Users } from 'lucide-react'
+import { useSession } from '@/contexts/session'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OrgTab } from './org-tab'
 import { PackageTab } from './package-tab'
 import { MembersTab } from './members-tab'
 import { IssuerTab } from './issuer-tab'
+import { AppearanceTab } from './appearance-tab'
+import { LineTab } from './line-tab'
 
-const TABS = ['org', 'issuer', 'package', 'members'] as const
+const TABS = ['org', 'issuer', 'appearance', 'line', 'package', 'members'] as const
 type Tab = (typeof TABS)[number]
 
 export default function SettingsPage() {
+  const { canManage } = useSession()
   const [params, setParams] = useSearchParams()
   const raw = params.get('tab')
-  const tab: Tab = (TABS as readonly string[]).includes(raw ?? '') ? (raw as Tab) : 'org'
+  const allowed = TABS.filter((t) => t !== 'line' || canManage)
+  const tab: Tab = (allowed as readonly string[]).includes(raw ?? '') ? (raw as Tab) : 'org'
   return (
     <Tabs value={tab} onValueChange={(v) => setParams({ tab: v }, { replace: true })} className="gap-6">
       <TabsList className="h-10 w-full justify-start overflow-x-auto sm:w-fit">
@@ -22,6 +27,14 @@ export default function SettingsPage() {
         <TabsTrigger value="issuer" className="px-3">
           <FileText /> ข้อมูลผู้ออกเอกสาร & ภาษี
         </TabsTrigger>
+        <TabsTrigger value="appearance" className="px-3">
+          <Palette /> รูปลักษณ์
+        </TabsTrigger>
+        {canManage && (
+          <TabsTrigger value="line" className="px-3">
+            <MessageCircle /> LINE OA
+          </TabsTrigger>
+        )}
         <TabsTrigger value="package" className="px-3">
           <Package /> แพ็กเกจ & การใช้งาน
         </TabsTrigger>
@@ -35,6 +48,14 @@ export default function SettingsPage() {
       <TabsContent value="issuer">
         <IssuerTab />
       </TabsContent>
+      <TabsContent value="appearance">
+        <AppearanceTab />
+      </TabsContent>
+      {canManage && (
+        <TabsContent value="line">
+          <LineTab />
+        </TabsContent>
+      )}
       <TabsContent value="package">
         <PackageTab />
       </TabsContent>
