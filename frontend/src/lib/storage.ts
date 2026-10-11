@@ -20,3 +20,6 @@ export const LS = {
   unitsView: 'estate.unitsView',
   meterProperty: 'estate.meterProperty',
 }
+
+/** token คำขอจองล่าสุดของแต่ละหน้าจอง (/stay/:slug) */
+export const stayRequestKey = (slug: string) => `estate.stay.${slug}`

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CalendarPlus, Droplets, Loader2, Move3d, Plus, Save, Trash2, X, Zap } from 'lucide-react'
+import { CalendarPlus, CalendarRange, Droplets, Loader2, Move3d, Plus, Save, Trash2, X, Zap } from 'lucide-react'
 import { api, type ExtraCharge, type FurnitureKind, type Unit, type UnitStatus } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { FURNITURE, UNIT_STATUS, baht, num, thDate } from '@/lib/format'
@@ -20,20 +20,40 @@ import { BookingStatusBadge, Field, UnitStatusBadge } from '@/components/common'
 import { useConfirm } from '@/components/confirm'
 import { useBookingDialog } from '@/components/booking-dialog'
 import { RoomView } from './three-canvas'
+import { UnitChannels } from './unit-channels'
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
-export function UnitSheet({ unit, onClose }: { unit: Unit | null; onClose: () => void }) {
+export function UnitSheet({
+  unit,
+  onClose,
+  initialTab,
+}: {
+  unit: Unit | null
+  onClose: () => void
+  /** แท็บที่เปิดก่อน เช่น "channels" */
+  initialTab?: string | null
+}) {
   return (
     <Sheet open={!!unit} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full gap-0 p-0 sm:max-w-2xl" aria-describedby={undefined}>
-        {unit && <UnitEditor key={unit.id} unit={unit} onClose={onClose} />}
+        {unit && <UnitEditor key={unit.id} unit={unit} onClose={onClose} initialTab={initialTab} />}
       </SheetContent>
     </Sheet>
   )
 }
 
-function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
+const TABS = ['room3d', 'info', 'channels', 'history']
+
+function UnitEditor({
+  unit,
+  onClose,
+  initialTab,
+}: {
+  unit: Unit
+  onClose: () => void
+  initialTab?: string | null
+}) {
   const { features, canManage, readOnly } = useSession()
   const confirm = useConfirm()
   const { openBooking } = useBookingDialog()
@@ -42,7 +62,9 @@ function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
     layout: [...(unit.layout || [])],
     extra_charges: [...(unit.extra_charges || [])],
   }))
-  const [tabState, setTab] = useState(features.view3d ? 'room3d' : 'info')
+  const [tabState, setTab] = useState(() =>
+    initialTab && TABS.includes(initialTab) ? initialTab : features.view3d ? 'room3d' : 'info',
+  )
   const tab = !features.view3d && tabState === 'room3d' ? 'info' : tabState
   const [newKind, setNewKind] = useState<FurnitureKind>('bed')
 
@@ -109,7 +131,7 @@ function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
 
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
         <div className="border-b px-6 pt-3 pb-2">
-          <TabsList variant="line" className="w-full justify-start">
+          <TabsList variant="line" className="w-full justify-start overflow-x-auto">
             {features.view3d && (
               <TabsTrigger value="room3d" className="flex-none">
                 <Move3d /> ห้อง 3D
@@ -117,6 +139,9 @@ function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
             )}
             <TabsTrigger value="info" className="flex-none">
               ข้อมูลห้อง
+            </TabsTrigger>
+            <TabsTrigger value="channels" className="flex-none">
+              <CalendarRange /> ปฏิทิน & ช่องทางขาย
             </TabsTrigger>
             <TabsTrigger value="history" className="flex-none">
               ประวัติ
@@ -252,6 +277,10 @@ function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
                 value={draft.extra_charges}
                 onChange={(v) => set('extra_charges', v)}
               />
+            </TabsContent>
+
+            <TabsContent value="channels">
+              <UnitChannels unit={unit} />
             </TabsContent>
 
             <TabsContent value="history">

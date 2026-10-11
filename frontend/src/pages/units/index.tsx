@@ -34,7 +34,19 @@ export default function UnitsPage() {
 
   const [view, setView] = useState<'grid' | '3d'>(() => (readLS(LS.unitsView) === '3d' ? '3d' : 'grid'))
   const show3d = view === '3d' && features.view3d
-  const [openId, setOpenId] = useState<number | null>(null)
+  // ?unit=<id>&tab=channels — ลิงก์ตรงจากปฏิทิน/ช่องทางขาย
+  const [openId, setOpenIdState] = useState<number | null>(() => Number(params.get('unit')) || null)
+  const [openTab, setOpenTab] = useState<string | null>(() => params.get('tab'))
+  const setOpenId = (id: number | null) => {
+    setOpenIdState(id)
+    setOpenTab(null)
+    if (id == null && (params.has('unit') || params.has('tab'))) {
+      const next = new URLSearchParams(params)
+      next.delete('unit')
+      next.delete('tab')
+      setParams(next, { replace: true })
+    }
+  }
   const [addOpen, setAddOpen] = useState(false)
   const openUnit = units.data?.find((u) => u.id === openId) ?? null
 
@@ -45,7 +57,7 @@ export default function UnitsPage() {
   const selectProperty = (id: string) => {
     writeLS(LS.unitsProperty, id)
     setParams({ property: id }, { replace: true })
-    setOpenId(null)
+    setOpenIdState(null)
   }
 
   const list = useMemo(() => units.data ?? [], [units.data])
@@ -187,7 +199,7 @@ export default function UnitsPage() {
         </div>
       )}
 
-      <UnitSheet unit={openUnit} onClose={() => setOpenId(null)} />
+      <UnitSheet unit={openUnit} onClose={() => setOpenId(null)} initialTab={openTab} />
       {propertyId && (
         <AddUnitDialog open={addOpen} onOpenChange={setAddOpen} propertyId={propertyId} sample={list[0]} />
       )}

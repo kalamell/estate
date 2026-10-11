@@ -98,6 +98,13 @@ export const BOOKING_STATUS: Record<BookingStatus, { label: string; badge: strin
   cancelled: { label: 'ยกเลิก', badge: TONE.red },
 }
 
+export const BOOKING_REQUEST_STATUS: Record<string, { label: string; tone: Tone }> = {
+  pending: { label: 'รอตอบ', tone: 'mustard' },
+  approved: { label: 'อนุมัติแล้ว', tone: 'green' },
+  rejected: { label: 'ปฏิเสธแล้ว', tone: 'red' },
+  expired: { label: 'หมดอายุ', tone: 'grey' },
+}
+
 export const DEPOSIT_STATUS: Record<DepositStatus, string> = {
   pending: 'รอชำระ',
   paid: 'ชำระแล้ว',
@@ -110,6 +117,8 @@ export const BOOKING_SOURCES: Record<string, string> = {
   airbnb: 'Airbnb',
   booking: 'Booking.com',
   agoda: 'Agoda',
+  vrbo: 'VRBO',
+  other: 'อื่นๆ',
 }
 
 /** [ชื่อ, กว้าง, ลึก, สูง] (เมตร) */
@@ -182,4 +191,52 @@ export const vatRateOf = (
   if (!base || !vat) return fallback
   const r = Math.round((vat / base) * 10000) / 100
   return Number.isFinite(r) ? r : fallback
+}
+
+const utcOf = (d: string) => {
+  const [y, m, day] = d.slice(0, 10).split('-').map(Number)
+  return Date.UTC(y, (m || 1) - 1, day || 1)
+}
+/** จำนวนวันจาก a ถึง b (YYYY-MM-DD) — b ไม่นับรวม */
+export const diffDays = (a: string, b: string) => Math.round((utcOf(b) - utcOf(a)) / 86_400_000)
+
+/** 0 = อาทิตย์ … 6 = เสาร์ */
+export const weekdayOf = (d: string) => new Date(utcOf(d)).getUTCDay()
+
+export const TH_WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+export const TH_MONTHS = [
+  'มกราคม',
+  'กุมภาพันธ์',
+  'มีนาคม',
+  'เมษายน',
+  'พฤษภาคม',
+  'มิถุนายน',
+  'กรกฎาคม',
+  'สิงหาคม',
+  'กันยายน',
+  'ตุลาคม',
+  'พฤศจิกายน',
+  'ธันวาคม',
+]
+export const TH_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+/** "2026-10-11" → "ส. 11 ต.ค." */
+export const thDayShort = (d: string) => {
+  const [, m, day] = d.slice(0, 10).split('-').map(Number)
+  return `${TH_WEEKDAYS[weekdayOf(d)]}. ${day} ${TH_MONTHS_SHORT[(m || 1) - 1]}`
+}
+
+/** ช่วงวันที่สั้นๆ "11–14 ต.ค." หรือ "30 ต.ค. – 2 พ.ย." */
+export const thRange = (a: string, b: string) => {
+  const [ya, ma, da] = a.slice(0, 10).split('-').map(Number)
+  const [yb, mb, db] = b.slice(0, 10).split('-').map(Number)
+  if (ya === yb && ma === mb) return `${da}–${db} ${TH_MONTHS_SHORT[ma - 1]}`
+  return `${da} ${TH_MONTHS_SHORT[ma - 1]} – ${db} ${TH_MONTHS_SHORT[mb - 1]}${ya !== yb ? ` ${yb + 543}` : ''}`
+}
+
+/** "YYYY-MM" + n เดือน → "YYYY-MM" */
+export const addMonths = (ym: string, n: number) => {
+  const [y, m] = ym.split('-').map(Number)
+  const d = new Date(y, m - 1 + n, 1)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
 }

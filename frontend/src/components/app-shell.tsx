@@ -61,10 +61,11 @@ function NavLinks({ items }: { items: NavItem[] }) {
             {n.badge && (dash.data?.[n.badge] ?? 0) > 0 && (
               <SidebarMenuBadge
                 className={
-                  n.badge === 'overdue_count'
+                  n.badge === 'overdue_count' || n.badge === 'pending_requests'
                     ? 'rounded-sm bg-warning/20 text-warning'
                     : 'rounded-sm bg-sidebar-accent text-sidebar-foreground'
                 }
+                title={n.badge === 'pending_requests' ? 'คำขอจองออนไลน์รอตอบ' : undefined}
               >
                 {dash.data?.[n.badge]}
               </SidebarMenuBadge>

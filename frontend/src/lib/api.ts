@@ -240,6 +240,18 @@ export interface Property {
   late_fee_type: LateFeeType
   late_fee_amount: number
   late_fee_grace_days: number
+  /** หน้าจองออนไลน์ (/stay/:slug) */
+  booking_enabled?: boolean
+  /** [a-z0-9-] 3–40 ตัว */
+  booking_slug?: string | null
+  booking_intro?: string
+  /** "14:00" */
+  check_in_time?: string
+  /** "12:00" */
+  check_out_time?: string
+  min_nights?: number
+  /** 0–100 (% ของยอดรวม) */
+  deposit_percent?: number
   created_at: string
 }
 
@@ -633,6 +645,165 @@ export interface Dashboard {
     property_name: string
     tenant_name: string
   }[]
+  /** คำขอจองออนไลน์ที่รอตอบ */
+  pending_requests?: number
+}
+
+// ----- Calendar / channel manager (iCal) -----
+export type ChannelSource = 'airbnb' | 'booking' | 'agoda' | 'vrbo' | 'other'
+export type EventSource = 'lease' | 'direct' | ChannelSource
+
+export interface CalendarUnit {
+  id: number
+  property_id: number
+  property_name: string
+  name: string
+  floor: number
+  status: UnitStatus
+  rate_daily: number
+  rent_monthly: number
+}
+
+export interface CalendarEvent {
+  id: string
+  type: 'booking' | 'block' | 'request'
+  unit_id: number
+  /** YYYY-MM-DD */
+  start: string
+  /** YYYY-MM-DD (exclusive = วันเช็คเอาท์) */
+  end: string
+  title: string
+  source: EventSource | string
+  status: string
+  booking_id: number | null
+  request_id: number | null
+  conflict: boolean
+}
+
+export interface CalendarData {
+  units: CalendarUnit[]
+  events: CalendarEvent[]
+}
+
+export interface ChannelFeed {
+  id: number
+  unit_id: number
+  unit_name: string
+  property_name: string
+  source: ChannelSource | string
+  name: string
+  url: string
+  last_synced_at: string | null
+  last_status: 'ok' | 'error' | null
+  last_error: string | null
+  events_count: number
+}
+
+export interface UnitChannels {
+  export_url: string
+  feeds: ChannelFeed[]
+}
+
+export interface SyncResult {
+  imported: number
+  removed: number
+  conflicts: string[]
+}
+
+// ----- Online booking requests -----
+export type BookingRequestStatus = 'pending' | 'approved' | 'rejected' | 'expired'
+
+export interface BookingRequest {
+  id: number
+  status: BookingRequestStatus
+  property_name: string
+  unit_id: number
+  unit_name: string
+  check_in: string
+  check_out: string
+  nights: number
+  total: number
+  deposit_amount: number
+  guest_name: string
+  phone: string
+  email: string
+  guests: number
+  note: string
+  slip_url: string | null
+  created_at: string
+  expires_at: string
+  booking_id: number | null
+  reject_reason: string | null
+}
+
+// ----- Public booking page (/stay/:slug) -----
+export interface StayOrg {
+  name: string
+  phone: string
+  theme?: ColorThemeId | string
+}
+
+export interface StayInfo {
+  property: {
+    name: string
+    address: string
+    lat: number | null
+    lng: number | null
+    intro: string
+    check_in_time: string
+    check_out_time: string
+    min_nights: number
+    deposit_percent: number
+  }
+  org: StayOrg
+  units: {
+    id: number
+    name: string
+    floor: number
+    rate_daily: number
+    width: number
+    length: number
+    deposit: number
+  }[]
+}
+
+export interface StayBusy {
+  unit_id: number
+  start: string
+  /** exclusive */
+  end: string
+}
+
+export interface StayRequestInput {
+  unit_id: number
+  check_in: string
+  check_out: string
+  guests: number
+  guest_name: string
+  phone: string
+  email: string
+  note: string
+}
+
+export interface StayRequestStatus {
+  request: {
+    status: BookingRequestStatus
+    unit_name: string
+    property_name: string
+    check_in: string
+    check_out: string
+    nights: number
+    rate: number
+    total: number
+    deposit_amount: number
+    guest_name: string
+    created_at: string
+    expires_at: string
+    slip_url: string | null
+    reject_reason: string | null
+  }
+  promptpay_payload: string | null
+  org: StayOrg
 }
 
 // ===================== Client =====================
@@ -797,6 +968,25 @@ export const api = {
   patchBooking: (id: number, p: { status?: BookingStatus; deposit_status?: DepositStatus }) =>
     patch<Booking>(`/api/bookings/${id}`, p),
 
+  // ปฏิทินการจอง + ช่องทางขาย (iCal)
+  calendar: (f: { from: string; to: string; property_id?: number | null }) =>
+    get<CalendarData>('/api/calendar', f),
+  channels: (property_id?: number | null) => get<ChannelFeed[]>('/api/channels', { property_id }),
+  unitChannels: (unitId: number) => get<UnitChannels>(`/api/units/${unitId}/channels`),
+  addChannel: (unitId: number, b: { source: string; name?: string; url: string }) =>
+    post<ChannelFeed>(`/api/units/${unitId}/channels`, b),
+  deleteChannel: (id: number) => del(`/api/channels/${id}`),
+  syncChannel: (id: number) => post<SyncResult>(`/api/channels/${id}/sync`),
+  regenerateExport: (unitId: number) =>
+    post<{ export_url: string }>(`/api/units/${unitId}/channels/regenerate-export`),
+
+  // คำขอจองออนไลน์
+  bookingRequests: (f: { status?: string } = {}) => get<BookingRequest[]>('/api/booking-requests', f),
+  approveRequest: (id: number, deposit_paid: boolean) =>
+    post<{ booking_id: number }>(`/api/booking-requests/${id}/approve`, { deposit_paid }),
+  rejectRequest: (id: number, reason: string) =>
+    post<unknown>(`/api/booking-requests/${id}/reject`, { reason }),
+
   meters: (f: { unit_id?: number | null; meter_type?: MeterType } = {}) =>
     get<MeterReading[]>('/api/meter-readings', f),
   createMeter: (fd: FormData) => request<MeterReading>('/api/meter-readings', { body: fd }),
@@ -865,6 +1055,19 @@ export const api = {
     reply: (token: string, id: number, fd: FormData) =>
       form<unknown>(`/api/portal/${enc(token)}/tickets/${id}/messages`, fd, false),
     lineLink: (token: string) => post<LineLinkCode>(`/api/portal/${enc(token)}/line-link`, {}, false),
+  },
+
+  // หน้าจองออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน ไม่ส่ง X-Org-Id)
+  stay: {
+    info: (slug: string) => get<StayInfo>(`/api/public/stay/${enc(slug)}`, undefined, false),
+    availability: (slug: string, from: string, to: string) =>
+      get<{ busy: StayBusy[] }>(`/api/public/stay/${enc(slug)}/availability`, { from, to }, false),
+    createRequest: (slug: string, b: StayRequestInput) =>
+      post<{ token: string }>(`/api/public/stay/${enc(slug)}/requests`, b, false),
+    request: (token: string) =>
+      get<StayRequestStatus>(`/api/public/requests/${enc(token)}`, undefined, false),
+    uploadSlip: (token: string, fd: FormData) =>
+      form<{ slip_url: string }>(`/api/public/requests/${enc(token)}/slip`, fd, false),
   },
 
   // super admin (ไม่ต้องใช้ X-Org-Id)

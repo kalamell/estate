@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CalendarCheck, Loader2, Plus } from 'lucide-react'
-import { api, type BookingKind, type Unit } from '@/lib/api'
-import { invalidate } from '@/lib/query'
+import { AlertTriangle, CalendarCheck, Loader2, Plus } from 'lucide-react'
+import { ApiError, api, type BookingKind, type Unit } from '@/lib/api'
+import { handleApiError, invalidate } from '@/lib/query'
 import { BOOKING_SOURCES, UNIT_STATUS, baht, today } from '@/lib/format'
 import { useSession } from '@/contexts/session'
 import { Button } from '@/components/ui/button'
@@ -40,7 +40,17 @@ interface Form {
   source: string
 }
 
-const BookingCtx = createContext<{ openBooking: (unit?: Unit) => void } | null>(null)
+/** ค่าเริ่มต้นของฟอร์ม (เช่น เลือกช่วงวันจากปฏิทิน) */
+export interface BookingPrefill {
+  unit_id?: number
+  start_date?: string
+  end_date?: string
+  kind?: BookingKind
+}
+
+const BookingCtx = createContext<{ openBooking: (unit?: Unit, prefill?: BookingPrefill) => void } | null>(
+  null,
+)
 
 export function useBookingDialog() {
   const ctx = useContext(BookingCtx)
@@ -51,9 +61,11 @@ export function useBookingDialog() {
 export function BookingDialogProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [unit, setUnit] = useState<Unit | undefined>()
+  const [prefill, setPrefill] = useState<BookingPrefill | undefined>()
   const [nonce, setNonce] = useState(0)
-  const openBooking = useCallback((u?: Unit) => {
+  const openBooking = useCallback((u?: Unit, p?: BookingPrefill) => {
     setUnit(u)
+    setPrefill(p)
     setNonce((n) => n + 1)
     setOpen(true)
   }, [])
@@ -61,7 +73,7 @@ export function BookingDialogProvider({ children }: { children: ReactNode }) {
   return (
     <BookingCtx.Provider value={value}>
       {children}
-      <BookingDialog key={nonce} open={open} onOpenChange={setOpen} unit={unit} />
+      <BookingDialog key={nonce} open={open} onOpenChange={setOpen} unit={unit} prefill={prefill} />
     </BookingCtx.Provider>
   )
 }
@@ -70,10 +82,12 @@ function BookingDialog({
   open,
   onOpenChange,
   unit,
+  prefill,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   unit?: Unit
+  prefill?: BookingPrefill
 }) {
   const { features } = useSession()
   const units = useQuery({ queryKey: ['units', 'all'], queryFn: () => api.units(), enabled: open })
@@ -81,18 +95,28 @@ function BookingDialog({
   const tenants = useQuery({ queryKey: ['tenants'], queryFn: api.tenants, enabled: open })
   const [tenantOpen, setTenantOpen] = useState(false)
 
+  const [conflict, setConflict] = useState<string | null>(null)
   const [form, setForm] = useState<Form>(() => ({
-    unit_id: unit ? String(unit.id) : '',
+    unit_id: prefill?.unit_id ? String(prefill.unit_id) : unit ? String(unit.id) : '',
     tenant_id: '',
     kind:
-      unit && unit.rate_daily > 0 && !unit.rent_monthly && features.short_stay ? 'short_stay' : 'lease',
-    start_date: today(),
-    end_date: '',
+      prefill?.kind === 'short_stay' && features.short_stay
+        ? 'short_stay'
+        : prefill?.kind === 'lease'
+          ? 'lease'
+          : unit && unit.rate_daily > 0 && !unit.rent_monthly && features.short_stay
+            ? 'short_stay'
+            : 'lease',
+    start_date: prefill?.start_date ?? today(),
+    end_date: prefill?.end_date ?? '',
     price: '',
     deposit_amount: '',
     source: 'direct',
   }))
-  const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }))
+  const set = <K extends keyof Form>(k: K, v: Form[K]) => {
+    setConflict(null)
+    setForm((f) => ({ ...f, [k]: v }))
+  }
   const tenantId = form.tenant_id || (tenants.data?.[0] ? String(tenants.data[0].id) : '')
 
   const unitList = units.data
@@ -149,10 +173,16 @@ function BookingDialog({
         deposit_amount: form.deposit_amount === '' ? null : Number(form.deposit_amount),
         source: isLease ? 'direct' : form.source,
       }),
+    meta: { silent: true },
     onSuccess: async () => {
       toast.success('บันทึกการจองแล้ว')
-      await invalidate('bookings', 'units', 'dashboard')
+      await invalidate('bookings', 'units', 'dashboard', 'calendar')
       onOpenChange(false)
+    },
+    onError: (e) => {
+      // 409 = ช่วงวันที่ชนกับการจองอื่น หรือถูกปิดจากช่องทางภายนอก (iCal) — แสดงข้อความจากเซิร์ฟเวอร์ในฟอร์ม
+      if (e instanceof ApiError && e.status === 409) setConflict(e.message)
+      else handleApiError(e)
     },
   })
 
@@ -289,6 +319,19 @@ function BookingDialog({
                 </Field>
               )}
             </div>
+
+            {conflict && (
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <div>
+                  <div className="font-medium">จองช่วงนี้ไม่ได้</div>
+                  <div className="text-destructive/90">{conflict}</div>
+                </div>
+              </div>
+            )}
 
             {quote && (
               <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm">

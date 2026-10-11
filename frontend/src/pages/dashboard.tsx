@@ -6,6 +6,7 @@ import {
   BedDouble,
   CalendarClock,
   HandCoins,
+  Inbox,
   PiggyBank,
   TrendingUp,
   Wallet,
@@ -24,6 +25,7 @@ import { LineIcon } from '@/components/line'
 import { useSession } from '@/contexts/session'
 
 export default function DashboardPage() {
+  const { features } = useSession()
   const dash = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
   const properties = useQuery({ queryKey: ['properties'], queryFn: api.properties })
   const d = dash.data
@@ -67,7 +69,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={cn('grid gap-4 sm:grid-cols-2', features.short_stay ? 'xl:grid-cols-4' : 'lg:grid-cols-3')}>
         <AttentionRow
           to="/invoices?status=overdue"
           icon={AlertTriangle}
@@ -88,7 +90,19 @@ export default function DashboardPage() {
           detail={d ? `${d.open_tickets} รายการที่ยังไม่ปิด` : ''}
           empty="ไม่มีงานค้าง"
         />
-        <LineCard />
+        {features.short_stay && (
+          <AttentionRow
+            to="/bookings?tab=requests"
+            icon={Inbox}
+            tone="warning"
+            title="คำขอจองรอตอบ"
+            loading={!d}
+            count={d?.pending_requests ?? 0}
+            detail={d ? `${d.pending_requests ?? 0} คำขอรอยืนยัน` : ''}
+            empty="ไม่มีคำขอรอตอบ"
+          />
+        )}
+        <LineCard span={!features.short_stay} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -251,7 +265,7 @@ function AttentionRow({
 }
 
 /** การ์ดสรุป LINE OA: ผู้เช่าที่เชื่อมแล้ว / ทั้งหมด */
-function LineCard() {
+function LineCard({ span }: { span: boolean }) {
   const { line, lineReady, canManage } = useSession()
   const tenants = useQuery({ queryKey: ['tenants'], queryFn: api.tenants, meta: { silent: true } })
   const total = tenants.data?.length ?? 0
@@ -261,7 +275,8 @@ function LineCard() {
     <Link
       to={lineReady ? '/tenants' : canManage ? '/settings?tab=line' : '/tenants'}
       className={cn(
-        'group flex items-center gap-4 rounded-lg border border-l-4 bg-card px-4 py-3.5 transition-colors hover:bg-muted/50 sm:col-span-2 lg:col-span-1',
+        'group flex items-center gap-4 rounded-lg border border-l-4 bg-card px-4 py-3.5 transition-colors hover:bg-muted/50',
+        span && 'sm:col-span-2 lg:col-span-1',
         lineReady ? 'border-l-success' : 'border-l-border',
       )}
     >

@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CalendarDays, DoorOpen, LogIn, LogOut, Plus, XCircle } from 'lucide-react'
+import { CalendarDays, CalendarRange, DoorOpen, Inbox, LogIn, LogOut, Plus, XCircle } from 'lucide-react'
 import { api, type Booking, type BookingStatus, type DepositStatus } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { BOOKING_SOURCES, BOOKING_STATUS, DEPOSIT_STATUS, baht, thDate } from '@/lib/format'
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -22,10 +23,60 @@ import {
 import { BookingStatusBadge, EmptyState } from '@/components/common'
 import { useConfirm } from '@/components/confirm'
 import { useBookingDialog } from '@/components/booking-dialog'
+import { cn } from '@/lib/utils'
+import { RequestsTab } from './requests-tab'
 
 const ALL = 'all'
 
 export default function BookingsPage() {
+  const { features } = useSession()
+  const [params, setParams] = useSearchParams()
+  const tab = features.short_stay && params.get('tab') === 'requests' ? 'requests' : 'all'
+  const pending = useQuery({
+    queryKey: ['booking-requests', { status: 'pending' }],
+    queryFn: () => api.bookingRequests({ status: 'pending' }),
+    enabled: features.short_stay,
+    meta: { silent: true },
+  })
+  const pendingCount = pending.data?.length ?? 0
+  const highlight = Number(params.get('highlight')) || null
+  const focusRequest = Number(params.get('request')) || null
+
+  return (
+    <div className="space-y-5">
+      {features.short_stay && (
+        <div className="flex flex-wrap items-center gap-3 border-b">
+          <Tabs
+            value={tab}
+            onValueChange={(v) => setParams(v === 'requests' ? { tab: 'requests' } : {}, { replace: true })}
+          >
+            <TabsList variant="line" className="h-10">
+              <TabsTrigger value="all" className="flex-none px-3">
+                <CalendarDays /> การจองทั้งหมด
+              </TabsTrigger>
+              <TabsTrigger value="requests" className="flex-none px-3">
+                <Inbox /> คำขอจองออนไลน์
+                {pendingCount > 0 && (
+                  <span className="rounded-sm bg-warning/20 px-1.5 text-xs font-semibold text-warning-foreground tabular-nums">
+                    {pendingCount}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button asChild variant="ghost" size="sm" className="mb-1 ml-auto text-muted-foreground">
+            <Link to="/calendar">
+              <CalendarRange /> ดูปฏิทิน
+            </Link>
+          </Button>
+        </div>
+      )}
+      {tab === 'requests' ? <RequestsTab focusId={focusRequest} /> : <AllBookings highlight={highlight} />}
+    </div>
+  )
+}
+
+function AllBookings({ highlight }: { highlight: number | null }) {
   const { readOnly } = useSession()
   const { openBooking } = useBookingDialog()
   const confirm = useConfirm()
@@ -61,6 +112,12 @@ export default function BookingsPage() {
     )
       patch.mutate({ b, patch: { status: 'cancelled' }, msg: 'ยกเลิกแล้ว' })
   }
+
+  const hlRef = useRef<HTMLTableRowElement>(null)
+  const loaded = !!bookings
+  useEffect(() => {
+    if (highlight && loaded) hlRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [highlight, loaded])
 
   return (
     <div className="space-y-5">
@@ -113,7 +170,11 @@ export default function BookingsPage() {
             </TableHeader>
             <TableBody>
               {bookings.map((b) => (
-                <TableRow key={b.id}>
+                <TableRow
+                  key={b.id}
+                  ref={b.id === highlight ? hlRef : undefined}
+                  className={cn(b.id === highlight && 'bg-primary/5 shadow-[inset_3px_0_0_var(--primary)] hover:bg-primary/10')}
+                >
                   <TableCell className="pl-4 font-medium">{b.tenant_name}</TableCell>
                   <TableCell>
                     <div>{b.unit_name}</div>

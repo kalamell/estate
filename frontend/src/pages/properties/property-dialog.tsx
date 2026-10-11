@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Crosshair, Loader2 } from 'lucide-react'
+import { Crosshair, ExternalLink, Globe, Loader2 } from 'lucide-react'
 import { api, type LateFeeType, type Property, type PropertyInput, type PropertyKind } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { KINDS } from '@/lib/format'
@@ -16,14 +16,37 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Field } from '@/components/common'
+import { Field, UpsellHint } from '@/components/common'
+import { CopyField } from '@/components/copy-field'
+import { QrSvg } from '@/components/qr'
 import { LeafletMap } from '@/components/leaflet-map'
 
 type Form = Omit<
   PropertyInput,
-  'lat' | 'lng' | 'electric_rate' | 'water_rate' | 'late_fee_amount' | 'late_fee_grace_days'
+  | 'lat'
+  | 'lng'
+  | 'electric_rate'
+  | 'water_rate'
+  | 'late_fee_amount'
+  | 'late_fee_grace_days'
+  | 'booking_enabled'
+  | 'booking_slug'
+  | 'booking_intro'
+  | 'check_in_time'
+  | 'check_out_time'
+  | 'min_nights'
+  | 'deposit_percent'
 > & {
+  booking_enabled: boolean
+  booking_slug: string
+  booking_intro: string
+  check_in_time: string
+  check_out_time: string
+  min_nights: string
+  deposit_percent: string
   id?: number
   lat: string
   lng: string
@@ -51,7 +74,17 @@ const EMPTY: Form = {
   late_fee_type: 'none',
   late_fee_amount: '0',
   late_fee_grace_days: '0',
+  booking_enabled: false,
+  booking_slug: '',
+  booking_intro: '',
+  check_in_time: '14:00',
+  check_out_time: '12:00',
+  min_nights: '1',
+  deposit_percent: '30',
 }
+
+const SLUG_RE = /^[a-z0-9-]{3,40}$/
+const stayUrl = (slug: string) => `${window.location.origin}/stay/${slug}`
 
 const toForm = (p: Property): Form => ({
   id: p.id,
@@ -66,6 +99,13 @@ const toForm = (p: Property): Form => ({
   late_fee_type: p.late_fee_type ?? 'none',
   late_fee_amount: String(p.late_fee_amount ?? 0),
   late_fee_grace_days: String(p.late_fee_grace_days ?? 0),
+  booking_enabled: !!p.booking_enabled,
+  booking_slug: p.booking_slug ?? '',
+  booking_intro: p.booking_intro ?? '',
+  check_in_time: p.check_in_time || '14:00',
+  check_out_time: p.check_out_time || '12:00',
+  min_nights: String(p.min_nights ?? 1),
+  deposit_percent: String(p.deposit_percent ?? 30),
 })
 
 function PropertyForm({
@@ -98,6 +138,13 @@ function PropertyForm({
         late_fee_type: form.late_fee_type,
         late_fee_amount: form.late_fee_type === 'none' ? 0 : Number(form.late_fee_amount || 0),
         late_fee_grace_days: Math.max(0, Math.round(Number(form.late_fee_grace_days || 0))),
+        booking_enabled: form.booking_enabled,
+        booking_slug: form.booking_slug.trim() || null,
+        booking_intro: form.booking_intro,
+        check_in_time: form.check_in_time || '14:00',
+        check_out_time: form.check_out_time || '12:00',
+        min_nights: Math.max(1, Math.round(Number(form.min_nights || 1))),
+        deposit_percent: Math.min(100, Math.max(0, Number(form.deposit_percent || 0))),
       })
     },
     onSuccess: async () => {
@@ -131,6 +178,9 @@ function PropertyForm({
       className="grid gap-4"
       onSubmit={(e) => {
         e.preventDefault()
+        const slug = form.booking_slug.trim()
+        if ((form.booking_enabled || slug) && !SLUG_RE.test(slug))
+          return toast.error('ลิงก์หน้าจองใช้ได้เฉพาะ a-z 0-9 และ - ยาว 3–40 ตัวอักษร')
         save.mutate()
       }}
     >
@@ -248,6 +298,12 @@ function PropertyForm({
         )}
       </fieldset>
 
+      {features.short_stay ? (
+        <BookingPageSection form={form} set={set} saved={property} />
+      ) : (
+        <UpsellHint>หน้าจองออนไลน์ (ให้แขกจองและชำระมัดจำเอง) ใช้ได้ในแพ็กเกจที่มีฟีเจอร์ห้องพักรายวัน</UpsellHint>
+      )}
+
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
           ยกเลิก
@@ -258,6 +314,126 @@ function PropertyForm({
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+function BookingPageSection({
+  form,
+  set,
+  saved,
+}: {
+  form: Form
+  set: <K extends keyof Form>(k: K, v: Form[K]) => void
+  saved: Property | null
+}) {
+  const slug = form.booking_slug.trim()
+  const valid = SLUG_RE.test(slug)
+  // แสดงลิงก์เมื่อบันทึกแล้วและเปิดใช้งาน (ลิงก์ที่ยังไม่บันทึกยังเปิดไม่ได้)
+  const live = !!saved?.booking_enabled && !!saved.booking_slug && saved.booking_slug === slug && form.booking_enabled
+  const url = valid ? stayUrl(slug) : ''
+  return (
+    <fieldset className="grid gap-4 rounded-md border p-4">
+      <legend className="px-1 text-sm font-medium">หน้าจองออนไลน์</legend>
+      <label className="flex items-start gap-3">
+        <Switch
+          className="mt-0.5"
+          checked={form.booking_enabled}
+          onCheckedChange={(v) => set('booking_enabled', v)}
+          aria-label="เปิดหน้าจองออนไลน์"
+        />
+        <span className="text-sm">
+          เปิดให้แขกจองห้องรายวันผ่านลิงก์
+          <span className="block text-xs text-muted-foreground">
+            แขกเลือกวัน ส่งคำขอ และโอนมัดจำผ่าน PromptPay — คุณอนุมัติที่หน้า การจอง → คำขอจองออนไลน์
+          </span>
+        </span>
+      </label>
+      {form.booking_enabled && (
+        <>
+          <Field
+            label="ลิงก์หน้าจอง"
+            htmlFor="p-slug"
+            hint={!slug || valid ? 'ใช้ได้เฉพาะ a-z 0-9 และ - (3–40 ตัว)' : undefined}
+          >
+            <div className="flex">
+              <span className="hidden items-center rounded-l-md border border-r-0 bg-muted px-2.5 font-mono text-xs text-muted-foreground sm:flex">
+                {window.location.host}/stay/
+              </span>
+              <Input
+                id="p-slug"
+                className="font-mono text-sm sm:rounded-l-none"
+                value={form.booking_slug}
+                placeholder="baan-suan"
+                maxLength={40}
+                aria-invalid={!!slug && !valid}
+                onChange={(e) => set('booking_slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+              />
+            </div>
+            {slug && !valid && (
+              <p className="text-xs text-destructive">ใช้ได้เฉพาะ a-z 0-9 และ - ยาว 3–40 ตัวอักษร</p>
+            )}
+          </Field>
+          <Field label="ข้อความแนะนำ" htmlFor="p-intro">
+            <Textarea
+              id="p-intro"
+              rows={3}
+              value={form.booking_intro}
+              placeholder="เช่น ห้องพักใกล้ถนนนิมมานฯ เดินถึงร้านกาแฟ 5 นาที มีที่จอดรถ Wi-Fi ฟรี"
+              onChange={(e) => set('booking_intro', e.target.value)}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Field label="เช็คอิน" htmlFor="p-cin">
+              <Input id="p-cin" type="time" value={form.check_in_time} onChange={(e) => set('check_in_time', e.target.value)} />
+            </Field>
+            <Field label="เช็คเอาท์" htmlFor="p-cout">
+              <Input id="p-cout" type="time" value={form.check_out_time} onChange={(e) => set('check_out_time', e.target.value)} />
+            </Field>
+            <Field label="ขั้นต่ำ (คืน)" htmlFor="p-minn">
+              <Input
+                id="p-minn"
+                type="number"
+                min={1}
+                step={1}
+                value={form.min_nights}
+                onChange={(e) => set('min_nights', e.target.value)}
+              />
+            </Field>
+            <Field label="มัดจำ (% ของยอด)" htmlFor="p-dep">
+              <Input
+                id="p-dep"
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={form.deposit_percent}
+                onChange={(e) => set('deposit_percent', e.target.value)}
+              />
+            </Field>
+          </div>
+          {valid && (
+            <div className="flex flex-col gap-4 rounded-md bg-muted/50 p-3 sm:flex-row sm:items-center">
+              <div className="mx-auto w-28 shrink-0 rounded-sm border bg-white p-1.5 sm:mx-0">
+                <QrSvg value={url} label="QR code หน้าจองออนไลน์" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium">
+                  <Globe className="size-3.5 text-muted-foreground" />
+                  ลิงก์สาธารณะ
+                  {!live && <span className="font-normal text-muted-foreground">— ใช้งานได้หลังบันทึก</span>}
+                </div>
+                <CopyField value={url} label="ลิงก์หน้าจอง" className="[&_input]:bg-card" />
+                <Button asChild variant="outline" size="sm" className={live ? undefined : 'pointer-events-none opacity-50'}>
+                  <a href={url} target="_blank" rel="noreferrer" aria-disabled={!live} tabIndex={live ? undefined : -1}>
+                    <ExternalLink /> เปิดดู
+                  </a>
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </fieldset>
   )
 }
 

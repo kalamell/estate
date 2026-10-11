@@ -2,6 +2,7 @@ import {
   BarChart3,
   Building2,
   CalendarDays,
+  CalendarRange,
   DoorOpen,
   Gauge,
   LayoutDashboard,
@@ -19,7 +20,7 @@ export interface NavItem {
   label: string
   icon: LucideIcon
   /** แสดงตัวเลขจาก dashboard */
-  badge?: 'open_tickets' | 'overdue_count'
+  badge?: 'open_tickets' | 'overdue_count' | 'pending_requests'
 }
 
 export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
@@ -34,7 +35,8 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'งานประจำ',
     items: [
-      { to: '/bookings', label: 'การจอง & มัดจำ', icon: CalendarDays },
+      { to: '/bookings', label: 'การจอง & มัดจำ', icon: CalendarDays, badge: 'pending_requests' },
+      { to: '/calendar', label: 'ปฏิทินการจอง', icon: CalendarRange },
       { to: '/meters', label: 'จดมิเตอร์', icon: Gauge },
       { to: '/invoices', label: 'บิล & เอกสาร', icon: ReceiptText, badge: 'overdue_count' },
       { to: '/tickets', label: 'แจ้งซ่อม & ติดต่อ', icon: Wrench, badge: 'open_tickets' },

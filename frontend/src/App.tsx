@@ -23,6 +23,9 @@ const DashboardPage = lazy(() => import('@/pages/dashboard'))
 const PropertiesPage = lazy(() => import('@/pages/properties'))
 const UnitsPage = lazy(() => import('@/pages/units'))
 const BookingsPage = lazy(() => import('@/pages/bookings'))
+const CalendarPage = lazy(() => import('@/pages/calendar'))
+const StayPage = lazy(() => import('@/pages/stay'))
+const StayRequestPage = lazy(() => import('@/pages/stay/request'))
 const MetersPage = lazy(() => import('@/pages/meters'))
 const InvoicesPage = lazy(() => import('@/pages/invoices'))
 const TenantsPage = lazy(() => import('@/pages/tenants'))
@@ -63,6 +66,9 @@ export default function App() {
                   <Route path="/p/:token" element={<PortalPage />} />
                   <Route path="/p/:token/print/invoice/:id" element={<PortalInvoicePrint />} />
                   <Route path="/p/:token/print/receipt/:id" element={<PortalReceiptPrint />} />
+                  {/* หน้าจองออนไลน์ — สาธารณะ ไม่ต้องล็อกอิน */}
+                  <Route path="/stay/:slug" element={<StayPage />} />
+                  <Route path="/stay/:slug/r/:token" element={<StayRequestPage />} />
                   <Route element={<RequireAuth />}>
                     <Route path="/print/invoice/:id" element={<StaffInvoicePrint />} />
                     <Route path="/print/receipt/:id" element={<StaffReceiptPrint />} />
@@ -82,6 +88,7 @@ export default function App() {
                       <Route path="properties" element={page(<PropertiesPage />)} />
                       <Route path="units" element={page(<UnitsPage />)} />
                       <Route path="bookings" element={page(<BookingsPage />)} />
+                      <Route path="calendar" element={page(<CalendarPage />)} />
                       <Route path="meters" element={page(<MetersPage />)} />
                       <Route path="invoices" element={page(<InvoicesPage />)} />
                       <Route path="tenants" element={page(<TenantsPage />)} />
