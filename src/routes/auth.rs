@@ -17,6 +17,8 @@ pub struct RegisterInput {
     email: String,
     password: String,
     org_name: String,
+    #[serde(default)]
+    accept_terms: bool,
 }
 
 #[derive(Deserialize)]
@@ -101,17 +103,29 @@ async fn me_payload(db: &SqlitePool, user: &AuthUser) -> AppResult<Value> {
 
 pub async fn register(
     State(s): State<AppState>,
+    ip: auth::ClientIp,
     jar: CookieJar,
     Json(r): Json<RegisterInput>,
 ) -> AppResult<(CookieJar, Json<Value>)> {
+    s.limiter.check(
+        &format!("register:{}", ip.key()),
+        10,
+        std::time::Duration::from_secs(3600),
+    )?;
     let email = r.email.trim().to_lowercase();
     validate_credentials(&email, &r.password)?;
+    if !r.accept_terms {
+        return Err(AppError::BadRequest(
+            "กรุณายอมรับข้อกำหนดการใช้งานและนโยบายความเป็นส่วนตัว".into(),
+        ));
+    }
     if r.name.trim().is_empty() {
         return Err(AppError::BadRequest("กรุณาระบุชื่อ".into()));
     }
     let hash = auth::hash_password(&r.password)?;
     let user: AuthUser = sqlx::query_as(
-        "INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?) RETURNING id, name, email, is_super_admin",
+        "INSERT INTO users (email, name, password_hash, terms_accepted_at) VALUES (?, ?, ?, datetime('now'))
+         RETURNING id, name, email, is_super_admin",
     )
     .bind(&email)
     .bind(r.name.trim())
@@ -132,9 +146,19 @@ pub async fn register(
 
 pub async fn login(
     State(s): State<AppState>,
+    ip: auth::ClientIp,
     jar: CookieJar,
     Json(l): Json<LoginInput>,
 ) -> AppResult<(CookieJar, Json<Value>)> {
+    // กันเดารหัสผ่าน: ต่อ IP และต่ออีเมล
+    let window = std::time::Duration::from_secs(15 * 60);
+    s.limiter
+        .check(&format!("login-ip:{}", ip.key()), 30, window)?;
+    s.limiter.check(
+        &format!("login-email:{}", l.email.trim().to_lowercase()),
+        10,
+        window,
+    )?;
     let row: Option<(i64, String, bool)> =
         sqlx::query_as("SELECT id, password_hash, is_active FROM users WHERE email = ?")
             .bind(l.email.trim())
@@ -157,6 +181,17 @@ pub async fn login(
         .execute(&s.db)
         .await?;
     let token = auth::create_session(&s.db, id).await?;
+    crate::audit::log(
+        &s.db,
+        None,
+        Some(id),
+        ip.0.as_deref(),
+        "auth.login",
+        "user",
+        Some(id),
+        None,
+    )
+    .await;
     Ok((
         jar.add(session_cookie(&s, token)),
         Json(me_payload(&s.db, &user).await?),

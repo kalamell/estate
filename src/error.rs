@@ -19,6 +19,8 @@ pub enum AppError {
     Unauthorized,
     #[error("ไม่มีสิทธิ์ดำเนินการนี้")]
     Forbidden,
+    #[error("มีคำขอมากเกินไป กรุณารอสักครู่แล้วลองใหม่")]
+    TooManyRequests,
     #[error("{message}")]
     PaymentRequired { code: &'static str, message: String },
     #[error(transparent)]
@@ -48,6 +50,7 @@ impl IntoResponse for AppError {
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Unauthorized => StatusCode::UNAUTHORIZED,
             AppError::Forbidden => StatusCode::FORBIDDEN,
+            AppError::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
             AppError::PaymentRequired { .. } => StatusCode::PAYMENT_REQUIRED,
             AppError::Internal(e) => {
                 tracing::error!(error = ?e, "internal error");

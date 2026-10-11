@@ -351,5 +351,6 @@ pub async fn settle(
     sync_unit_status(&mut tx, unit_id).await?;
     tx.commit().await?;
     super::housekeeping::on_checkout(&s, m.booking_id).await?;
+    crate::audit::record(&s.db, &ctx, "move_out.settle", "move_out", Some(id), None).await;
     Ok(Json(fetch(&s.db, ctx.org_id, id).await?))
 }

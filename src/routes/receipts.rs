@@ -189,6 +189,15 @@ pub async fn void(
         .await?;
     }
     tx.commit().await?;
+    crate::audit::record(
+        &s.db,
+        &ctx,
+        "receipt.void",
+        "receipt",
+        Some(id),
+        Some(serde_json::json!({ "reason": v.reason })),
+    )
+    .await;
     Ok(Json(
         json!({ "receipt": fetch(&s.db, ctx.org_id, id).await? }),
     ))

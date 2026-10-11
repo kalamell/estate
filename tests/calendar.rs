@@ -185,7 +185,7 @@ async fn public_booking_request_flow() {
 
     let req = |s: i64, e: i64, phone: &str| {
         json!({"unit_id": uid, "check_in": day(s).to_string(), "check_out": day(e).to_string(),
-               "guest_name": "คุณแขก", "phone": phone, "guests": 2})
+               "guest_name": "คุณแขก", "phone": phone, "guests": 2, "consent": true})
     };
     let (st, err) = guest
         .call(

@@ -329,7 +329,7 @@ pub async fn create(
     ctx: OrgCtx,
     form: Multipart,
 ) -> AppResult<Json<Value>> {
-    let form = uploads::parse(form, &s.upload_dir, "ticket").await?;
+    let form = uploads::parse_for(&s, ctx.org_id, form, "ticket").await?;
     let unit_id = form.id("unit_id")?;
     let tenant_id = form.id("tenant_id")?;
     if let Some(uid) = unit_id {
@@ -391,7 +391,7 @@ pub async fn message(
     form: Multipart,
 ) -> AppResult<Json<Value>> {
     ensure_ticket(&s.db, id, "org", Some(ctx.org_id)).await?;
-    let form = uploads::parse(form, &s.upload_dir, "ticket").await?;
+    let form = uploads::parse_for(&s, ctx.org_id, form, "ticket").await?;
     let internal = matches!(form.text("internal"), Some("1") | Some("true"));
     let body = form.text("body").unwrap_or("(ส่งรูปภาพ)").to_string();
     let author = Author {
@@ -433,7 +433,7 @@ pub async fn support_create(
     ctx: OrgCtx,
     form: Multipart,
 ) -> AppResult<Json<Value>> {
-    let form = uploads::parse(form, &s.upload_dir, "support").await?;
+    let form = uploads::parse_for(&s, ctx.org_id, form, "support").await?;
     let id = create_from_form(
         &s.db,
         NewTicket {
@@ -466,7 +466,7 @@ pub async fn support_message(
     form: Multipart,
 ) -> AppResult<Json<Value>> {
     ensure_ticket(&s.db, id, "platform", Some(ctx.org_id)).await?;
-    let form = uploads::parse(form, &s.upload_dir, "support").await?;
+    let form = uploads::parse_for(&s, ctx.org_id, form, "support").await?;
     let author = Author {
         kind: "staff",
         user_id: Some(ctx.user.id),
@@ -508,7 +508,11 @@ pub async fn admin_message(
     form: Multipart,
 ) -> AppResult<Json<Value>> {
     ensure_ticket(&s.db, id, "platform", None).await?;
-    let form = uploads::parse(form, &s.upload_dir, "support").await?;
+    let org_id: i64 = sqlx::query_scalar("SELECT org_id FROM tickets WHERE id = ?")
+        .bind(id)
+        .fetch_one(&s.db)
+        .await?;
+    let form = uploads::parse_for(&s, org_id, form, "support").await?;
     let author = Author {
         kind: "platform",
         user_id: Some(me.id),

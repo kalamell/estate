@@ -137,5 +137,6 @@ pub async fn delete(
         .bind(id)
         .execute(&s.db)
         .await?;
+    crate::audit::record(&s.db, &ctx, "unit.delete", "unit", Some(id), None).await;
     Ok(Json(()))
 }

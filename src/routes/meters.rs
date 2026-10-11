@@ -120,7 +120,9 @@ pub async fn create(
             tokio::fs::write(s.upload_dir.join(&file), bytes)
                 .await
                 .map_err(|e| AppError::Internal(e.into()))?;
-            Some(format!("/uploads/{file}"))
+            let url = format!("/uploads/{file}");
+            crate::uploads::register(&s.db, ctx.org_id, std::slice::from_ref(&url)).await?;
+            Some(url)
         }
         None => None,
     };

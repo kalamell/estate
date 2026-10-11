@@ -316,7 +316,7 @@ async fn seasonal_pricing_and_long_stay_discount() {
             Method::POST,
             "/api/public/stay/baan-pak/requests",
             Some(json!({"unit_id": uid, "check_in": next.to_string(), "check_out": (next + Duration::days(2)).to_string(),
-                        "guest_name": "คุณเอ", "phone": "0811112222"})),
+                        "guest_name": "คุณเอ", "phone": "0811112222", "consent": true})),
         )
         .await;
     let (_, status) = guest

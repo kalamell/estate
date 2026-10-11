@@ -88,6 +88,13 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
     .fetch_one(&s.db)
     .await?;
 
+    let open_privacy: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM privacy_requests WHERE org_id = ? AND status = 'open'",
+    )
+    .bind(ctx.org_id)
+    .fetch_one(&s.db)
+    .await?;
+
     let total_units: i64 = units_by_status.iter().map(|(_, c)| c).sum();
     let occupied: i64 = units_by_status
         .iter()
@@ -106,6 +113,7 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
         "overdue_count": overdue_count,
         "overdue_amount": overdue_amount,
         "pending_requests": pending_requests,
+        "open_privacy_requests": open_privacy,
         "housekeeping": { "dirty": hk.0, "in_progress": hk.1, "open_tasks": hk.2 },
         "properties": properties.into_iter().map(|(id, name, kind, units, occupied)| json!({
             "id": id, "name": name, "kind": kind, "units": units, "occupied": occupied

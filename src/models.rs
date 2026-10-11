@@ -125,7 +125,29 @@ pub struct Tenant {
     pub line_linked: bool,
     pub line_display_name: Option<String>,
     pub line_linked_at: Option<String>,
+    pub consent_at: Option<String>,
+    pub consent_source: Option<String>,
+    pub anonymized_at: Option<String>,
     pub created_at: String,
+}
+
+impl Tenant {
+    /// ปิดบังเลขบัตรประชาชน/พาสปอร์ตสำหรับพนักงานที่ไม่ใช่แอดมิน (เหลือ 4 ตัวท้าย)
+    pub fn masked(mut self, reveal: bool) -> Self {
+        if !reveal && !self.id_card.is_empty() {
+            let tail: String = self
+                .id_card
+                .chars()
+                .rev()
+                .take(4)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
+            self.id_card = format!("•••••••••{tail}");
+        }
+        self
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,8 +157,9 @@ pub struct TenantInput {
     pub phone: String,
     #[serde(default)]
     pub email: String,
+    /// ไม่ส่งมา = ไม่เปลี่ยน (หน้าเว็บของพนักงานได้รับค่าแบบปิดบัง)
     #[serde(default)]
-    pub id_card: String,
+    pub id_card: Option<String>,
     #[serde(default)]
     pub note: String,
     #[serde(default)]
@@ -145,6 +168,8 @@ pub struct TenantInput {
     pub address: String,
     #[serde(default)]
     pub branch_code: String,
+    #[serde(default)]
+    pub consent_obtained: Option<bool>,
 }
 
 #[derive(Debug, Serialize, FromRow)]

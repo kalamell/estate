@@ -322,3 +322,25 @@ fn demo_token() -> String {
     rand::thread_rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
+
+/// เข้ารหัสค่าลับ LINE ที่ยังเป็นข้อความธรรมดา (ข้อมูลจากเวอร์ชันก่อนหน้า)
+pub async fn encrypt_existing_secrets(db: &SqlitePool) -> anyhow::Result<()> {
+    let rows: Vec<(i64, String, String)> = sqlx::query_as(
+        "SELECT id, line_channel_secret, line_access_token FROM organizations
+         WHERE (line_channel_secret != '' AND line_channel_secret NOT LIKE 'enc:v1:%')
+            OR (line_access_token != '' AND line_access_token NOT LIKE 'enc:v1:%')",
+    )
+    .fetch_all(db)
+    .await?;
+    for (id, secret, token) in rows {
+        sqlx::query(
+            "UPDATE organizations SET line_channel_secret = ?, line_access_token = ? WHERE id = ?",
+        )
+        .bind(crate::crypto::encrypt(&secret))
+        .bind(crate::crypto::encrypt(&token))
+        .bind(id)
+        .execute(db)
+        .await?;
+    }
+    Ok(())
+}

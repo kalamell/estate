@@ -42,6 +42,32 @@ fn bad(e: impl std::fmt::Display) -> AppError {
 }
 
 /// อ่านทุกฟิลด์ เก็บรูป (field `photos`) ลงโฟลเดอร์อัปโหลด และคืน URL `/uploads/...`
+/// บันทึกว่าไฟล์เป็นขององค์กรใด (ใช้ตรวจสิทธิ์ตอนเปิดไฟล์)
+pub async fn register(db: &sqlx::SqlitePool, org_id: i64, urls: &[String]) -> AppResult<()> {
+    for url in urls {
+        if let Some(name) = url.strip_prefix("/uploads/") {
+            sqlx::query("INSERT OR IGNORE INTO uploads (name, org_id) VALUES (?, ?)")
+                .bind(name)
+                .bind(org_id)
+                .execute(db)
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+/// อ่านฟอร์มและบันทึกเจ้าของไฟล์ในครั้งเดียว
+pub async fn parse_for(
+    state: &crate::AppState,
+    org_id: i64,
+    form: Multipart,
+    prefix: &str,
+) -> AppResult<Form> {
+    let parsed = parse(form, &state.upload_dir, prefix).await?;
+    register(&state.db, org_id, &parsed.photos).await?;
+    Ok(parsed)
+}
+
 pub async fn parse(mut form: Multipart, upload_dir: &Path, prefix: &str) -> AppResult<Form> {
     let mut fields = HashMap::new();
     let mut photos = Vec::new();

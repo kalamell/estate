@@ -106,8 +106,8 @@ pub async fn update_settings(
     .bind(l.enabled)
     .bind(l.channel_id.trim())
     .bind(basic_id)
-    .bind(non_empty(&l.channel_secret))
-    .bind(non_empty(&l.channel_access_token))
+    .bind(non_empty(&l.channel_secret).map(|v| crate::crypto::encrypt(&v)))
+    .bind(non_empty(&l.channel_access_token).map(|v| crate::crypto::encrypt(&v)))
     .bind(random_hex(16))
     .bind(l.auto_invoice)
     .bind(l.auto_receipt)
@@ -117,6 +117,15 @@ pub async fn update_settings(
     .bind(ctx.org_id)
     .execute(&s.db)
     .await?;
+    crate::audit::record(
+        &s.db,
+        &ctx,
+        "line.update",
+        "organization",
+        Some(ctx.org_id),
+        Some(serde_json::json!({ "enabled": l.enabled })),
+    )
+    .await;
     Ok(Json(settings_json(&s, ctx.org_id).await?))
 }
 

@@ -185,5 +185,14 @@ pub async fn patch(
     if p.status.as_deref() == Some("completed") {
         super::housekeeping::on_checkout(&s, id).await?;
     }
+    crate::audit::record(
+        &s.db,
+        &ctx,
+        "booking.update",
+        "booking",
+        Some(id),
+        Some(serde_json::json!({ "status": p.status, "deposit_status": p.deposit_status })),
+    )
+    .await;
     Ok(Json(booking))
 }

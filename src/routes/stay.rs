@@ -154,6 +154,9 @@ pub struct RequestInput {
     email: String,
     #[serde(default)]
     note: String,
+    /// ยินยอมให้เก็บและใช้ข้อมูลส่วนบุคคลเพื่อการจอง (PDPA)
+    #[serde(default)]
+    consent: bool,
 }
 
 fn one() -> i64 {
@@ -162,9 +165,20 @@ fn one() -> i64 {
 
 pub async fn create_request(
     State(s): State<AppState>,
+    ip: crate::auth::ClientIp,
     Path(slug): Path<String>,
     Json(r): Json<RequestInput>,
 ) -> AppResult<Json<Value>> {
+    s.limiter.check(
+        &format!("stay-request:{}", ip.key()),
+        10,
+        std::time::Duration::from_secs(3600),
+    )?;
+    if !r.consent {
+        return Err(AppError::BadRequest(
+            "กรุณายินยอมให้ใช้ข้อมูลส่วนบุคคลเพื่อการจอง".into(),
+        ));
+    }
     let p = property_by_slug(&s.db, &slug).await?;
     let unit = bookable_units(&s.db, p.id)
         .await?
@@ -221,8 +235,8 @@ pub async fn create_request(
     };
     sqlx::query(
         "INSERT INTO booking_requests (org_id, property_id, unit_id, token, check_in, check_out, nights, rate, total,
-            deposit_amount, guests, guest_name, phone, email, note, expires_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now', '+24 hours'))",
+            deposit_amount, guests, guest_name, phone, email, note, expires_at, consent_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now', '+24 hours'), datetime('now'))",
     )
     .bind(p.org_id)
     .bind(p.id)
@@ -318,19 +332,26 @@ pub async fn request_status(
 /// แนบสลิปมัดจำ — กันห้องต่ออีก 72 ชั่วโมงระหว่างรอทีมงานตรวจ
 pub async fn upload_slip(
     State(s): State<AppState>,
+    ip: crate::auth::ClientIp,
     Path(token): Path<String>,
     form: Multipart,
 ) -> AppResult<Json<Value>> {
+    s.limiter.check(
+        &format!("slip:{}", ip.key()),
+        20,
+        std::time::Duration::from_secs(3600),
+    )?;
     expire_stale(&s.db).await?;
-    let status: String = sqlx::query_scalar("SELECT status FROM booking_requests WHERE token = ?")
-        .bind(&token)
-        .fetch_optional(&s.db)
-        .await?
-        .ok_or(AppError::NotFound)?;
+    let (status, org_id): (String, i64) =
+        sqlx::query_as("SELECT status, org_id FROM booking_requests WHERE token = ?")
+            .bind(&token)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or(AppError::NotFound)?;
     if status != "pending" {
         return Err(AppError::Conflict("คำขอนี้ไม่อยู่ในสถานะรอชำระ".into()));
     }
-    let form = uploads::parse(form, &s.upload_dir, "slip").await?;
+    let form = uploads::parse_for(&s, org_id, form, "slip").await?;
     let url = form
         .photos
         .first()
@@ -425,6 +446,14 @@ pub async fn approve(
             .await?
         }
     };
+    sqlx::query(
+        "UPDATE tenants SET consent_at = COALESCE(consent_at, (SELECT consent_at FROM booking_requests WHERE id = ?)),
+            consent_source = COALESCE(consent_source, 'online_booking') WHERE id = ?",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&mut *tx)
+    .await?;
     let today = Local::now().date_naive();
     let booking_id: i64 = sqlx::query_scalar(
         "INSERT INTO bookings (unit_id, tenant_id, kind, start_date, end_date, price, deposit_amount, deposit_status, status, source)

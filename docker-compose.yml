@@ -1,0 +1,48 @@
+# ติดตั้งจริง: cp .env.example .env แล้วแก้ค่า → docker compose up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PUBLIC_URL: https://${DOMAIN}
+    volumes:
+      - data:/data
+    expose:
+      - "3000"
+
+  # HTTPS อัตโนมัติ (Let's Encrypt) — ต้องชี้ DNS ของโดเมนมาที่เซิร์ฟเวอร์ และเปิดพอร์ต 80/443
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # สำรองข้อมูลทุกวัน 03:00 เก็บย้อนหลัง BACKUP_KEEP_DAYS วัน
+  backup:
+    image: alpine:3.20
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Bangkok
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - data:/data
+      - ./backups:/backups
+      - ./deploy/backup.sh:/backup.sh:ro
+    entrypoint: >
+      sh -c "apk add --no-cache sqlite tzdata >/dev/null &&
+             echo '0 3 * * * sh /backup.sh >> /backups/backup.log 2>&1' | crontab - &&
+             crond -f -l 8"
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

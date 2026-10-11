@@ -102,6 +102,12 @@ async fn tenant_invoices(db: &SqlitePool, tenant_id: i64) -> AppResult<Vec<Invoi
 pub async fn home(State(s): State<AppState>, Path(token): Path<String>) -> AppResult<Json<Value>> {
     let t = resolve(&s.db, &token).await?;
     let line_org = crate::line::load(&s.db, t.org_id).await?;
+    let privacy = super::privacy::org_notice(&s.db, t.org_id).await?;
+    let consent_at: Option<String> =
+        sqlx::query_scalar("SELECT consent_at FROM tenants WHERE id = ?")
+            .bind(t.tenant_id)
+            .fetch_one(&s.db)
+            .await?;
     let (line_linked, line_name): (bool, Option<String>) = sqlx::query_as(
         "SELECT line_user_id IS NOT NULL, line_display_name FROM tenants WHERE id = ?",
     )
@@ -149,6 +155,10 @@ pub async fn home(State(s): State<AppState>, Path(token): Path<String>) -> AppRe
             "id": r.id, "doc_no": r.doc_no, "issue_date": r.issue_date, "total": r.total, "status": r.status,
         })).collect::<Vec<_>>(),
         "features": { "portal": true },
+        "privacy": {
+            "notice": privacy.0, "dpo_contact": privacy.2,
+            "consented": consent_at.is_some(), "consent_at": consent_at,
+        },
     })))
 }
 
@@ -200,7 +210,7 @@ pub async fn ticket_create(
     form: Multipart,
 ) -> AppResult<Json<Value>> {
     let t = resolve(&s.db, &token).await?;
-    let form = uploads::parse(form, &s.upload_dir, "ticket").await?;
+    let form = uploads::parse_for(&s, t.org_id, form, "ticket").await?;
     let unit_id = current_booking(&s.db, t.tenant_id).await?.map(|b| b.1);
     let id = tickets::create_from_form(
         &s.db,
@@ -234,7 +244,7 @@ pub async fn ticket_message(
 ) -> AppResult<Json<Value>> {
     let t = resolve(&s.db, &token).await?;
     tickets::detail(&s.db, scope(&t), id).await?; // ตรวจสิทธิ์
-    let form = uploads::parse(form, &s.upload_dir, "ticket").await?;
+    let form = uploads::parse_for(&s, t.org_id, form, "ticket").await?;
     let author = tickets::Author {
         kind: "tenant",
         user_id: None,
@@ -252,4 +262,79 @@ pub async fn line_link(
     Ok(Json(
         super::line::issue_link_code(&s, t.org_id, t.tenant_id).await?,
     ))
+}
+
+/// ผู้เช่ายอมรับประกาศความเป็นส่วนตัว
+pub async fn consent(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+) -> AppResult<Json<Value>> {
+    let t = resolve(&s.db, &token).await?;
+    let at: String = sqlx::query_scalar(
+        "UPDATE tenants SET consent_at = datetime('now'), consent_source = 'portal' WHERE id = ? RETURNING consent_at",
+    )
+    .bind(t.tenant_id)
+    .fetch_one(&s.db)
+    .await?;
+    crate::audit::log(
+        &s.db,
+        Some(t.org_id),
+        None,
+        None,
+        "tenant.consent",
+        "tenant",
+        Some(t.tenant_id),
+        None,
+    )
+    .await;
+    Ok(Json(json!({ "consent_at": at })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct PrivacyRequestInput {
+    kind: String,
+    #[serde(default)]
+    note: String,
+}
+
+pub async fn privacy_request(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+    Json(r): Json<PrivacyRequestInput>,
+) -> AppResult<Json<Value>> {
+    s.limiter.check(
+        &format!("privacy:{token}"),
+        10,
+        std::time::Duration::from_secs(86400),
+    )?;
+    let t = resolve(&s.db, &token).await?;
+    let req =
+        super::privacy::create_request(&s.db, t.org_id, t.tenant_id, &r.kind, &r.note).await?;
+    Ok(Json(json!(req)))
+}
+
+/// สิทธิ์ขอรับสำเนาข้อมูลของตัวเอง
+pub async fn export(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+) -> AppResult<impl axum::response::IntoResponse> {
+    s.limiter.check(
+        &format!("export:{token}"),
+        10,
+        std::time::Duration::from_secs(3600),
+    )?;
+    let t = resolve(&s.db, &token).await?;
+    let data = super::privacy::tenant_export(&s.db, t.tenant_id).await?;
+    crate::audit::log(
+        &s.db,
+        Some(t.org_id),
+        None,
+        None,
+        "tenant.self_export",
+        "tenant",
+        Some(t.tenant_id),
+        None,
+    )
+    .await;
+    Ok(super::privacy::json_download("my-data.json", &data))
 }

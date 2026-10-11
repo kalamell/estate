@@ -404,6 +404,15 @@ pub async fn void(
         .bind(id)
         .execute(&s.db)
         .await?;
+    crate::audit::record(
+        &s.db,
+        &ctx,
+        "invoice.void",
+        "invoice",
+        Some(id),
+        Some(serde_json::json!({ "reason": v.reason })),
+    )
+    .await;
     Ok(Json(fetch(&s.db, ctx.org_id, id).await?))
 }
 
@@ -568,6 +577,15 @@ pub async fn pay(
         |o| o.auto_receipt,
         move |st, org| async move { crate::line::send_receipt(&st, &org, receipt_id).await },
     );
+    crate::audit::record(
+        &s.db,
+        &ctx,
+        "payment.create",
+        "invoice",
+        Some(id),
+        Some(serde_json::json!({ "receipt": receipt_id })),
+    )
+    .await;
     Ok(Json(json!({ "invoice": invoice, "receipt": receipt })))
 }
 

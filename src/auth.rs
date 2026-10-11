@@ -159,6 +159,7 @@ pub struct OrgRow {
 #[derive(Debug, Clone)]
 pub struct OrgCtx {
     pub user: AuthUser,
+    pub ip: Option<String>,
     pub org_id: i64,
     pub role: Role,
     pub status: String,
@@ -261,6 +262,7 @@ where
 
         let ctx = OrgCtx {
             user,
+            ip: client_ip(parts),
             org_id: row.org_id,
             role: Role::parse(&row.role).unwrap_or(Role::Staff),
             status: row.status,
@@ -308,4 +310,42 @@ pub async fn ensure_tenant(db: &SqlitePool, org_id: i64, tenant_id: i64) -> AppR
         .await?
         .map(|_| ())
         .ok_or(AppError::NotFound)
+}
+
+/// IP ของผู้ใช้: หลัง reverse proxy (TRUST_PROXY=1) ใช้ X-Forwarded-For ตัวแรก ไม่เช่นนั้นใช้ IP ที่เชื่อมต่อจริง
+pub fn client_ip(parts: &Parts) -> Option<String> {
+    if std::env::var("TRUST_PROXY").is_ok_and(|v| v == "1") {
+        if let Some(ip) = parts
+            .headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+        {
+            return Some(ip);
+        }
+    }
+    parts
+        .extensions
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|c| c.0.ip().to_string())
+}
+
+/// ตัวดึง IP สำหรับ handler ที่ไม่ต้องล็อกอิน (ใช้กับ rate limit / audit)
+pub struct ClientIp(pub Option<String>);
+
+#[async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        Ok(ClientIp(client_ip(parts)))
+    }
+}
+
+impl ClientIp {
+    pub fn key(&self) -> &str {
+        self.0.as_deref().unwrap_or("unknown")
+    }
 }

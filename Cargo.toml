@@ -22,6 +22,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 hmac = "0.12"
 base64 = "0.22"
 urlencoding = "2"
+aes-gcm = "0.10"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
 tower-http = { version = "0.5", features = ["fs", "trace", "cors", "limit"] }
 tracing = "0.1"

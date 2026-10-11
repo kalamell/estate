@@ -3,6 +3,7 @@ mod auth;
 mod bookings;
 mod calendar;
 mod dashboard;
+mod files;
 mod housekeeping;
 mod invoices;
 mod line;
@@ -11,6 +12,7 @@ mod move_outs;
 mod org;
 mod portal;
 mod pricing;
+mod privacy;
 mod properties;
 mod receipts;
 mod reports;
@@ -120,6 +122,25 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/units/:id/prices", get(pricing::unit_prices))
         .route("/api/public/stay/:slug/quote", get(stay::quote))
         .route("/api/public/stay/:slug/prices", get(stay::prices))
+        .route("/uploads/:name", get(files::serve))
+        .route("/api/tenants/:id/export", get(privacy::export_tenant))
+        .route(
+            "/api/tenants/:id/anonymize",
+            post(privacy::anonymize_tenant),
+        )
+        .route("/api/privacy-requests", get(privacy::list_requests))
+        .route(
+            "/api/privacy-requests/:id",
+            axum::routing::patch(privacy::update_request),
+        )
+        .route("/api/privacy/retention", get(privacy::retention))
+        .route("/api/audit-logs", get(audit_logs))
+        .route("/api/portal/:token/consent", post(portal::consent))
+        .route(
+            "/api/portal/:token/privacy-requests",
+            post(portal::privacy_request),
+        )
+        .route("/api/portal/:token/export", get(portal::export))
         .route("/api/admin/stats", get(admin::stats))
         .route(
             "/api/admin/packages",
@@ -136,6 +157,7 @@ pub fn api_router() -> Router<AppState> {
             "/api/admin/users/:id",
             axum::routing::put(admin::update_user),
         )
+        .route("/api/health", get(health))
         .route("/api/dashboard", get(dashboard::summary))
         .route(
             "/api/properties",
@@ -270,4 +292,61 @@ pub fn spawn_background(state: crate::AppState) {
 /// งานแม่บ้านอัตโนมัติ (เปิดให้ test เรียกได้)
 pub async fn run_housekeeping(state: &crate::AppState) -> crate::error::AppResult<usize> {
     housekeeping::run_auto_tasks(state).await
+}
+
+#[derive(serde::Deserialize)]
+pub struct AuditQuery {
+    entity: Option<String>,
+    user_id: Option<i64>,
+    limit: Option<i64>,
+    before_id: Option<i64>,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct AuditRow {
+    id: i64,
+    user_id: Option<i64>,
+    user_name: Option<String>,
+    action: String,
+    entity: String,
+    entity_id: Option<i64>,
+    #[sqlx(json(nullable))]
+    detail: Option<serde_json::Value>,
+    ip: Option<String>,
+    created_at: String,
+}
+
+/// ประวัติการใช้งานขององค์กร (แอดมินขึ้นไป)
+async fn audit_logs(
+    axum::extract::State(s): axum::extract::State<crate::AppState>,
+    ctx: crate::auth::OrgCtx,
+    axum::extract::Query(q): axum::extract::Query<AuditQuery>,
+) -> crate::error::AppResult<axum::Json<Vec<AuditRow>>> {
+    ctx.require_admin()?;
+    Ok(axum::Json(
+        sqlx::query_as(
+            "SELECT a.id, a.user_id, u.name AS user_name, a.action, a.entity, a.entity_id, a.detail, a.ip, a.created_at
+             FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id
+             WHERE (a.org_id = ?1 OR (a.org_id IS NULL AND a.user_id IN (SELECT user_id FROM org_members WHERE org_id = ?1)))
+               AND (?2 IS NULL OR a.entity = ?2) AND (?3 IS NULL OR a.user_id = ?3) AND (?4 IS NULL OR a.id < ?4)
+             ORDER BY a.id DESC LIMIT ?5",
+        )
+        .bind(ctx.org_id)
+        .bind(q.entity)
+        .bind(q.user_id)
+        .bind(q.before_id)
+        .bind(q.limit.unwrap_or(50).clamp(1, 200))
+        .fetch_all(&s.db)
+        .await?,
+    ))
+}
+
+/// ใช้ตรวจว่าระบบและฐานข้อมูลทำงาน (Docker healthcheck)
+async fn health(
+    axum::extract::State(s): axum::extract::State<crate::AppState>,
+) -> crate::error::AppResult<axum::Json<serde_json::Value>> {
+    sqlx::query_scalar::<_, i64>("SELECT 1")
+        .fetch_one(&s.db)
+        .await?;
+    Ok(axum::Json(serde_json::json!({ "ok": true })))
 }

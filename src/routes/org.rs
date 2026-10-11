@@ -25,6 +25,7 @@ pub async fn get(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<Value
         .fetch_one(&s.db)
         .await?;
     let line = super::line::settings_json(&s, ctx.org_id).await?;
+    let privacy = super::privacy::org_notice(&s.db, ctx.org_id).await?;
     let package: (i64, String, String, f64) = sqlx::query_as(
         "SELECT p.id, p.name, p.description, p.price_monthly FROM packages p
          JOIN organizations o ON o.package_id = p.id WHERE o.id = ?",
@@ -52,6 +53,8 @@ pub async fn get(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<Value
             "address": issuer.address, "phone": issuer.phone, "vat_registered": issuer.vat_registered,
             "vat_rate": issuer.vat_rate, "receipt_note": issuer.receipt_note,
             "theme": theme, "line": line,
+            "privacy_notice": privacy.0, "privacy_notice_custom": privacy.1, "dpo_contact": privacy.2,
+            "retention_years": privacy.3,
         },
         "package": {
             "id": package.0, "name": package.1, "description": package.2, "price_monthly": package.3,
@@ -75,6 +78,9 @@ pub struct OrgInput {
     vat_rate: Option<f64>,
     receipt_note: Option<String>,
     theme: Option<String>,
+    privacy_notice: Option<String>,
+    dpo_contact: Option<String>,
+    retention_years: Option<i64>,
 }
 
 pub async fn update(
@@ -99,6 +105,11 @@ pub async fn update(
         }
     };
     digits(&o.tax_id, 13, "เลขประจำตัวผู้เสียภาษี")?;
+    if matches!(o.retention_years, Some(y) if !(1..=20).contains(&y)) {
+        return Err(AppError::BadRequest(
+            "ระยะเวลาเก็บข้อมูลต้องอยู่ระหว่าง 1–20 ปี".into(),
+        ));
+    }
     if let Some(t) = &o.theme {
         super::validate_in("theme", t, super::line::THEMES)?;
     }
@@ -111,7 +122,8 @@ pub async fn update(
             branch_code = COALESCE(NULLIF(?, ''), branch_code), address = COALESCE(?, address),
             phone = COALESCE(?, phone), vat_registered = COALESCE(?, vat_registered),
             vat_rate = COALESCE(?, vat_rate), receipt_note = COALESCE(?, receipt_note),
-            theme = COALESCE(?, theme)
+            theme = COALESCE(?, theme), privacy_notice = COALESCE(?, privacy_notice),
+            dpo_contact = COALESCE(?, dpo_contact), retention_years = COALESCE(?, retention_years)
          WHERE id = ?",
     )
     .bind(o.name.trim())
@@ -124,9 +136,21 @@ pub async fn update(
     .bind(o.vat_rate)
     .bind(&o.receipt_note)
     .bind(&o.theme)
+    .bind(o.privacy_notice.as_deref().map(str::trim))
+    .bind(o.dpo_contact.as_deref().map(str::trim))
+    .bind(o.retention_years)
     .bind(ctx.org_id)
         .execute(&s.db)
         .await?;
+    crate::audit::record(
+        &s.db,
+        &ctx,
+        "org.update",
+        "organization",
+        Some(ctx.org_id),
+        None,
+    )
+    .await;
     get(State(s), ctx).await
 }
 
@@ -224,6 +248,15 @@ pub async fn add_member(
             AppError::Conflict(_) => AppError::Conflict("ผู้ใช้นี้เป็นสมาชิกอยู่แล้ว".into()),
             other => other,
         })?;
+    crate::audit::record(
+        &s.db,
+        &ctx,
+        "member.add",
+        "user",
+        Some(user_id),
+        Some(serde_json::json!({ "role": m.role })),
+    )
+    .await;
     Ok(Json(json!({ "user_id": user_id })))
 }
 
@@ -261,6 +294,15 @@ pub async fn update_member(
         .bind(user_id)
         .execute(&s.db)
         .await?;
+    crate::audit::record(
+        &s.db,
+        &ctx,
+        "member.role",
+        "user",
+        Some(user_id),
+        Some(serde_json::json!({ "role": r.role })),
+    )
+    .await;
     Ok(Json(json!({})))
 }
 
@@ -279,5 +321,6 @@ pub async fn remove_member(
         .bind(user_id)
         .execute(&s.db)
         .await?;
+    crate::audit::record(&s.db, &ctx, "member.remove", "user", Some(user_id), None).await;
     Ok(Json(json!({})))
 }

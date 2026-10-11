@@ -65,7 +65,7 @@ impl Client {
             .call(
                 Method::POST,
                 "/api/auth/register",
-                Some(json!({"name": email, "email": email, "password": "password123", "org_name": org})),
+                Some(json!({"name": email, "email": email, "password": "password123", "org_name": org, "accept_terms": true})),
             )
             .await;
         assert_eq!(st, StatusCode::OK, "{body}");
@@ -80,6 +80,7 @@ pub async fn setup() -> Client {
 }
 
 pub async fn setup_with_line(line_api: &str) -> Client {
+    estate::crypto::init("integration-test-secret-key");
     let path = std::env::temp_dir().join(format!("estate-test-{}.db", uuid::Uuid::new_v4()));
     let pool = db::connect(&format!("sqlite://{}?mode=rwc", path.display()))
         .await
@@ -95,6 +96,7 @@ pub async fn setup_with_line(line_api: &str) -> Client {
         line: estate::line::LineClient::new(line_api),
         http: estate::http_client(),
         allow_private_urls: true,
+        limiter: Default::default(),
         public_url: "https://estate.test".into(),
     };
     Client {
@@ -307,4 +309,115 @@ impl Client {
             serde_json::from_slice(&bytes).unwrap_or(Value::Null),
         )
     }
+}
+
+impl Client {
+    /// multipart ข้อความ + รูป 1 ไฟล์ (field `photos`) ส่ง cookie/X-Org-Id ถ้ามี
+    pub async fn multipart_with_photo(
+        &mut self,
+        path: &str,
+        fields: &[(&str, &str)],
+    ) -> (StatusCode, Value) {
+        let boundary = "estate-test-boundary";
+        let mut body: Vec<u8> = Vec::new();
+        for (k, v) in fields {
+            body.extend(
+                format!(
+                    "--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n"
+                )
+                .as_bytes(),
+            );
+        }
+        body.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"photos\"; filename=\"p.png\"\r\nContent-Type: image/png\r\n\r\n").as_bytes());
+        body.extend(b"\x89PNG fake");
+        body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
+        let mut req = Request::builder().method(Method::POST).uri(path).header(
+            header::CONTENT_TYPE,
+            format!("multipart/form-data; boundary={boundary}"),
+        );
+        if let Some(c) = &self.cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        if let Some(o) = self.org {
+            req = req.header("x-org-id", o.to_string());
+        }
+        let res = self
+            .app
+            .clone()
+            .oneshot(req.body(Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    /// GET ที่ส่ง cookie (ไม่ส่ง X-Org-Id) คืนสถานะ
+    pub async fn get_status(&self, path: &str) -> StatusCode {
+        let mut req = Request::builder().uri(path);
+        if let Some(c) = &self.cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        self.app
+            .clone()
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status()
+    }
+}
+
+/// องค์กร Pro พร้อมโครงการ ห้อง ผู้เช่า (มีเลขบัตร) และสัญญาที่กำลังเข้าพัก
+pub async fn pro_org_with_lease() -> (Client, Value, Value, Value) {
+    let mut owner = setup().await;
+    owner.register("owner@test.local", "หอ").await;
+    let org_id = owner.org.unwrap();
+    let mut root = owner.other();
+    root.login("root@test.local", "password123").await;
+    let (_, packages) = root.call(Method::GET, "/api/admin/packages", None).await;
+    let pro = packages
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "Pro")
+        .unwrap()["id"]
+        .clone();
+    root.call(
+        Method::PUT,
+        &format!("/api/admin/orgs/{org_id}"),
+        Some(json!({"package_id": pro, "status": "active"})),
+    )
+    .await;
+    let (_, prop) = owner
+        .call(
+            Method::POST,
+            "/api/properties",
+            Some(json!({"name": "หอ", "kind": "dormitory"})),
+        )
+        .await;
+    let (_, unit) = owner
+        .call(
+            Method::POST,
+            "/api/units",
+            Some(json!({"property_id": prop["id"], "name": "101", "rent_monthly": 3000})),
+        )
+        .await;
+    let (_, tenant) = owner
+        .call(
+            Method::POST,
+            "/api/tenants",
+            Some(json!({"full_name": "สมชาย", "phone": "0811111111", "id_card": "1101700012345"})),
+        )
+        .await;
+    let (_, booking) = owner
+        .call(
+            Method::POST,
+            "/api/bookings",
+            Some(json!({"unit_id": unit["id"], "tenant_id": tenant["id"], "kind": "lease", "start_date": "2024-01-01"})),
+        )
+        .await;
+    (owner, unit, tenant, booking)
 }

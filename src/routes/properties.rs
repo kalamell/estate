@@ -184,5 +184,6 @@ pub async fn delete(
     if r.rows_affected() == 0 {
         return Err(AppError::NotFound);
     }
+    crate::audit::record(&s.db, &ctx, "property.delete", "property", Some(id), None).await;
     Ok(Json(()))
 }

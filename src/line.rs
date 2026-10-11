@@ -188,11 +188,21 @@ const ORG_LINE_SELECT: &str = "SELECT id AS org_id, name AS org_name, theme, lin
         line_auto_housekeeping AS auto_housekeeping
     FROM organizations";
 
+impl OrgLine {
+    /// ถอดรหัสค่าลับที่เก็บแบบเข้ารหัสในฐานข้อมูล
+    fn decrypted(mut self) -> Self {
+        self.secret = crate::crypto::decrypt(&self.secret);
+        self.token = crate::crypto::decrypt(&self.token);
+        self
+    }
+}
+
 pub async fn load(db: &SqlitePool, org_id: i64) -> AppResult<OrgLine> {
-    Ok(sqlx::query_as(&format!("{ORG_LINE_SELECT} WHERE id = ?"))
+    let org: OrgLine = sqlx::query_as(&format!("{ORG_LINE_SELECT} WHERE id = ?"))
         .bind(org_id)
         .fetch_one(db)
-        .await?)
+        .await?;
+    Ok(org.decrypted())
 }
 
 pub async fn load_by_webhook(db: &SqlitePool, key: &str) -> AppResult<Option<OrgLine>> {
@@ -200,7 +210,8 @@ pub async fn load_by_webhook(db: &SqlitePool, key: &str) -> AppResult<Option<Org
         sqlx::query_as(&format!("{ORG_LINE_SELECT} WHERE line_webhook_key = ?"))
             .bind(key)
             .fetch_optional(db)
-            .await?,
+            .await?
+            .map(OrgLine::decrypted),
     )
 }
 
@@ -593,7 +604,7 @@ pub async fn run_reminders(state: &AppState, today: NaiveDate) -> AppResult<usiz
     .fetch_all(&state.db)
     .await?;
     let mut sent = 0;
-    for org in orgs {
+    for org in orgs.into_iter().map(OrgLine::decrypted) {
         let due: Vec<(i64, NaiveDate)> = sqlx::query_as(
             "SELECT i.id, i.due_date FROM invoices i JOIN units u ON u.id = i.unit_id
              JOIN properties p ON p.id = u.property_id JOIN bookings b ON b.id = i.booking_id

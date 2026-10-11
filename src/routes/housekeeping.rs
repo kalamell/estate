@@ -504,7 +504,7 @@ pub async fn add_photos(
     form: Multipart,
 ) -> AppResult<Json<Task>> {
     let task = fetch(&s.db, ctx.org_id, id).await?;
-    let form = uploads::parse(form, &s.upload_dir, "hk").await?;
+    let form = uploads::parse_for(&s, ctx.org_id, form, "hk").await?;
     let mut photos = task.photos;
     photos.extend(form.photos);
     if photos.len() > 30 {
