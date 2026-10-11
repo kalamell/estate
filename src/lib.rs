@@ -6,6 +6,7 @@ pub mod billing;
 pub mod db;
 pub mod docs;
 pub mod error;
+pub mod ical;
 pub mod line;
 pub mod models;
 pub mod promptpay;
@@ -27,6 +28,10 @@ pub struct AppState {
     pub upload_dir: PathBuf,
     pub secure_cookies: bool,
     pub line: line::LineClient,
+    /// HTTP client ทั่วไป (ดึงปฏิทิน iCal จากช่องทางขาย)
+    pub http: reqwest::Client,
+    /// อนุญาตให้ดึง URL ในเครือข่ายภายใน (ใช้ตอนทดสอบเท่านั้น)
+    pub allow_private_urls: bool,
     /// URL สาธารณะของระบบ (ใช้สร้างลิงก์ในข้อความ LINE และ Webhook URL)
     pub public_url: String,
 }
@@ -67,6 +72,37 @@ impl Config {
     }
 }
 
+pub fn http_client() -> reqwest::Client {
+    // redirect ไปยัง IP ภายในถูกปฏิเสธ (กัน SSRF ผ่านการ redirect)
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        let internal = attempt
+            .url()
+            .host_str()
+            .map(|h| {
+                h == "localhost"
+                    || h.parse::<std::net::IpAddr>().is_ok_and(|ip| {
+                        ip.is_loopback()
+                            || match ip {
+                                std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
+                                std::net::IpAddr::V6(_) => false,
+                            }
+                    })
+            })
+            .unwrap_or(true);
+        if internal || attempt.previous().len() >= 3 {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    });
+    reqwest::Client::builder()
+        .redirect(policy)
+        .timeout(std::time::Duration::from_secs(20))
+        .user_agent("Estate/1.0 (calendar sync)")
+        .build()
+        .expect("http client")
+}
+
 /// ประกอบ Router ทั้งหมด (API + ไฟล์อัปโหลด + หน้าเว็บ SPA)
 pub fn build_app(state: AppState, static_dir: &std::path::Path) -> axum::Router {
     // SPA: เส้นทางที่ไม่ใช่ไฟล์จริงให้ส่ง index.html แล้วให้ React Router จัดการต่อ
@@ -94,9 +130,12 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
         upload_dir: config.upload_dir.clone(),
         secure_cookies: config.secure_cookies,
         line: line::LineClient::new(&config.line_api_base),
+        http: http_client(),
+        allow_private_urls: std::env::var("ALLOW_PRIVATE_FEED_URLS").is_ok_and(|v| v == "1"),
         public_url: config.public_url.clone(),
     };
     line::spawn_reminders(state.clone());
+    routes::spawn_channel_sync(state.clone());
     let app = build_app(state, &config.static_dir);
 
     tracing::info!("Estate พร้อมใช้งานที่ http://{}", config.bind);

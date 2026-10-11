@@ -97,21 +97,14 @@ pub async fn create(
         return Err(AppError::Conflict("ห้องนี้อยู่ระหว่างปิดปรับปรุง".into()));
     }
 
-    let overlap: Option<i64> = sqlx::query_scalar(
-        "SELECT id FROM bookings WHERE unit_id = ? AND status IN ('reserved','active')
-           AND start_date < ? AND COALESCE(end_date, '9999-12-31') > ? LIMIT 1",
-    )
-    .bind(b.unit_id)
-    .bind(
-        b.end_date
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| "9999-12-31".into()),
-    )
-    .bind(b.start_date)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if let Some(other) = overlap {
-        return Err(AppError::Conflict(format!("ช่วงวันที่ทับซ้อนกับการจอง #{other}")));
+    // สัญญาไม่กำหนดวันสิ้นสุด: ใช้วันที่ไกลมาก (NaiveDate::MAX เทียบแบบข้อความผิด)
+    let end = b
+        .end_date
+        .unwrap_or(chrono::NaiveDate::from_ymd_opt(9999, 12, 31).expect("valid"));
+    if let Some(msg) =
+        super::calendar::find_conflict(&s.db, b.unit_id, b.start_date, end, None).await?
+    {
+        return Err(AppError::Conflict(msg));
     }
 
     let is_lease = b.kind == "lease";

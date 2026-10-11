@@ -18,6 +18,13 @@ pub struct Property {
     pub late_fee_type: String,
     pub late_fee_amount: f64,
     pub late_fee_grace_days: i64,
+    pub booking_enabled: bool,
+    pub booking_slug: Option<String>,
+    pub booking_intro: String,
+    pub check_in_time: String,
+    pub check_out_time: String,
+    pub min_nights: i64,
+    pub deposit_percent: f64,
     pub created_at: String,
 }
 
@@ -35,6 +42,13 @@ pub struct PropertyInput {
     pub late_fee_type: Option<String>,
     pub late_fee_amount: Option<f64>,
     pub late_fee_grace_days: Option<i64>,
+    pub booking_enabled: Option<bool>,
+    pub booking_slug: Option<String>,
+    pub booking_intro: Option<String>,
+    pub check_in_time: Option<String>,
+    pub check_out_time: Option<String>,
+    pub min_nights: Option<i64>,
+    pub deposit_percent: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

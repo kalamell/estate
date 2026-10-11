@@ -1,6 +1,7 @@
 mod admin;
 mod auth;
 mod bookings;
+mod calendar;
 mod dashboard;
 mod invoices;
 mod line;
@@ -11,6 +12,7 @@ mod portal;
 mod properties;
 mod receipts;
 mod reports;
+mod stay;
 mod tenants;
 mod tickets;
 mod units;
@@ -53,6 +55,39 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/invoices/:id/send-line", post(line::send_invoice))
         .route("/api/receipts/:id/send-line", post(line::send_receipt))
         .route("/api/portal/:token/line-link", post(portal::line_link))
+        .route("/api/calendar", get(calendar::calendar))
+        .route("/api/channels", get(calendar::list_channels))
+        .route(
+            "/api/channels/:id",
+            axum::routing::delete(calendar::delete_channel),
+        )
+        .route("/api/channels/:id/sync", post(calendar::sync_channel))
+        .route(
+            "/api/units/:id/channels",
+            get(calendar::unit_channels).post(calendar::add_channel),
+        )
+        .route(
+            "/api/units/:id/channels/regenerate-export",
+            post(calendar::regenerate_export),
+        )
+        .route("/ical/:file", get(calendar::export))
+        .route("/api/public/stay/:slug", get(stay::stay))
+        .route(
+            "/api/public/stay/:slug/availability",
+            get(stay::availability),
+        )
+        .route(
+            "/api/public/stay/:slug/requests",
+            post(stay::create_request),
+        )
+        .route("/api/public/requests/:token", get(stay::request_status))
+        .route(
+            "/api/public/requests/:token/slip",
+            post(stay::upload_slip).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
+        .route("/api/booking-requests", get(stay::list_requests))
+        .route("/api/booking-requests/:id/approve", post(stay::approve))
+        .route("/api/booking-requests/:id/reject", post(stay::reject))
         .route("/api/admin/stats", get(admin::stats))
         .route(
             "/api/admin/packages",
@@ -193,4 +228,8 @@ pub(crate) fn validate_in(
             allowed.join(", ")
         )))
     }
+}
+
+pub fn spawn_channel_sync(state: crate::AppState) {
+    calendar::spawn_sync(state);
 }

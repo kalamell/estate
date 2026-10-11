@@ -93,6 +93,8 @@ pub async fn setup_with_line(line_api: &str) -> Client {
         upload_dir: std::env::temp_dir(),
         secure_cookies: false,
         line: estate::line::LineClient::new(line_api),
+        http: estate::http_client(),
+        allow_private_urls: true,
         public_url: "https://estate.test".into(),
     };
     Client {
@@ -217,5 +219,59 @@ impl Client {
             .body(Body::from(raw))
             .unwrap();
         self.app.clone().oneshot(req).await.unwrap().status()
+    }
+}
+
+/// เซิร์ฟเวอร์จำลองที่เสิร์ฟไฟล์ iCal (แก้เนื้อหาได้ระหว่าง test)
+pub async fn spawn_ics_server(initial: &str) -> (String, std::sync::Arc<std::sync::Mutex<String>>) {
+    use axum::routing::get;
+    let body = std::sync::Arc::new(std::sync::Mutex::new(initial.to_string()));
+    let shared = body.clone();
+    let app = Router::new().route(
+        "/cal.ics",
+        get(move || {
+            let shared = shared.clone();
+            async move { shared.lock().unwrap().clone() }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}/cal.ics"), body)
+}
+
+impl Client {
+    /// GET ที่คืนข้อความดิบ (เช่น ไฟล์ .ics)
+    pub async fn get_text(&self, path: &str) -> (StatusCode, String) {
+        let req = Request::builder().uri(path).body(Body::empty()).unwrap();
+        let res = self.app.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        (status, String::from_utf8_lossy(&bytes).to_string())
+    }
+
+    /// ส่งรูป 1 ไฟล์แบบ multipart (field `photo`)
+    pub async fn upload_photo(&mut self, path: &str) -> (StatusCode, Value) {
+        let boundary = "estate-test-boundary";
+        let mut body: Vec<u8> = Vec::new();
+        body.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"slip.png\"\r\nContent-Type: image/png\r\n\r\n").as_bytes());
+        body.extend(b"\x89PNG fake");
+        body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(path)
+            .header(
+                header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={boundary}"),
+            )
+            .body(Body::from(body))
+            .unwrap();
+        let res = self.app.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
     }
 }

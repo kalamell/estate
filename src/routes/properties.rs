@@ -47,7 +47,58 @@ fn check_input(ctx: &OrgCtx, p: &PropertyInput) -> AppResult<()> {
     if p.late_fee_amount.unwrap_or(0.0) < 0.0 || p.late_fee_grace_days.unwrap_or(0) < 0 {
         return Err(AppError::BadRequest("ค่าปรับและจำนวนวันผ่อนผันต้องไม่ติดลบ".into()));
     }
+    if p.booking_enabled == Some(true) {
+        ctx.require_feature(ctx.features.short_stay, "หน้าจองออนไลน์")?;
+        let slug = p.booking_slug.as_deref().unwrap_or_default();
+        if !super::stay::valid_slug(slug) {
+            return Err(AppError::BadRequest(
+                "ชื่อลิงก์หน้าจองต้องเป็น a-z, 0-9 หรือ - ยาว 3–40 ตัว".into(),
+            ));
+        }
+    }
+    if matches!(p.min_nights, Some(n) if !(1..=90).contains(&n))
+        || matches!(p.deposit_percent, Some(d) if !(0.0..=100.0).contains(&d))
+    {
+        return Err(AppError::BadRequest(
+            "จำนวนคืนขั้นต่ำหรือเปอร์เซ็นต์มัดจำไม่ถูกต้อง".into(),
+        ));
+    }
+    for t in [&p.check_in_time, &p.check_out_time].into_iter().flatten() {
+        if chrono::NaiveTime::parse_from_str(t, "%H:%M").is_err() {
+            return Err(AppError::BadRequest(
+                "เวลาเช็คอิน/เช็คเอาท์ต้องอยู่ในรูปแบบ HH:MM".into(),
+            ));
+        }
+    }
     Ok(())
+}
+
+/// ตั้งค่าหน้าจองออนไลน์ (ไม่ส่งมา = ไม่เปลี่ยน, slug ว่าง = ยกเลิก)
+async fn apply_booking_settings(s: &AppState, id: i64, p: &PropertyInput) -> AppResult<Property> {
+    let slug = p.booking_slug.as_deref().map(|v| v.trim().to_lowercase());
+    sqlx::query_as(
+        "UPDATE properties SET booking_enabled = COALESCE(?, booking_enabled),
+            booking_slug = CASE WHEN ? THEN NULLIF(?, '') ELSE booking_slug END,
+            booking_intro = COALESCE(?, booking_intro), check_in_time = COALESCE(?, check_in_time),
+            check_out_time = COALESCE(?, check_out_time), min_nights = COALESCE(?, min_nights),
+            deposit_percent = COALESCE(?, deposit_percent)
+         WHERE id = ? RETURNING *",
+    )
+    .bind(p.booking_enabled)
+    .bind(slug.is_some())
+    .bind(slug)
+    .bind(&p.booking_intro)
+    .bind(&p.check_in_time)
+    .bind(&p.check_out_time)
+    .bind(p.min_nights)
+    .bind(p.deposit_percent)
+    .bind(id)
+    .fetch_one(&s.db)
+    .await
+    .map_err(|e| match AppError::from(e) {
+        AppError::Conflict(_) => AppError::Conflict("ชื่อลิงก์หน้าจองนี้ถูกใช้แล้ว".into()),
+        other => other,
+    })
 }
 
 pub async fn create(
@@ -82,7 +133,8 @@ pub async fn create(
     .bind(p.late_fee_grace_days.unwrap_or(0))
     .fetch_one(&s.db)
     .await?;
-    Ok(Json(row))
+    let row: Property = row;
+    Ok(Json(apply_booking_settings(&s, row.id, &p).await?))
 }
 
 pub async fn update(
@@ -114,7 +166,8 @@ pub async fn update(
     .bind(ctx.org_id)
     .fetch_one(&s.db)
     .await?;
-    Ok(Json(row))
+    let row: Property = row;
+    Ok(Json(apply_booking_settings(&s, row.id, &p).await?))
 }
 
 pub async fn delete(

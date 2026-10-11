@@ -69,6 +69,13 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
     .fetch_one(&s.db)
     .await?;
 
+    let pending_requests: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM booking_requests WHERE org_id = ? AND status = 'pending' AND expires_at > datetime('now')",
+    )
+    .bind(ctx.org_id)
+    .fetch_one(&s.db)
+    .await?;
+
     let total_units: i64 = units_by_status.iter().map(|(_, c)| c).sum();
     let occupied: i64 = units_by_status
         .iter()
@@ -86,6 +93,7 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
         "open_tickets": open_tickets,
         "overdue_count": overdue_count,
         "overdue_amount": overdue_amount,
+        "pending_requests": pending_requests,
         "properties": properties.into_iter().map(|(id, name, kind, units, occupied)| json!({
             "id": id, "name": name, "kind": kind, "units": units, "occupied": occupied
         })).collect::<Vec<_>>(),
