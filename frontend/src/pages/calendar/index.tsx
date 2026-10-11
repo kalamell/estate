@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Cable, CalendarRange, ChevronLeft, ChevronRight, Inbox, MousePointerClick, X } from 'lucide-react'
-import { api, type CalendarUnit, type EventSource } from '@/lib/api'
+import { api, type CalendarUnit, type DayPrice, type EventSource } from '@/lib/api'
 import { CHANNELS } from '@/lib/channels'
 import { addDays, diffDays, thRange, today } from '@/lib/format'
 import { readLS, writeLS } from '@/lib/storage'
@@ -25,6 +25,13 @@ const LS_WEEKS = 'estate.calendarWeeks'
 const LS_PROPERTY = 'estate.calendarProperty'
 const DAY_W: Record<number, number> = { 2: 52, 4: 40, 8: 30 }
 const LEAD = 3 // แสดงย้อนหลังก่อนวันอ้างอิง 3 วัน
+
+/** รวมผลราคาหลายห้องเป็น Map (ฟังก์ชันคงที่ → React Query memo ผลลัพธ์ให้) */
+function combinePrices(results: { data?: { unitId: number; prices: DayPrice[] } }[]) {
+  const m = new Map<number, Map<string, DayPrice>>()
+  for (const r of results) if (r.data) m.set(r.data.unitId, new Map(r.data.prices.map((p) => [p.date, p])))
+  return m
+}
 
 const LEGEND: { key: string; label: string; source?: EventSource; request?: boolean }[] = [
   { key: 'direct', label: 'สัญญา / จองตรง', source: 'direct' },
@@ -98,6 +105,28 @@ export default function CalendarPage() {
   })()
 
   const shownUnits = conflictsOnly ? units.filter((u) => stats.conflictUnits.has(u.id)) : units
+
+  // สถานะทำความสะอาด (ใช้เมื่อ /api/calendar ไม่ได้ส่งมาด้วย)
+  const allUnits = useQuery({ queryKey: ['units', 'all'], queryFn: () => api.units(), meta: { silent: true } })
+  const hkStatus = useMemo(
+    () => new Map((allUnits.data ?? []).map((u) => [u.id, u.housekeeping_status])),
+    [allUnits.data],
+  )
+
+  // ราคาต่อคืนตามกฎ — เฉพาะห้องรายวัน เมื่อแสดงไม่เกิน 4 สัปดาห์ (จำกัดจำนวนห้องเพื่อไม่ให้หนักเกินไป)
+  const priceUnits =
+    features.short_stay && !isMobile && weeks <= 4
+      ? shownUnits.filter((u) => u.rate_daily > 0).slice(0, 40)
+      : []
+  const prices = useQueries({
+    queries: priceUnits.map((u) => ({
+      queryKey: ['unit-prices', u.id, from, to, 'calendar'],
+      queryFn: async () => ({ unitId: u.id, prices: (await api.unitPrices(u.id, from, to)).prices }),
+      staleTime: 5 * 60_000,
+      meta: { silent: true },
+    })),
+    combine: combinePrices,
+  })
 
   const selectRange = (u: CalendarUnit, start: string, end: string) =>
     openBooking(undefined, {
@@ -254,6 +283,8 @@ export default function CalendarPage() {
               units={shownUnits}
               events={events}
               readOnly={readOnly}
+              hkStatus={hkStatus}
+              prices={prices}
               onSelectRange={selectRange}
             />
           </div>

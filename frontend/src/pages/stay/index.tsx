@@ -1,12 +1,13 @@
 // หน้าจองออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน) — /stay/:slug
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQueries, useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
   ArrowRight,
   BedDouble,
   CalendarDays,
+  ChevronDown,
   Clock,
   Loader2,
   LogIn,
@@ -17,7 +18,7 @@ import {
   Send,
   X,
 } from 'lucide-react'
-import { ApiError, api, type Property, type StayBusy, type StayInfo } from '@/lib/api'
+import { ApiError, api, type Property, type PublicQuote, type StayBusy, type StayInfo } from '@/lib/api'
 import { addMonths, baht, diffDays, thDayShort, today } from '@/lib/format'
 import { readLS, stayRequestKey, writeLS } from '@/lib/storage'
 import { cn } from '@/lib/utils'
@@ -100,13 +101,61 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
     (day: string) => (unitId != null ? nightBusy(unitId, day) : d.units.every((u) => nightBusy(u.id, day))),
     [unitId, nightBusy, d.units],
   )
-  const priceFor = useCallback(() => (unit ? unit.rate_daily : minRate || null), [unit, minRate])
+
+  // ราคาต่อคืนตามฤดูกาลของเดือนที่แสดง
+  const pricesQ = useQuery({
+    queryKey: ['stay', slug, 'prices', viewFrom, viewTo],
+    queryFn: () => api.stay.prices(slug, viewFrom, viewTo),
+    placeholderData: keepPreviousData,
+    ...silent,
+  })
+  const priceMap = useMemo(() => {
+    const m = new Map<number, Map<string, number>>()
+    for (const [id, list] of Object.entries(pricesQ.data?.units ?? {}))
+      m.set(Number(id), new Map(list.map((x) => [x.date, x.price])))
+    return m
+  }, [pricesQ.data])
+  const unitPrice = useCallback(
+    (id: number, day: string) => priceMap.get(id)?.get(day) ?? d.units.find((u) => u.id === id)?.rate_daily ?? null,
+    [priceMap, d.units],
+  )
+  // เลือกห้องแล้ว → ราคาของห้องนั้น / ยังไม่เลือก → ราคาต่ำสุดของห้องที่ว่างคืนนั้น
+  const priceFor = useCallback(
+    (day: string) => {
+      if (unit) return unitPrice(unit.id, day)
+      const free = d.units.filter((u) => !nightBusy(u.id, day))
+      const ps = (free.length ? free : d.units).map((u) => unitPrice(u.id, day)).filter((x): x is number => x != null)
+      return ps.length ? Math.min(...ps) : minRate || null
+    },
+    [unit, unitPrice, d.units, nightBusy, minRate],
+  )
+  // ราคาเริ่มต้นของแต่ละห้องในช่วงที่แสดง
+  const fromPrice = (id: number, fallback: number) => {
+    const ps = [...(priceMap.get(id)?.values() ?? [])]
+    return ps.length ? Math.min(...ps) : fallback
+  }
 
   const nights = range.start && range.end ? diffDays(range.start, range.end) : 0
   const tooShort = nights > 0 && nights < minNights
   const unitFree = unit && range.start && range.end ? rangeFree(unit.id, range.start, range.end) : true
-  const total = unit ? nights * unit.rate_daily : 0
-  const deposit = Math.round((total * (p.deposit_percent || 0)) / 100)
+  const rangeOk = !!range.start && !!range.end && nights > 0 && !tooShort
+
+  // ใบเสนอราคาจากเซิร์ฟเวอร์ (รวมกฎราคา ส่วนลดพักหลายคืน และมัดจำ) — ทุกห้องที่ว่างในช่วงที่เลือก
+  const quotable = rangeOk ? d.units.filter((u) => rangeFree(u.id, range.start!, range.end!)) : []
+  const quotes = useQueries({
+    queries: quotable.map((u) => ({
+      queryKey: ['stay', slug, 'quote', u.id, range.start, range.end],
+      queryFn: () => api.stay.quote(slug, u.id, range.start!, range.end!),
+      staleTime: 60_000,
+      ...silent,
+    })),
+  })
+  const quoteOf = (id: number): PublicQuote | undefined => quotes[quotable.findIndex((u) => u.id === id)]?.data
+  const quote = unit && unitFree ? quoteOf(unit.id) : undefined
+  const quoteLoading = !!unit && unitFree && rangeOk && !quote && quotes.some((q) => q.isLoading)
+  const fallbackTotal = unit ? nights * unit.rate_daily : 0
+  const total = quote?.total ?? fallbackTotal
+  const deposit = quote?.deposit_amount ?? Math.round((fallbackTotal * (p.deposit_percent || 0)) / 100)
   const ready = !!unit && nights > 0 && !tooShort && unitFree
 
   const submit = useMutation({
@@ -247,6 +296,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                   const free = range.start && range.end ? rangeFree(u.id, range.start, range.end) : null
                   const selected = u.id === unitId
                   const area = u.width * u.length
+                  const uq = free ? quoteOf(u.id) : undefined
                   return (
                     <button
                       key={u.id}
@@ -280,10 +330,22 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                             </span>
                           )}
                         </div>
-                        <div className="mt-2 text-sm">
-                          <span className="font-semibold tabular-nums">{baht(u.rate_daily)}</span>
-                          <span className="text-muted-foreground"> / คืน</span>
-                        </div>
+                        {uq ? (
+                          <div className="mt-2 text-sm">
+                            <span className="font-semibold tabular-nums">{baht(uq.total)}</span>
+                            <span className="text-muted-foreground"> · {uq.nights_count} คืน</span>
+                            <div className="text-xs text-muted-foreground tabular-nums">
+                              เฉลี่ย {baht(uq.average_rate)}/คืน
+                              {uq.discount && <span className="text-success"> · ลด {uq.discount.percent}%</span>}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-sm">
+                            {priceMap.size > 0 && <span className="text-muted-foreground">เริ่มต้น </span>}
+                            <span className="font-semibold tabular-nums">{baht(fromPrice(u.id, u.rate_daily))}</span>
+                            <span className="text-muted-foreground"> / คืน</span>
+                          </div>
+                        )}
                       </div>
                       <span
                         aria-hidden
@@ -311,11 +373,24 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
             <div className="space-y-2 px-5 py-4 text-sm">
               {unit && nights > 0 ? (
                 <>
-                  <Row label={`ห้อง ${unit.name}`} value={`${baht(unit.rate_daily)} × ${nights} คืน`} />
+                  {quote ? (
+                    <QuoteLines quote={quote} unitName={unit.name} />
+                  ) : (
+                    <Row
+                      label={`ห้อง ${unit.name}`}
+                      value={
+                        quoteLoading ? (
+                          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                        ) : (
+                          `${baht(unit.rate_daily)} × ${nights} คืน`
+                        )
+                      }
+                    />
+                  )}
                   <Row label="ยอดรวม" value={baht(total)} strong />
                   <div className="!mt-3 rounded-md bg-primary/5 px-3 py-2.5">
                     <Row
-                      label={`มัดจำ ${p.deposit_percent}% (ชำระตอนนี้)`}
+                      label={`มัดจำ${p.deposit_percent ? ` ${p.deposit_percent}%` : ''} (ชำระตอนนี้)`}
                       value={<span className="text-base font-semibold text-primary">{baht(deposit)}</span>}
                     />
                     <Row label="ชำระส่วนที่เหลือเมื่อเช็คอิน" value={baht(total - deposit)} muted />
@@ -494,6 +569,55 @@ function Row({
     <div className={cn('flex items-baseline justify-between gap-3', muted && 'text-muted-foreground')}>
       <span className={cn(!strong && 'text-muted-foreground', muted && 'text-xs')}>{label}</span>
       <span className={cn('tabular-nums', strong && 'font-semibold', muted && 'text-xs')}>{value}</span>
+    </div>
+  )
+}
+
+/** รายละเอียดราคาจากใบเสนอราคา: รายคืน (ย่อ/ขยาย) + ส่วนลดพักหลายคืน */
+function QuoteLines({ quote, unitName }: { quote: PublicQuote; unitName: string }) {
+  const [open, setOpen] = useState(false)
+  const uniform = quote.nights.every((n) => n.price === quote.nights[0]?.price)
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-baseline justify-between gap-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
+        <span className="text-muted-foreground">
+          ห้อง {unitName} · {quote.nights_count} คืน
+          <span className="ml-1.5 inline-flex items-center gap-0.5 text-xs font-medium text-primary">
+            {open ? 'ซ่อน' : 'ดูรายคืน'}
+            <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
+          </span>
+        </span>
+        <span className="tabular-nums">
+          {uniform && quote.nights[0] ? `${baht(quote.nights[0].price)} × ${quote.nights_count}` : baht(quote.subtotal)}
+        </span>
+      </button>
+      {open && (
+        <ul className="max-h-60 space-y-1 overflow-y-auto rounded-md border bg-muted/30 px-3 py-2 text-xs">
+          {quote.nights.map((n) => (
+            <li key={n.date} className="flex items-baseline gap-2">
+              <span className="w-20 shrink-0 tabular-nums">{thDayShort(n.date)}</span>
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{n.rules.join(' · ')}</span>
+              {n.price !== n.base && (
+                <span className="text-muted-foreground line-through tabular-nums">{baht(n.base)}</span>
+              )}
+              <span className={cn('tabular-nums', n.price !== n.base && 'font-medium text-primary')}>{baht(n.price)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {quote.discount && (
+        <div className="flex items-baseline justify-between gap-3 text-success">
+          <span>
+            ส่วนลด{quote.discount.name ? ` ${quote.discount.name}` : ''} ({quote.discount.percent}%)
+          </span>
+          <span className="tabular-nums">−{baht(quote.discount.amount)}</span>
+        </div>
+      )}
     </div>
   )
 }

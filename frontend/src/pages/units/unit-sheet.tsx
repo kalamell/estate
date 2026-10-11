@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { CalendarPlus, CalendarRange, Droplets, Loader2, Move3d, Plus, Save, Trash2, X, Zap } from 'lucide-react'
-import { api, type ExtraCharge, type FurnitureKind, type Unit, type UnitStatus } from '@/lib/api'
+import { api, type ExtraCharge, type FurnitureKind, type HousekeepingStatus, type Unit, type UnitStatus } from '@/lib/api'
+import { HK_STATUS, HK_STATUS_ORDER } from '@/lib/housekeeping'
+import { cn } from '@/lib/utils'
+import { HkIndicator } from '@/components/housekeeping-indicator'
 import { invalidate } from '@/lib/query'
 import { FURNITURE, UNIT_STATUS, baht, num, thDate } from '@/lib/format'
 import { useSession } from '@/contexts/session'
@@ -23,6 +26,12 @@ import { RoomView } from './three-canvas'
 import { UnitChannels } from './unit-channels'
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+
+const withoutHk = (u: Unit): Unit => {
+  const copy = { ...u }
+  delete copy.housekeeping_status
+  return copy
+}
 
 export function UnitSheet({
   unit,
@@ -86,7 +95,8 @@ function UnitEditor({
   const save = useMutation({
     mutationFn: () =>
       api.updateUnit({
-        ...draft,
+        // สถานะทำความสะอาดเปลี่ยนผ่าน PATCH /housekeeping เท่านั้น — ไม่ส่งค่าเก่าทับ
+        ...withoutHk(draft),
         extra_charges: draft.extra_charges
           .filter((c) => c.label.trim())
           .map((c) => ({ ...c, label: c.label.trim(), amount: Number(c.amount) || 0 })),
@@ -128,6 +138,7 @@ function UnitEditor({
         <UnitStatusBadge status={draft.status} />
         <SheetDescription className="sr-only">รายละเอียดและการตั้งค่าห้อง {draft.name}</SheetDescription>
       </SheetHeader>
+      <HousekeepingBar unit={unit} />
 
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
         <div className="border-b px-6 pt-3 pb-2">
@@ -474,5 +485,52 @@ function ExtraChargesEditor({
         ))}
       </div>
     </section>
+  )
+}
+
+/** สถานะทำความสะอาดของห้อง — เปลี่ยนเองได้ (PATCH ทันที) */
+function HousekeepingBar({ unit }: { unit: Unit }) {
+  const { readOnly } = useSession()
+  const [status, setStatus] = useState<HousekeepingStatus | undefined>(unit.housekeeping_status)
+  const set = useMutation({
+    mutationFn: (s: HousekeepingStatus) => api.setHousekeeping(unit.id, s),
+    onMutate: (s) => {
+      const prev = status
+      setStatus(s)
+      return { prev }
+    },
+    onError: (_e, _s, ctx) => setStatus(ctx?.prev),
+    onSuccess: async (u) => {
+      setStatus(u.housekeeping_status)
+      toast.success(`ห้อง ${u.name}: ${HK_STATUS[u.housekeeping_status ?? 'clean'].label}`)
+      await invalidate('units', 'hk-today', 'dashboard', 'calendar')
+    },
+  })
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-6 py-2.5">
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <HkIndicator status={status} size="xs" />
+        ความสะอาด
+      </span>
+      <div role="radiogroup" aria-label="สถานะทำความสะอาด" className="inline-flex rounded-md border bg-muted/50 p-0.5">
+        {HK_STATUS_ORDER.map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={status === k}
+            disabled={readOnly || set.isPending}
+            onClick={() => status !== k && set.mutate(k)}
+            className={cn(
+              'inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60',
+              status === k && 'bg-card text-foreground shadow-xs ring-1 ring-border',
+            )}
+          >
+            <span className={cn('size-1.5 rounded-full', HK_STATUS[k].dot)} />
+            {k === 'dirty' ? 'รอทำความสะอาด' : HK_STATUS[k].short}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

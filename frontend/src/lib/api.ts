@@ -79,6 +79,8 @@ export interface LineSettings {
   auto_receipt: boolean
   auto_ticket_reply: boolean
   auto_remind: boolean
+  /** แจ้งงานแม่บ้านให้พนักงานที่เชื่อม LINE */
+  auto_housekeeping?: boolean
   linked_tenants: number
   add_friend_url: string | null
 }
@@ -94,6 +96,7 @@ export interface LineSettingsInput {
   auto_receipt: boolean
   auto_ticket_reply: boolean
   auto_remind: boolean
+  auto_housekeeping: boolean
 }
 
 export interface LineBotInfo {
@@ -153,7 +156,12 @@ export interface Member {
   email: string
   role: Role
   created_at: string
+  /** เชื่อม LINE (รับแจ้งงาน) แล้ว */
+  line_linked?: boolean
 }
+
+/** โค้ดเชื่อม LINE ของพนักงาน (ผู้ใช้ปัจจุบัน) — ข้อความ "เชื่อมพนักงาน <code>" */
+export type StaffLineLinkCode = LineLinkCode
 
 export interface AdminStats {
   orgs: number
@@ -284,6 +292,8 @@ export interface Unit {
   layout: Furniture[]
   note: string
   extra_charges: ExtraCharge[]
+  /** สถานะทำความสะอาด */
+  housekeeping_status?: HousekeepingStatus
 }
 
 export interface ExtraCharge {
@@ -647,6 +657,123 @@ export interface Dashboard {
   }[]
   /** คำขอจองออนไลน์ที่รอตอบ */
   pending_requests?: number
+  /** งานแม่บ้าน */
+  housekeeping?: { dirty: number; in_progress: number; open_tasks: number }
+}
+
+// ----- Housekeeping (งานแม่บ้าน) -----
+export type HousekeepingStatus = 'clean' | 'dirty' | 'in_progress'
+export type HkTaskKind = 'checkout_clean' | 'stayover' | 'deep_clean' | 'inspection' | 'maintenance'
+export type HkTaskStatus = 'pending' | 'in_progress' | 'done' | 'cancelled'
+
+export interface ChecklistItem {
+  label: string
+  done: boolean
+}
+
+export interface HkTask {
+  id: number
+  unit_id: number
+  unit_name: string
+  property_id: number
+  property_name: string
+  booking_id: number | null
+  guest_name: string | null
+  kind: HkTaskKind
+  status: HkTaskStatus
+  /** YYYY-MM-DD */
+  due_date: string
+  assignee_user_id: number | null
+  assignee_name: string | null
+  notes: string
+  checklist: ChecklistItem[]
+  photos: string[]
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface HkTaskInput {
+  unit_id: number
+  kind: HkTaskKind
+  due_date: string
+  assignee_user_id?: number | null
+  notes?: string
+}
+
+export interface HkTaskPatch {
+  status?: HkTaskStatus
+  assignee_user_id?: number | null
+  checklist?: ChecklistItem[]
+  notes?: string
+  due_date?: string
+}
+
+export interface HkMovement {
+  booking_id: number
+  unit_id: number
+  unit_name: string
+  property_name: string
+  guest_name: string
+  source: string
+}
+
+export interface HkToday {
+  date: string
+  checkouts: (HkMovement & { end_date: string })[]
+  checkins: (HkMovement & { start_date: string })[]
+  summary: Record<HousekeepingStatus, number>
+}
+
+// ----- Seasonal / dynamic pricing (ราคาตามฤดูกาล) -----
+export type RateRuleType = 'night' | 'length'
+export type RateAdjustment = 'fixed' | 'percent' | 'amount'
+
+export interface RateRule {
+  id: number
+  property_id: number
+  unit_id: number | null
+  unit_name: string | null
+  name: string
+  rule_type: RateRuleType
+  start_date: string | null
+  /** รวมวันสุดท้าย */
+  end_date: string | null
+  /** 0=อา..6=ส, ว่าง = ทุกวัน */
+  weekdays: number[]
+  adjustment: RateAdjustment
+  value: number
+  min_nights: number | null
+  priority: number
+  active: boolean
+}
+
+export type RateRuleInput = Omit<RateRule, 'id' | 'unit_name'>
+
+export interface QuoteNight {
+  date: string
+  base: number
+  price: number
+  rules: string[]
+}
+
+export interface Quote {
+  nights: QuoteNight[]
+  nights_count: number
+  subtotal: number
+  discount: { name: string; percent: number; amount: number } | null
+  total: number
+  average_rate: number
+}
+
+export interface PublicQuote extends Quote {
+  deposit_amount: number
+}
+
+export interface DayPrice {
+  date: string
+  price: number
+  rules: string[]
 }
 
 // ----- Calendar / channel manager (iCal) -----
@@ -662,6 +789,7 @@ export interface CalendarUnit {
   status: UnitStatus
   rate_daily: number
   rent_monthly: number
+  housekeeping_status?: HousekeepingStatus
 }
 
 export interface CalendarEvent {
@@ -938,6 +1066,9 @@ export const api = {
   // LINE OA
   updateLine: (b: LineSettingsInput) => put<LineSettings>('/api/org/line', b),
   testLine: () => post<{ ok: boolean; bot: LineBotInfo }>('/api/org/line/test'),
+  /** เชื่อม LINE ของผู้ใช้ปัจจุบันกับ OA ขององค์กร (รับแจ้งงาน) */
+  staffLineLink: () => post<StaffLineLinkCode>('/api/org/line/staff-link'),
+  unlinkStaffLine: () => del('/api/org/line/staff-link'),
   lineMessages: (limit = 50) => get<LineMessage[]>('/api/line/messages', { limit }),
 
   // domain
@@ -951,6 +1082,27 @@ export const api = {
   createUnit: (u: UnitInput) => post<Unit>('/api/units', u),
   updateUnit: (u: Unit) => put<Unit>(`/api/units/${u.id}`, u),
   deleteUnit: (id: number) => del(`/api/units/${id}`),
+  setHousekeeping: (id: number, status: HousekeepingStatus) =>
+    patch<Unit>(`/api/units/${id}/housekeeping`, { status }),
+  unitQuote: (id: number, check_in: string, check_out: string) =>
+    get<Quote>(`/api/units/${id}/quote`, { check_in, check_out }),
+  unitPrices: (id: number, from: string, to: string) =>
+    get<{ prices: DayPrice[] }>(`/api/units/${id}/prices`, { from, to }),
+
+  // ราคาตามฤดูกาล
+  rateRules: (property_id: number) => get<RateRule[]>('/api/rate-rules', { property_id }),
+  createRateRule: (b: RateRuleInput) => post<RateRule>('/api/rate-rules', b),
+  updateRateRule: (id: number, b: RateRuleInput) => put<RateRule>(`/api/rate-rules/${id}`, b),
+  deleteRateRule: (id: number) => del(`/api/rate-rules/${id}`),
+
+  // งานแม่บ้าน
+  hkTasks: (f: { status?: string; property_id?: number | null; date?: string } = {}) =>
+    get<HkTask[]>('/api/housekeeping/tasks', f),
+  createHkTask: (b: HkTaskInput) => post<HkTask>('/api/housekeeping/tasks', b),
+  patchHkTask: (id: number, b: HkTaskPatch) => patch<HkTask>(`/api/housekeeping/tasks/${id}`, b),
+  uploadHkPhotos: (id: number, fd: FormData) => form<HkTask>(`/api/housekeeping/tasks/${id}/photos`, fd),
+  deleteHkTask: (id: number) => del(`/api/housekeeping/tasks/${id}`),
+  hkToday: (property_id?: number | null) => get<HkToday>('/api/housekeeping/today', { property_id }),
 
   tenants: () => get<Tenant[]>('/api/tenants'),
   saveTenant: (t: TenantInput & { id?: number }) =>
@@ -1062,6 +1214,14 @@ export const api = {
     info: (slug: string) => get<StayInfo>(`/api/public/stay/${enc(slug)}`, undefined, false),
     availability: (slug: string, from: string, to: string) =>
       get<{ busy: StayBusy[] }>(`/api/public/stay/${enc(slug)}/availability`, { from, to }, false),
+    quote: (slug: string, unit_id: number, check_in: string, check_out: string) =>
+      get<PublicQuote>(`/api/public/stay/${enc(slug)}/quote`, { unit_id, check_in, check_out }, false),
+    prices: (slug: string, from: string, to: string) =>
+      get<{ units: Record<string, { date: string; price: number }[]> }>(
+        `/api/public/stay/${enc(slug)}/prices`,
+        { from, to },
+        false,
+      ),
     createRequest: (slug: string, b: StayRequestInput) =>
       post<{ token: string }>(`/api/public/stay/${enc(slug)}/requests`, b, false),
     request: (token: string) =>

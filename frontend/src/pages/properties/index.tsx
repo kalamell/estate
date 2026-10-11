@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   QrCode,
+  Tags,
   BedDouble,
   Trash2,
   Zap,
@@ -37,7 +38,7 @@ import { LeafletMap } from '@/components/leaflet-map'
 import { PropertyDialog } from './property-dialog'
 
 export default function PropertiesPage() {
-  const { canManage, readOnly } = useSession()
+  const { canManage, readOnly, features } = useSession()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const { data: properties, isLoading } = useQuery({ queryKey: ['properties'], queryFn: api.properties })
@@ -165,9 +166,16 @@ export default function PropertiesPage() {
                     </Badge>
                   )}
                 </div>
-                <Button variant="secondary" className="mt-4 w-full" onClick={() => viewUnits(p)}>
-                  <DoorOpen /> ดูห้อง
-                </Button>
+                <div className={cn('mt-4 grid gap-2', features.short_stay && 'grid-cols-2')}>
+                  <Button variant="secondary" onClick={() => viewUnits(p)}>
+                    <DoorOpen /> ดูห้อง
+                  </Button>
+                  {features.short_stay && (
+                    <Button variant="outline" onClick={() => navigate(`/properties/${p.id}/pricing`)}>
+                      <Tags /> ราคาตามฤดูกาล
+                    </Button>
+                  )}
+                </div>
               </Card>
             )
           })}

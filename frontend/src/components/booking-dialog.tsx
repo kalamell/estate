@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { AlertTriangle, CalendarCheck, Loader2, Plus } from 'lucide-react'
-import { ApiError, api, type BookingKind, type Unit } from '@/lib/api'
+import { AlertTriangle, CalendarCheck, ChevronDown, Loader2, Plus, RotateCcw } from 'lucide-react'
+import { ApiError, api, type BookingKind, type Quote, type Unit } from '@/lib/api'
 import { handleApiError, invalidate } from '@/lib/query'
-import { BOOKING_SOURCES, UNIT_STATUS, baht, today } from '@/lib/format'
+import { BOOKING_SOURCES, UNIT_STATUS, baht, diffDays, thDayShort, today } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { useSession } from '@/contexts/session'
 import { Button } from '@/components/ui/button'
 import {
@@ -136,6 +137,26 @@ function BookingDialog({
   const selectedUnit = units.data?.find((u) => String(u.id) === form.unit_id) ?? unit
   const isLease = form.kind === 'lease'
 
+  // ราคาตามกฎ (ราคาตามฤดูกาล) สำหรับการจองรายวัน
+  const [priceTouched, setPriceTouched] = useState(false)
+  const quoteEnabled =
+    !isLease &&
+    features.short_stay &&
+    !!selectedUnit &&
+    !!form.start_date &&
+    !!form.end_date &&
+    form.end_date > form.start_date
+  const ruleQuote = useQuery({
+    queryKey: ['unit-quote', selectedUnit?.id, form.start_date, form.end_date],
+    queryFn: () => api.unitQuote(selectedUnit!.id, form.start_date, form.end_date),
+    enabled: open && quoteEnabled,
+    staleTime: 60_000,
+    meta: { silent: true },
+  })
+  const q: Quote | undefined = quoteEnabled ? ruleQuote.data : undefined
+  const autoPrice = q ? String(Math.round(q.average_rate * 100) / 100) : ''
+  const priceValue = !isLease && !priceTouched ? autoPrice || form.price : form.price
+
   const quote = useMemo(() => {
     const u = selectedUnit
     if (!u) return null
@@ -149,17 +170,22 @@ function BookingDialog({
       }
     }
     if (!form.end_date) return null
-    const nights = Math.round(
-      (new Date(form.end_date).getTime() - new Date(form.start_date).getTime()) / 86_400_000,
-    )
+    const nights = diffDays(form.start_date, form.end_date)
     if (nights <= 0) return null
+    const deposit = Number(form.deposit_amount || 0)
+    if (q && !priceTouched)
+      return {
+        line: `${nights} คืน · เฉลี่ย ${baht(q.average_rate)}/คืน`,
+        total: q.total + deposit,
+        totalLabel: 'ยอดรวม',
+      }
     const rate = Number(form.price || u.rate_daily)
     return {
-      line: `${nights} คืน × ${baht(rate)}`,
-      total: nights * rate + Number(form.deposit_amount || 0),
+      line: `${nights} คืน × ${baht(rate)}${priceTouched && q ? ' (กำหนดเอง)' : ''}`,
+      total: nights * rate + deposit,
       totalLabel: 'ยอดรวม',
     }
-  }, [selectedUnit, isLease, form.price, form.deposit_amount, form.end_date, form.start_date])
+  }, [selectedUnit, isLease, form.price, form.deposit_amount, form.end_date, form.start_date, q, priceTouched])
 
   const save = useMutation({
     mutationFn: () =>
@@ -169,7 +195,8 @@ function BookingDialog({
         kind: form.kind,
         start_date: form.start_date,
         end_date: form.end_date || null,
-        price: form.price === '' ? null : Number(form.price),
+        // รายวัน: ไม่แก้ราคาเอง → ให้เซิร์ฟเวอร์ใช้ราคาเฉลี่ยตามกฎ
+        price: !isLease && !priceTouched ? null : form.price === '' ? null : Number(form.price),
         deposit_amount: form.deposit_amount === '' ? null : Number(form.deposit_amount),
         source: isLease ? 'direct' : form.source,
       }),
@@ -277,19 +304,41 @@ function BookingDialog({
                 />
               </Field>
               <Field label={isLease ? 'ค่าเช่า/เดือน' : 'ราคา/คืน'} htmlFor="b-price">
-                <Input
-                  id="b-price"
-                  type="number"
-                  min={0}
-                  inputMode="decimal"
-                  value={form.price}
-                  placeholder={
-                    selectedUnit
-                      ? String(isLease ? selectedUnit.rent_monthly : selectedUnit.rate_daily)
-                      : 'ตามราคาห้อง'
-                  }
-                  onChange={(e) => set('price', e.target.value)}
-                />
+                <div className="relative">
+                  <Input
+                    id="b-price"
+                    type="number"
+                    min={0}
+                    inputMode="decimal"
+                    value={priceValue}
+                    placeholder={
+                      selectedUnit
+                        ? String(isLease ? selectedUnit.rent_monthly : selectedUnit.rate_daily)
+                        : 'ตามราคาห้อง'
+                    }
+                    onChange={(e) => {
+                      if (!isLease) setPriceTouched(true)
+                      set('price', e.target.value)
+                    }}
+                    className={cn(!isLease && priceTouched && q && 'pr-9')}
+                  />
+                  {!isLease && priceTouched && q && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="absolute top-1/2 right-1.5 -translate-y-1/2 text-muted-foreground"
+                      title="ใช้ราคาตามกฎ"
+                      aria-label="ใช้ราคาตามกฎ"
+                      onClick={() => {
+                        setPriceTouched(false)
+                        set('price', '')
+                      }}
+                    >
+                      <RotateCcw />
+                    </Button>
+                  )}
+                </div>
               </Field>
               <Field label="เงินมัดจำ" htmlFor="b-deposit">
                 <Input
@@ -333,9 +382,14 @@ function BookingDialog({
               </div>
             )}
 
-            {quote && (
+            {quote && q && !priceTouched ? (
+              <QuoteBreakdown quote={q} deposit={Number(form.deposit_amount || 0)} />
+            ) : quote && (
               <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm">
                 <div className="text-muted-foreground">{quote.line}</div>
+                {q && priceTouched && (
+                  <div className="text-xs text-muted-foreground">ราคาตามกฎ {baht(q.total)}</div>
+                )}
                 <div className="mt-1 flex items-baseline font-semibold text-primary">
                   <span>{quote.totalLabel}</span>
                   <span className="ml-auto text-lg tabular-nums">{baht(quote.total)}</span>
@@ -361,5 +415,68 @@ function BookingDialog({
         onSaved={(t) => set('tenant_id', String(t.id))}
       />
     </>
+  )
+}
+
+/** รายละเอียดราคารายคืนตามกฎราคา + ส่วนลด */
+function QuoteBreakdown({ quote, deposit }: { quote: Quote; deposit: number }) {
+  const [open, setOpen] = useState(false)
+  const changed = quote.nights.filter((n) => n.price !== n.base).length
+  return (
+    <div className="rounded-xl border border-primary/15 bg-primary/5 text-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded-t-xl px-4 pt-3.5 pb-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
+        <span className="text-muted-foreground tabular-nums">
+          {quote.nights_count} คืน · เฉลี่ย {baht(quote.average_rate)}/คืน
+          {changed > 0 && <span className="text-primary"> · ปรับราคา {changed} คืน</span>}
+        </span>
+        <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-primary">
+          {open ? 'ซ่อน' : 'ดูรายคืน'}
+          <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
+        </span>
+      </button>
+      {open && (
+        <ul className="mx-4 max-h-56 divide-y divide-primary/10 overflow-y-auto border-y border-primary/10">
+          {quote.nights.map((n) => (
+            <li key={n.date} className="flex items-baseline gap-3 py-1.5">
+              <span className="w-24 shrink-0 tabular-nums">{thDayShort(n.date)}</span>
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{n.rules.join(' · ')}</span>
+              {n.price !== n.base && (
+                <span className="text-xs text-muted-foreground line-through tabular-nums">{baht(n.base)}</span>
+              )}
+              <span className={cn('tabular-nums', n.price !== n.base && 'font-medium text-primary')}>{baht(n.price)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="space-y-1 px-4 pt-2 pb-3.5">
+        <div className="flex items-baseline justify-between text-muted-foreground">
+          <span>ค่าห้อง</span>
+          <span className="tabular-nums">{baht(quote.subtotal)}</span>
+        </div>
+        {quote.discount && (
+          <div className="flex items-baseline justify-between text-success">
+            <span>
+              ส่วนลด{quote.discount.name ? ` ${quote.discount.name}` : ''} ({quote.discount.percent}%)
+            </span>
+            <span className="tabular-nums">−{baht(quote.discount.amount)}</span>
+          </div>
+        )}
+        {deposit > 0 && (
+          <div className="flex items-baseline justify-between text-muted-foreground">
+            <span>เงินมัดจำ</span>
+            <span className="tabular-nums">{baht(deposit)}</span>
+          </div>
+        )}
+        <div className="flex items-baseline pt-1 font-semibold text-primary">
+          <span>ยอดรวม</span>
+          <span className="ml-auto text-lg tabular-nums">{baht(quote.total + deposit)}</span>
+        </div>
+      </div>
+    </div>
   )
 }

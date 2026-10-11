@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Logo } from '@/components/common'
 import { BookingDialogProvider, useBookingDialog } from '@/components/booking-dialog'
-import { NAV_GROUPS, SETTINGS_NAV, SUPPORT_NAV, titleFor, type NavItem } from '@/components/nav'
+import { NAV_GROUPS, SETTINGS_NAV, SUPPORT_NAV, navBadgeCount, titleFor, type NavItem } from '@/components/nav'
 import { OrgSwitcher } from '@/components/org-switcher'
 import { SidebarUserMenu } from '@/components/user-menu'
 
@@ -45,6 +45,7 @@ function NavLinks({ items }: { items: NavItem[] }) {
     <SidebarMenu>
       {items.map((n) => {
         const active = n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)
+        const count = n.badge ? navBadgeCount(dash.data, n.badge) : 0
         return (
           <SidebarMenuItem key={n.to}>
             <SidebarMenuButton
@@ -58,16 +59,22 @@ function NavLinks({ items }: { items: NavItem[] }) {
                 <span>{n.label}</span>
               </NavLink>
             </SidebarMenuButton>
-            {n.badge && (dash.data?.[n.badge] ?? 0) > 0 && (
+            {count > 0 && (
               <SidebarMenuBadge
                 className={
                   n.badge === 'overdue_count' || n.badge === 'pending_requests'
                     ? 'rounded-sm bg-warning/20 text-warning'
                     : 'rounded-sm bg-sidebar-accent text-sidebar-foreground'
                 }
-                title={n.badge === 'pending_requests' ? 'คำขอจองออนไลน์รอตอบ' : undefined}
+                title={
+                  n.badge === 'pending_requests'
+                    ? 'คำขอจองออนไลน์รอตอบ'
+                    : n.badge === 'hk_open_tasks'
+                      ? 'งานแม่บ้านที่ยังไม่เสร็จ'
+                      : undefined
+                }
               >
-                {dash.data?.[n.badge]}
+                {count}
               </SidebarMenuBadge>
             )}
           </SidebarMenuItem>

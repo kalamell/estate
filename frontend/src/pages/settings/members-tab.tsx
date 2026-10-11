@@ -5,6 +5,7 @@ import { Loader2, Trash2, UserPlus, Users } from 'lucide-react'
 import { api, type Member, type Role } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { ROLES, initials, thDate } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { useSession } from '@/contexts/session'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -22,8 +23,9 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { EmptyState, Field } from '@/components/common'
+import { EmptyState, Field, ToneBadge } from '@/components/common'
 import { useConfirm } from '@/components/confirm'
+import { LineIcon, StaffLineDialog } from '@/components/line'
 
 const ROLE_HINT: Record<Role, string> = {
   owner: 'จัดการได้ทุกอย่าง รวมถึงสมาชิกและองค์กร',
@@ -66,7 +68,9 @@ export function MembersTab() {
   const { canManage, readOnly, user, role, orgInfo } = useSession()
   const confirm = useConfirm()
   const [addOpen, setAddOpen] = useState(false)
+  const [lineOpen, setLineOpen] = useState(false)
   const { data: members, isLoading } = useQuery({ queryKey: ['members'], queryFn: api.members })
+  const meLinked = !!members?.find((m) => m.user_id === user.id)?.line_linked
 
   const update = useMutation({
     mutationFn: (v: { m: Member; role: Role }) => api.updateMember(v.m.user_id, v.role),
@@ -102,6 +106,25 @@ export function MembersTab() {
           </CardAction>
         )}
       </CardHeader>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5 border-b bg-muted/30 px-4 py-3 sm:px-6">
+        <LineIcon className={cn('size-5', !meLinked && 'opacity-60 grayscale')} />
+        <div className="min-w-[12rem] flex-1 text-sm">
+          <div className="font-medium">{meLinked ? 'LINE ของคุณเชื่อมแล้ว' : 'รับแจ้งงานทาง LINE'}</div>
+          <div className="text-xs text-muted-foreground">
+            {meLinked
+              ? 'คุณจะได้รับแจ้งงานแม่บ้านและงานที่ได้รับมอบหมายทาง LINE'
+              : 'เชื่อม LINE ของคุณกับ LINE OA ขององค์กร เพื่อรับแจ้งงานแม่บ้านบนมือถือ'}
+          </div>
+        </div>
+        <Button
+          variant={meLinked ? 'outline' : 'default'}
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => setLineOpen(true)}
+        >
+          {meLinked ? 'จัดการ' : 'เชื่อม LINE ของฉัน (รับแจ้งงาน)'}
+        </Button>
+      </div>
       {isLoading ? (
         <div className="space-y-2 p-4">
           {Array.from({ length: 3 }, (_, i) => (
@@ -116,6 +139,7 @@ export function MembersTab() {
             <TableRow>
               <TableHead className="pl-6">สมาชิก</TableHead>
               <TableHead>บทบาท</TableHead>
+              <TableHead className="hidden sm:table-cell">LINE</TableHead>
               <TableHead className="hidden sm:table-cell">เข้าร่วมเมื่อ</TableHead>
               <TableHead className="pr-6" />
             </TableRow>
@@ -135,6 +159,11 @@ export function MembersTab() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 font-medium">
                           <span className="truncate">{m.name}</span>
+                          {m.line_linked && (
+                            <span className="sm:hidden" title="เชื่อม LINE แล้ว">
+                              <LineIcon className="size-3.5" />
+                            </span>
+                          )}
                           {self && (
                             <Badge variant="secondary" className="text-[10px]">
                               คุณ
@@ -155,6 +184,19 @@ export function MembersTab() {
                       />
                     ) : (
                       <Badge variant="outline">{ROLES[m.role]}</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    {m.line_linked ? (
+                      <ToneBadge tone="green" className="gap-1.5">
+                        <LineIcon className="size-3.5" /> เชื่อมแล้ว
+                      </ToneBadge>
+                    ) : self ? (
+                      <Button variant="outline" size="xs" onClick={() => setLineOpen(true)}>
+                        <LineIcon className="size-3.5" /> เชื่อม LINE ของฉัน
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">ยังไม่เชื่อม</span>
                     )}
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground sm:table-cell">{thDate(m.created_at)}</TableCell>
@@ -188,6 +230,7 @@ export function MembersTab() {
         </Table>
       )}
       <AddMemberDialog open={addOpen} onOpenChange={setAddOpen} allowOwner={role === 'owner'} />
+      <StaffLineDialog open={lineOpen} onOpenChange={setLineOpen} />
     </Card>
   )
 }

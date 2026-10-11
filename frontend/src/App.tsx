@@ -21,6 +21,8 @@ const LoginPage = lazy(() => import('@/pages/auth/login'))
 const RegisterPage = lazy(() => import('@/pages/auth/register'))
 const DashboardPage = lazy(() => import('@/pages/dashboard'))
 const PropertiesPage = lazy(() => import('@/pages/properties'))
+const PricingPage = lazy(() => import('@/pages/properties/pricing'))
+const HousekeepingPage = lazy(() => import('@/pages/housekeeping'))
 const UnitsPage = lazy(() => import('@/pages/units'))
 const BookingsPage = lazy(() => import('@/pages/bookings'))
 const CalendarPage = lazy(() => import('@/pages/calendar'))
@@ -86,6 +88,8 @@ export default function App() {
                     <Route element={<RequireOrg><AppShell /></RequireOrg>}>
                       <Route index element={page(<DashboardPage />)} />
                       <Route path="properties" element={page(<PropertiesPage />)} />
+                      <Route path="properties/:id/pricing" element={page(<PricingPage />)} />
+                      <Route path="housekeeping" element={page(<HousekeepingPage />)} />
                       <Route path="units" element={page(<UnitsPage />)} />
                       <Route path="bookings" element={page(<BookingsPage />)} />
                       <Route path="calendar" element={page(<CalendarPage />)} />

@@ -10,6 +10,8 @@ export const LINE_KIND_LABEL: Record<string, string> = {
   reply: 'ตอบกลับในแชท',
   welcome: 'ข้อความต้อนรับ',
   linked: 'เชื่อมบัญชีสำเร็จ',
+  housekeeping: 'แจ้งงานแม่บ้าน',
+  staff_linked: 'เชื่อมพนักงานสำเร็จ',
 }
 
 /** ค่าเริ่มต้นเมื่อ backend ยังไม่ส่ง org.line มา */
@@ -24,6 +26,7 @@ export const EMPTY_LINE: LineSettings = {
   auto_receipt: true,
   auto_ticket_reply: true,
   auto_remind: true,
+  auto_housekeeping: false,
   linked_tenants: 0,
   add_friend_url: null,
 }

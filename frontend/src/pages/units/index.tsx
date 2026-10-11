@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { EmptyState } from '@/components/common'
+import { HkIndicator } from '@/components/housekeeping-indicator'
 import { LS, readLS, writeLS } from '@/lib/storage'
 import { AddUnitDialog } from './add-unit-dialog'
 import { BuildingView } from './three-canvas'
@@ -184,7 +185,10 @@ export default function UnitsPage() {
                       UNIT_STATUS[u.status].bar,
                     )}
                   >
-                    <div className="text-base font-semibold tabular-nums">{u.name}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="min-w-0 truncate text-base font-semibold tabular-nums">{u.name}</span>
+                      <HkIndicator status={u.housekeeping_status} size="xs" className="ml-auto" />
+                    </div>
                     <div className={cn('text-[11px] font-medium', UNIT_STATUS[u.status].text)}>
                       {UNIT_STATUS[u.status].label}
                     </div>

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -63,6 +64,7 @@ const formOf = (l: LineSettings): FormState => ({
   auto_receipt: l.auto_receipt,
   auto_ticket_reply: l.auto_ticket_reply,
   auto_remind: l.auto_remind,
+  auto_housekeeping: !!l.auto_housekeeping,
 })
 
 function LineSettingsView({ line }: { line: LineSettings }) {
@@ -84,6 +86,7 @@ function LineSettingsView({ line }: { line: LineSettings }) {
         auto_receipt: form.auto_receipt,
         auto_ticket_reply: form.auto_ticket_reply,
         auto_remind: form.auto_remind,
+        auto_housekeeping: form.auto_housekeeping,
       }
       if (form.channel_secret.trim()) body.channel_secret = form.channel_secret.trim()
       if (form.channel_access_token.trim()) body.channel_access_token = form.channel_access_token.trim()
@@ -272,7 +275,7 @@ function LineSettingsView({ line }: { line: LineSettings }) {
           <Card>
             <CardHeader>
               <CardTitle>ส่งอัตโนมัติ</CardTitle>
-              <CardDescription>ส่งเฉพาะผู้เช่าที่เชื่อมบัญชี LINE แล้ว</CardDescription>
+              <CardDescription>ส่งเฉพาะผู้เช่าและพนักงานที่เชื่อมบัญชี LINE แล้ว</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-1">
               {AUTOMATIONS.map((a) => (
@@ -289,6 +292,26 @@ function LineSettingsView({ line }: { line: LineSettings }) {
                   </span>
                 </label>
               ))}
+              <div className="mt-2 border-t pt-3">
+                <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">สำหรับพนักงาน</div>
+                <label className="flex items-start gap-3 rounded-md px-1 py-2.5">
+                  <Switch
+                    className="mt-0.5"
+                    checked={form.auto_housekeeping}
+                    onCheckedChange={(v) => set('auto_housekeeping', v)}
+                    disabled={disabled}
+                  />
+                  <span className="grid gap-0.5">
+                    <span className="text-sm font-medium">แจ้งงานแม่บ้านทาง LINE ให้พนักงาน</span>
+                    <span className="text-xs text-muted-foreground">
+                      ส่งงานทำความสะอาดใหม่และงานที่ถูกมอบหมายให้พนักงานที่เชื่อม LINE แล้ว — พนักงานเชื่อมได้ที่{' '}
+                      <Link to="/settings?tab=members" className="font-medium text-primary hover:underline">
+                        ตั้งค่า → สมาชิก
+                      </Link>
+                    </span>
+                  </span>
+                </label>
+              </div>
             </CardContent>
             <CardFooter className="justify-end border-t pt-6">
               <Button type="submit" disabled={disabled || save.isPending}>

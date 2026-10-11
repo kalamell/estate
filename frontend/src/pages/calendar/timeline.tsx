@@ -1,7 +1,9 @@
 import { useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { AlertTriangle } from 'lucide-react'
-import type { CalendarEvent, CalendarUnit } from '@/lib/api'
-import { TH_MONTHS, TH_WEEKDAYS, UNIT_STATUS, addDays, baht, diffDays, today, weekdayOf } from '@/lib/format'
+import type { CalendarEvent, CalendarUnit, DayPrice, HousekeepingStatus } from '@/lib/api'
+import { TH_MONTHS, TH_WEEKDAYS, UNIT_STATUS, addDays, baht, diffDays, thDayShort, today, weekdayOf } from '@/lib/format'
+import { compactBaht } from '@/lib/pricing'
+import { HkIndicator } from '@/components/housekeeping-indicator'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -19,6 +21,10 @@ interface Props {
   units: CalendarUnit[]
   events: CalendarEvent[]
   readOnly?: boolean
+  /** สถานะทำความสะอาดของห้อง */
+  hkStatus?: Map<number, HousekeepingStatus | undefined>
+  /** ราคาต่อคืนตามกฎของห้องรายวัน (unit → date → price) */
+  prices?: Map<number, Map<string, DayPrice>>
   /** เลือกช่วงวันว่าง (end = วันเช็คเอาท์) */
   onSelectRange: (unit: CalendarUnit, start: string, end: string) => void
 }
@@ -49,7 +55,7 @@ function groupUnits(units: CalendarUnit[]): Group[] {
   return groups
 }
 
-export function Timeline({ from, days, dayWidth: W, units, events, readOnly, onSelectRange }: Props) {
+export function Timeline({ from, days, dayWidth: W, units, events, readOnly, hkStatus, prices, onSelectRange }: Props) {
   const dates = useMemo(() => Array.from({ length: days }, (_, i) => addDays(from, i)), [from, days])
   const todayIdx = diffDays(from, today())
   const groups = useMemo(() => groupUnits(units), [units])
@@ -180,6 +186,15 @@ export function Timeline({ from, days, dayWidth: W, units, events, readOnly, onS
                     const { lanes, count } = assignLanes(evs)
                     const h = ROW_PAD + count * LANE_H
                     const s = sel?.unitId === u.id ? sel : null
+                    const unitPrices = prices?.get(u.id)
+                    // ช่องที่มีแถบการจองทับ (คืนที่ไม่ว่าง + ครึ่งเช้าของวันเช็คเอาท์) — ไม่แสดงราคา
+                    const taken = new Set<number>()
+                    if (unitPrices)
+                      for (const ev of evs) {
+                        const a = Math.max(0, diffDays(from, ev.start))
+                        const b = Math.min(days - 1, diffDays(from, ev.end))
+                        for (let i = a; i <= b; i++) taken.add(i)
+                      }
                     return (
                       <div key={u.id} className="flex border-b" style={{ height: h }}>
                         <div
@@ -191,6 +206,7 @@ export function Timeline({ from, days, dayWidth: W, units, events, readOnly, onS
                             title={UNIT_STATUS[u.status]?.label}
                           />
                           <span className="truncate text-sm font-medium tabular-nums">{u.name}</span>
+                          <HkIndicator status={u.housekeeping_status ?? hkStatus?.get(u.id)} size="xs" />
                           <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
                             {u.rate_daily > 0 ? `${baht(u.rate_daily)}/คืน` : `${baht(u.rent_monthly)}/ด.`}
                           </span>
@@ -200,7 +216,8 @@ export function Timeline({ from, days, dayWidth: W, units, events, readOnly, onS
                           className={cn('relative shrink-0', !readOnly && 'cursor-cell')}
                           style={{ width: days * W }}
                           onPointerDown={(e) => {
-                            if (readOnly || e.button !== 0 || e.target !== e.currentTarget) return
+                            const onCell = e.target !== e.currentTarget && (e.target as HTMLElement).dataset.cell != null
+                            if (readOnly || e.button !== 0 || (e.target !== e.currentTarget && !onCell)) return
                             e.currentTarget.setPointerCapture(e.pointerId)
                             const i = idxAt(e)
                             setSel({ unitId: u.id, a: i, b: i })
@@ -219,6 +236,26 @@ export function Timeline({ from, days, dayWidth: W, units, events, readOnly, onS
                           }}
                           onPointerCancel={() => setSel(null)}
                         >
+                          {unitPrices &&
+                            dates.map((d, i) => {
+                              const p = unitPrices.get(d)
+                              if (!p || taken.has(i) || d < today()) return null
+                              const changed = p.rules.length > 0 || p.price !== u.rate_daily
+                              return (
+                                <span
+                                  key={d}
+                                  data-cell
+                                  title={`${thDayShort(d)} · ${baht(p.price)}/คืน${p.rules.length ? ` (${p.rules.join(', ')})` : ''}`}
+                                  className={cn(
+                                    'absolute inset-y-0 grid place-items-center text-[10px] tabular-nums',
+                                    changed ? 'font-medium text-primary' : 'text-muted-foreground/70',
+                                  )}
+                                  style={{ left: i * W, width: W }}
+                                >
+                                  {compactBaht(p.price)}
+                                </span>
+                              )
+                            })}
                           {s && (
                             <div
                               className="pointer-events-none absolute inset-y-1 z-[1] grid place-items-center rounded-sm border border-primary/50 bg-primary/15 text-[11px] font-medium text-primary"

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { CheckCircle2, Check, Copy, Loader2, RefreshCw, Send, Share2, Unlink } from 'lucide-react'
-import { api, type Tenant } from '@/lib/api'
+import { api, type Member, type Tenant } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { addFriendUrl, expiresIn } from '@/lib/line'
 import { cn } from '@/lib/utils'
@@ -370,5 +370,226 @@ function QrStep({
         {copied ? <Check /> : <Copy />} คัดลอกลิงก์
       </Button>
     </div>
+  )
+}
+
+// ===================== Dialog เชื่อม LINE ของพนักงาน (ผู้ใช้ปัจจุบัน) =====================
+
+/** เชื่อม LINE ของผู้ใช้ปัจจุบันกับ LINE OA ขององค์กร เพื่อรับแจ้งงานแม่บ้าน */
+export function StaffLineDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-2xl">
+        {open && <StaffLineBody onClose={() => onOpenChange(false)} />}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function StaffLineBody({ onClose }: { onClose: () => void }) {
+  const { user, line, lineReady, readOnly } = useSession()
+  const confirm = useConfirm()
+  const { copied, copy } = useCopy()
+  // โพลรายชื่อสมาชิกขณะเปิดอยู่ เพื่อรู้ทันทีเมื่อเชื่อมสำเร็จ
+  const members = useQuery({
+    queryKey: ['members'],
+    queryFn: api.members,
+    refetchInterval: 4000,
+    meta: { silent: true },
+  })
+  const me: Member | undefined = members.data?.find((m) => m.user_id === user.id)
+  const linked = !!me?.line_linked
+  const [wasLinked, setWasLinked] = useState<boolean | null>(null)
+  if (members.data && wasLinked === null) setWasLinked(linked)
+  const [relink, setRelink] = useState(false)
+
+  const gen = useMutation({ mutationFn: api.staffLineLink, meta: { silent: true } })
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current || readOnly || !lineReady || !members.data || linked) return
+    started.current = true
+    gen.mutate()
+  }, [gen, readOnly, lineReady, members.data, linked])
+
+  const unlink = useMutation({
+    mutationFn: api.unlinkStaffLine,
+    onSuccess: async () => {
+      toast.success('ยกเลิกการเชื่อม LINE แล้ว')
+      setWasLinked(false)
+      setRelink(false)
+      await invalidate('members')
+    },
+  })
+
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const justLinked = linked && wasLinked === false
+  useEffect(() => {
+    if (justLinked) toast.success('เชื่อม LINE สำเร็จ — คุณจะได้รับแจ้งงานทาง LINE')
+  }, [justLinked])
+
+  const header = (
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <LineIcon className="size-5" /> เชื่อม LINE ของฉัน
+      </DialogTitle>
+      <DialogDescription>รับแจ้งงานแม่บ้านและงานที่ได้รับมอบหมายทาง LINE OA ขององค์กร</DialogDescription>
+    </DialogHeader>
+  )
+
+  if (!lineReady)
+    return (
+      <>
+        {header}
+        <LineSetupHint>องค์กรยังไม่ได้ตั้งค่า LINE OA — ต้องตั้งค่าก่อนพนักงานจึงจะเชื่อม LINE ได้</LineSetupHint>
+        <div className="flex justify-end border-t pt-4">
+          <Button variant="ghost" onClick={onClose}>
+            ปิด
+          </Button>
+        </div>
+      </>
+    )
+
+  if (!members.data)
+    return (
+      <>
+        {header}
+        <Skeleton className="h-56" />
+      </>
+    )
+
+  if (linked && !relink)
+    return (
+      <>
+        {header}
+        <div className="flex flex-col items-center gap-2 rounded-lg border bg-success/5 px-4 py-8 text-center">
+          <CheckCircle2 className="size-10 text-success" />
+          <div className="text-lg font-semibold">{justLinked ? 'เชื่อมบัญชีสำเร็จ' : 'เชื่อม LINE แล้ว'}</div>
+          <div className="text-sm text-muted-foreground">
+            คุณ{user.name}จะได้รับแจ้งงานทาง LINE {line?.basic_id && `จาก ${line.basic_id}`}
+            {line && !line.auto_housekeeping && ' (เมื่อผู้ดูแลเปิด “แจ้งงานแม่บ้านทาง LINE”)'}
+          </div>
+        </div>
+        <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row">
+          <Button
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            disabled={readOnly || unlink.isPending}
+            onClick={async () => {
+              if (
+                await confirm({
+                  title: 'ยกเลิกการเชื่อม LINE?',
+                  description: 'คุณจะไม่ได้รับแจ้งงานทาง LINE จนกว่าจะเชื่อมใหม่',
+                  confirmText: 'ยกเลิกการเชื่อม',
+                  destructive: true,
+                })
+              )
+                unlink.mutate()
+            }}
+          >
+            {unlink.isPending ? <Loader2 className="animate-spin" /> : <Unlink />} ยกเลิกการเชื่อม
+          </Button>
+          <Button
+            variant="outline"
+            className="sm:ml-auto"
+            disabled={readOnly}
+            onClick={() => {
+              setRelink(true)
+              setWasLinked(false)
+              gen.mutate()
+            }}
+          >
+            <RefreshCw /> เชื่อมบัญชีใหม่
+          </Button>
+          <Button onClick={onClose}>เสร็จ</Button>
+        </div>
+      </>
+    )
+
+  const code = gen.data
+  const friendUrl = code?.add_friend_url ?? addFriendUrl(line)
+  const basicId = line?.basic_id
+  return (
+    <>
+      {header}
+      {gen.isError ? (
+        <div className="grid gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="text-destructive">{(gen.error as Error).message || 'สร้างโค้ดเชื่อมบัญชีไม่สำเร็จ'}</p>
+          <Button variant="outline" className="w-fit" onClick={() => gen.mutate()}>
+            <RefreshCw /> ลองใหม่
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2 sm:gap-5">
+            <QrStep
+              n={1}
+              title="แอดเพื่อน"
+              caption={basicId ? `เพิ่ม ${basicId} เป็นเพื่อน` : 'เพิ่ม LINE OA เป็นเพื่อน'}
+              url={friendUrl}
+              loading={gen.isPending}
+              copied={copied === 'friend'}
+              onCopy={() => friendUrl && copy(friendUrl, 'friend')}
+            />
+            <QrStep
+              n={2}
+              title="เชื่อมพนักงาน"
+              caption="สแกนแล้วกด “ส่ง” ข้อความในแชท"
+              url={code?.link_url ?? null}
+              loading={gen.isPending}
+              copied={copied === 'link'}
+              onCopy={() => code && copy(code.link_url, 'link')}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-muted/40 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-xs text-muted-foreground">หรือพิมพ์ข้อความนี้ในแชท LINE OA</div>
+              {code ? (
+                <div className="font-mono text-lg font-semibold tracking-wider">เชื่อมพนักงาน {code.code}</div>
+              ) : (
+                <Skeleton className="mt-1 h-6 w-44" />
+              )}
+            </div>
+            {code && (
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">หมดอายุ {expiresIn(code.expires_at, now)}</span>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="คัดลอกโค้ด"
+                  onClick={() => copy(`เชื่อมพนักงาน ${code.code}`, 'code')}
+                >
+                  {copied === 'code' ? <Check /> : <Copy />}
+                </Button>
+              </div>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            เปิดหน้านี้บนคอมพิวเตอร์แล้วสแกนด้วยมือถือ หรือถ้าเปิดบนมือถืออยู่ ให้กด “คัดลอกลิงก์” แล้ววางในเบราว์เซอร์ —
+            หน้านี้จะเปลี่ยนเป็น “เชื่อมแล้ว” อัตโนมัติ
+          </p>
+        </>
+      )}
+      <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row">
+        <Button variant="ghost" onClick={onClose}>
+          ปิด
+        </Button>
+        <Button variant="outline" className="sm:ml-auto" disabled={gen.isPending || readOnly} onClick={() => gen.mutate()}>
+          {gen.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          สร้างโค้ดใหม่
+        </Button>
+        {code && (
+          <Button asChild>
+            <a href={code.link_url} target="_blank" rel="noreferrer">
+              <LineIcon className="size-4" /> เปิดใน LINE
+            </a>
+          </Button>
+        )}
+      </div>
+    </>
   )
 }

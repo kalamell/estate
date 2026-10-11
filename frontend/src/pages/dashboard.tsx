@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BedDouble,
+  BrushCleaning,
   CalendarClock,
   HandCoins,
   Inbox,
@@ -69,7 +70,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className={cn('grid gap-4 sm:grid-cols-2', features.short_stay ? 'xl:grid-cols-4' : 'lg:grid-cols-3')}>
+      <div className={cn('grid gap-4 sm:grid-cols-2', features.short_stay ? 'lg:grid-cols-3' : 'xl:grid-cols-4')}>
         <AttentionRow
           to="/invoices?status=overdue"
           icon={AlertTriangle}
@@ -102,7 +103,21 @@ export default function DashboardPage() {
             empty="ไม่มีคำขอรอตอบ"
           />
         )}
-        <LineCard span={!features.short_stay} />
+        <AttentionRow
+          to="/housekeeping"
+          icon={BrushCleaning}
+          tone="warning"
+          title="งานแม่บ้าน"
+          loading={!d}
+          count={(d?.housekeeping?.dirty ?? 0) + (d?.housekeeping?.in_progress ?? 0) + (d?.housekeeping?.open_tasks ?? 0)}
+          detail={
+            d?.housekeeping
+              ? `รอทำความสะอาด ${d.housekeeping.dirty} · กำลังทำ ${d.housekeeping.in_progress}`
+              : ''
+          }
+          empty="ทุกห้องสะอาด ไม่มีงานค้าง"
+        />
+        <LineCard span={features.short_stay} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -276,7 +291,7 @@ function LineCard({ span }: { span: boolean }) {
       to={lineReady ? '/tenants' : canManage ? '/settings?tab=line' : '/tenants'}
       className={cn(
         'group flex items-center gap-4 rounded-lg border border-l-4 bg-card px-4 py-3.5 transition-colors hover:bg-muted/50',
-        span && 'sm:col-span-2 lg:col-span-1',
+        span && 'sm:col-span-2',
         lineReady ? 'border-l-success' : 'border-l-border',
       )}
     >
