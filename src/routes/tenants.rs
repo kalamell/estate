@@ -15,7 +15,8 @@ use crate::{
 pub(crate) const COLUMNS: &str =
     "id, full_name, phone, email, id_card, note, tax_id, address, branch_code, portal_token,
      line_user_id IS NOT NULL AS line_linked, line_display_name, line_linked_at,
-     consent_at, consent_source, anonymized_at, created_at";
+     consent_at, consent_source, anonymized_at, nationality, gender, birth_date, arrival_date, visa_type,
+     visa_expiry, created_at";
 
 /// ค่าเลขบัตรที่ส่งมาแก้ไข: ค่าที่ถูกปิดบัง (มี •) ถือว่าไม่เปลี่ยน
 fn id_card_input(v: &Option<String>) -> Option<String> {
@@ -41,7 +42,74 @@ fn validate(t: &TenantInput) -> AppResult<()> {
             "เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก".into(),
         ));
     }
+    if let Some(n) = t.nationality.as_deref().map(str::trim) {
+        if !n.is_empty() && (n.len() != 2 || !n.chars().all(|c| c.is_ascii_alphabetic())) {
+            return Err(AppError::BadRequest(
+                "สัญชาติต้องเป็นรหัสประเทศ 2 ตัวอักษร เช่น US, CN, JP".into(),
+            ));
+        }
+    }
+    if let Some(g) = t.gender.as_deref() {
+        super::validate_in("gender", g, &["", "M", "F"])?;
+    }
+    for (v, label) in [
+        (&t.birth_date, "วันเกิด"),
+        (&t.arrival_date, "วันที่เดินทางเข้า"),
+        (&t.visa_expiry, "วันครบกำหนดวีซ่า"),
+    ] {
+        if let Some(d) = v.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+            if d.parse::<chrono::NaiveDate>().is_err() {
+                return Err(AppError::BadRequest(format!("{label}ไม่ถูกต้อง")));
+            }
+        }
+    }
     Ok(())
+}
+
+/// ค่าที่ส่งมา: None = ไม่เปลี่ยน, "" = ล้าง (ใช้กับคอลัมน์ที่เป็น NULL ได้)
+fn opt_date(v: &Option<String>) -> (bool, Option<String>) {
+    match v.as_deref().map(str::trim) {
+        None => (false, None),
+        Some("") => (true, None),
+        Some(d) => (true, Some(d.to_string())),
+    }
+}
+
+/// บันทึกข้อมูลคนต่างชาติ (แยกจาก insert/update หลัก เพราะเป็นค่าที่ไม่บังคับส่ง)
+async fn save_foreign_fields(s: &AppState, id: i64, t: &TenantInput) -> AppResult<()> {
+    let (set_birth, birth) = opt_date(&t.birth_date);
+    let (set_arrival, arrival) = opt_date(&t.arrival_date);
+    let (set_visa, visa) = opt_date(&t.visa_expiry);
+    sqlx::query(
+        "UPDATE tenants SET nationality = COALESCE(?, nationality), gender = COALESCE(?, gender),
+            visa_type = COALESCE(?, visa_type),
+            birth_date = CASE WHEN ? THEN ? ELSE birth_date END,
+            arrival_date = CASE WHEN ? THEN ? ELSE arrival_date END,
+            visa_expiry = CASE WHEN ? THEN ? ELSE visa_expiry END
+         WHERE id = ?",
+    )
+    .bind(t.nationality.as_deref().map(|n| n.trim().to_uppercase()))
+    .bind(t.gender.as_deref())
+    .bind(t.visa_type.as_deref().map(str::trim))
+    .bind(set_birth)
+    .bind(birth)
+    .bind(set_arrival)
+    .bind(arrival)
+    .bind(set_visa)
+    .bind(visa)
+    .bind(id)
+    .execute(&s.db)
+    .await?;
+    Ok(())
+}
+
+async fn reload(s: &AppState, id: i64) -> AppResult<Tenant> {
+    Ok(
+        sqlx::query_as(&format!("SELECT {COLUMNS} FROM tenants WHERE id = ?"))
+            .bind(id)
+            .fetch_one(&s.db)
+            .await?,
+    )
 }
 
 pub async fn list(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<Vec<Tenant>>> {
@@ -83,7 +151,10 @@ pub async fn create(
     .fetch_one(&s.db)
     .await?;
     let row: Tenant = row;
-    Ok(Json(row.masked(ctx.role >= Role::Admin)))
+    save_foreign_fields(&s, row.id, &t).await?;
+    Ok(Json(
+        reload(&s, row.id).await?.masked(ctx.role >= Role::Admin),
+    ))
 }
 
 pub async fn update(
@@ -124,8 +195,9 @@ pub async fn update(
     .bind(id)
     .fetch_one(&s.db)
     .await?;
-    let row: Tenant = row;
-    Ok(Json(row.masked(ctx.role >= Role::Admin)))
+    let _: Tenant = row;
+    save_foreign_fields(&s, id, &t).await?;
+    Ok(Json(reload(&s, id).await?.masked(ctx.role >= Role::Admin)))
 }
 
 /// สร้างลิงก์พอร์ทัลใหม่ (ลิงก์เดิมใช้ไม่ได้ทันที)

@@ -334,8 +334,13 @@ pub async fn spawn_ics_server(initial: &str) -> (String, std::sync::Arc<std::syn
 
 impl Client {
     /// GET ที่คืนข้อความดิบ (เช่น ไฟล์ .ics)
+    /// GET แบบข้อความ (ส่ง cookie ถ้ามี — ไม่ส่ง X-Org-Id)
     pub async fn get_text(&self, path: &str) -> (StatusCode, String) {
-        let req = Request::builder().uri(path).body(Body::empty()).unwrap();
+        let mut req = Request::builder().uri(path);
+        if let Some(c) = &self.cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        let req = req.body(Body::empty()).unwrap();
         let res = self.app.clone().oneshot(req).await.unwrap();
         let status = res.status();
         let bytes = res.into_body().collect().await.unwrap().to_bytes();

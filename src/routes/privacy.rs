@@ -310,6 +310,7 @@ pub async fn anonymize_tenant(
         "UPDATE tenants SET full_name = ?, phone = '', email = '', id_card = '', address = '', tax_id = '',
             branch_code = '', note = '', portal_token = NULL, line_user_id = NULL, line_display_name = NULL,
             line_linked_at = NULL, line_link_code = NULL, consent_at = NULL, consent_source = NULL,
+            gender = '', birth_date = NULL, arrival_date = NULL, visa_type = '', visa_expiry = NULL,
             anonymized_at = datetime('now')
          WHERE id = ?",
     )

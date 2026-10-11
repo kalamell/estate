@@ -22,6 +22,7 @@ mod stay;
 mod subscription;
 mod tenants;
 mod tickets;
+mod tm30;
 mod units;
 
 use axum::{
@@ -155,6 +156,14 @@ pub fn api_router() -> Router<AppState> {
             post(parcels::pickup).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
         )
         .route("/api/parcels/:id/return", post(parcels::mark_returned))
+        .route("/api/tm30", get(tm30::list))
+        .route("/api/tm30/export.csv", get(tm30::export))
+        .route(
+            "/api/tm30/:id/submit",
+            post(tm30::submit).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
+        .route("/api/tm30/:id/skip", post(tm30::skip))
+        .route("/api/tm30/:id/reopen", post(tm30::reopen))
         .route("/api/payment-notices", get(slips::list))
         .route("/api/payment-notices/:id/approve", post(slips::approve))
         .route("/api/payment-notices/:id/reject", post(slips::reject))
@@ -354,12 +363,18 @@ pub(crate) fn validate_in(
 pub fn spawn_background(state: crate::AppState) {
     calendar::spawn_sync(state.clone());
     subscription::spawn_renewals(state.clone());
+    tm30::spawn_alerts(state.clone());
     housekeeping::spawn_auto_tasks(state);
 }
 
 /// ออกใบแจ้งหนี้ต่ออายุแพ็กเกจ (เปิดให้ test เรียกได้)
 pub async fn run_subscription_renewals(state: &crate::AppState) -> crate::error::AppResult<usize> {
     subscription::run_renewals(state).await
+}
+
+/// แจ้งเตือน ตม.30 (เปิดให้ test เรียกได้)
+pub async fn run_tm30_alerts(state: &crate::AppState) -> crate::error::AppResult<usize> {
+    tm30::run_alerts(state).await
 }
 
 /// งานแม่บ้านอัตโนมัติ (เปิดให้ test เรียกได้)

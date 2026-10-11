@@ -128,6 +128,12 @@ pub struct Tenant {
     pub consent_at: Option<String>,
     pub consent_source: Option<String>,
     pub anonymized_at: Option<String>,
+    pub nationality: String,
+    pub gender: String,
+    pub birth_date: Option<String>,
+    pub arrival_date: Option<String>,
+    pub visa_type: String,
+    pub visa_expiry: Option<String>,
     pub created_at: String,
 }
 
@@ -170,6 +176,19 @@ pub struct TenantInput {
     pub branch_code: String,
     #[serde(default)]
     pub consent_obtained: Option<bool>,
+    /// ข้อมูลคนต่างชาติ (ไม่ส่งมา = ไม่เปลี่ยน, วันที่ส่ง "" = ล้างค่า)
+    #[serde(default)]
+    pub nationality: Option<String>,
+    #[serde(default)]
+    pub gender: Option<String>,
+    #[serde(default)]
+    pub birth_date: Option<String>,
+    #[serde(default)]
+    pub arrival_date: Option<String>,
+    #[serde(default)]
+    pub visa_type: Option<String>,
+    #[serde(default)]
+    pub visa_expiry: Option<String>,
 }
 
 #[derive(Debug, Serialize, FromRow)]

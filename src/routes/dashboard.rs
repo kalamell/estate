@@ -101,6 +101,14 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
             .fetch_one(&s.db)
             .await?;
 
+    super::tm30::sync(&s.db, Some(ctx.org_id)).await?;
+    let tm30_pending: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tm30_reports WHERE org_id = ? AND status = 'pending'",
+    )
+    .bind(ctx.org_id)
+    .fetch_one(&s.db)
+    .await?;
+
     let open_privacy: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM privacy_requests WHERE org_id = ? AND status = 'open'",
     )
@@ -129,6 +137,7 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
         "open_privacy_requests": open_privacy,
         "pending_payment_notices": pending_payment_notices,
         "parcels_waiting": parcels_waiting,
+        "tm30_pending": tm30_pending,
         "housekeeping": { "dirty": hk.0, "in_progress": hk.1, "open_tasks": hk.2 },
         "properties": properties.into_iter().map(|(id, name, kind, units, occupied)| json!({
             "id": id, "name": name, "kind": kind, "units": units, "occupied": occupied
