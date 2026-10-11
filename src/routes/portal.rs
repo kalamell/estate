@@ -156,6 +156,7 @@ pub async fn home(State(s): State<AppState>, Path(token): Path<String>) -> AppRe
         })).collect::<Vec<_>>(),
         "features": { "portal": true },
         "payment_notices": super::slips::portal_notices(&s.db, t.tenant_id).await?,
+        "parcels": super::parcels::for_tenant(&s.db, t.tenant_id).await?,
         "privacy": {
             "notice": privacy.0, "dpo_contact": privacy.2,
             "consented": consent_at.is_some(), "consent_at": consent_at,

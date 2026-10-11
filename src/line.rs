@@ -178,6 +178,7 @@ pub struct OrgLine {
     pub auto_ticket: bool,
     pub auto_remind: bool,
     pub auto_housekeeping: bool,
+    pub auto_parcel: bool,
 }
 
 impl OrgLine {
@@ -220,7 +221,7 @@ const ORG_LINE_SELECT: &str = "SELECT id AS org_id, name AS org_name, theme, lin
         line_channel_id AS channel_id, line_basic_id AS basic_id, line_channel_secret AS secret,
         line_access_token AS token, line_webhook_key AS webhook_key, line_auto_invoice AS auto_invoice,
         line_auto_receipt AS auto_receipt, line_auto_ticket AS auto_ticket, line_auto_remind AS auto_remind,
-        line_auto_housekeeping AS auto_housekeeping
+        line_auto_housekeeping AS auto_housekeeping, line_auto_parcel AS auto_parcel
     FROM organizations";
 
 impl OrgLine {
@@ -258,7 +259,7 @@ pub fn text(msg: impl Into<String>) -> Value {
 
 /// ข้อความพร้อมปุ่มลัดคำสั่ง
 pub fn text_with_menu(msg: impl Into<String>) -> Value {
-    let items: Vec<Value> = ["บิล", "ใบเสร็จ", "ข้อมูลของฉัน", "แจ้งซ่อม"]
+    let items: Vec<Value> = ["บิล", "ใบเสร็จ", "พัสดุ", "ข้อมูลของฉัน", "แจ้งซ่อม"]
         .iter()
         .map(
             |t| json!({ "type": "action", "action": { "type": "message", "label": t, "text": t } }),

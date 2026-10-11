@@ -95,6 +95,12 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
     .fetch_one(&s.db)
     .await?;
 
+    let parcels_waiting: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM parcels WHERE org_id = ? AND status = 'waiting'")
+            .bind(ctx.org_id)
+            .fetch_one(&s.db)
+            .await?;
+
     let open_privacy: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM privacy_requests WHERE org_id = ? AND status = 'open'",
     )
@@ -122,6 +128,7 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
         "pending_requests": pending_requests,
         "open_privacy_requests": open_privacy,
         "pending_payment_notices": pending_payment_notices,
+        "parcels_waiting": parcels_waiting,
         "housekeeping": { "dirty": hk.0, "in_progress": hk.1, "open_tasks": hk.2 },
         "properties": properties.into_iter().map(|(id, name, kind, units, occupied)| json!({
             "id": id, "name": name, "kind": kind, "units": units, "occupied": occupied

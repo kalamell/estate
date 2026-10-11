@@ -10,6 +10,7 @@ mod line;
 mod meters;
 mod move_outs;
 mod org;
+mod parcels;
 mod portal;
 mod pricing;
 mod privacy;
@@ -141,6 +142,19 @@ pub fn api_router() -> Router<AppState> {
             "/api/org/slip",
             get(slips::settings).put(slips::update_settings),
         )
+        .route(
+            "/api/parcels",
+            get(parcels::list)
+                .post(parcels::create)
+                .layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
+        .route("/api/parcels/:id", axum::routing::delete(parcels::delete))
+        .route("/api/parcels/:id/notify", post(parcels::resend))
+        .route(
+            "/api/parcels/:id/pickup",
+            post(parcels::pickup).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
+        .route("/api/parcels/:id/return", post(parcels::mark_returned))
         .route("/api/payment-notices", get(slips::list))
         .route("/api/payment-notices/:id/approve", post(slips::approve))
         .route("/api/payment-notices/:id/reject", post(slips::reject))

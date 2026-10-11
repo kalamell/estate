@@ -1,6 +1,6 @@
 //! ส่งไฟล์อัปโหลด (รูปมิเตอร์ สลิป รูปแจ้งซ่อม) เฉพาะผู้มีสิทธิ์
 //! - ทีมงานที่ล็อกอินและเป็นสมาชิกขององค์กรเจ้าของไฟล์ (หรือ Super Admin)
-//! - ผู้เช่าผ่าน `?t=<portal token>` เฉพาะรูปในเรื่องแจ้งซ่อมของตัวเอง
+//! - ผู้เช่าผ่าน `?t=<portal token>` เฉพาะรูปในเรื่องแจ้งซ่อม พัสดุ และสลิปที่แจ้งชำระของตัวเอง
 //! - แขกผ่าน `?r=<request token>` เฉพาะสลิปของคำขอจองนั้น
 
 use axum::{
@@ -64,6 +64,22 @@ async fn allowed(
                 OR EXISTS (SELECT 1 FROM ticket_messages m, json_each(m.photos) j
                            WHERE m.ticket_id = tk.id AND m.internal = 0 AND j.value = ?3))
              LIMIT 1",
+        )
+        .bind(t)
+        .bind(org_id)
+        .bind(&url)
+        .fetch_optional(&s.db)
+        .await?;
+        if ok.is_some() {
+            return Ok(true);
+        }
+    }
+    if let Some(t) = q.t.as_deref().filter(|t| t.len() >= 16) {
+        // รูปพัสดุและสลิปที่ผู้เช่าแจ้งชำระเอง
+        let ok: Option<i64> = sqlx::query_scalar(
+            "SELECT tn.id FROM tenants tn WHERE tn.portal_token = ?1 AND tn.org_id = ?2 AND (
+                EXISTS (SELECT 1 FROM parcels pc WHERE pc.tenant_id = tn.id AND pc.photo_url = ?3)
+                OR EXISTS (SELECT 1 FROM payment_notices n WHERE n.tenant_id = tn.id AND n.slip_url = ?3))",
         )
         .bind(t)
         .bind(org_id)

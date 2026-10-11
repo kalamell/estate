@@ -65,6 +65,9 @@ pub async fn parse_for(
 ) -> AppResult<Form> {
     let parsed = parse(form, &state.upload_dir, prefix).await?;
     register(&state.db, org_id, &parsed.photos).await?;
+    if let Some(sig) = parsed.fields.get("signature_url") {
+        register(&state.db, org_id, std::slice::from_ref(sig)).await?;
+    }
     Ok(parsed)
 }
 
@@ -73,7 +76,8 @@ pub async fn parse(mut form: Multipart, upload_dir: &Path, prefix: &str) -> AppR
     let mut photos = Vec::new();
     while let Some(field) = form.next_field().await.map_err(bad)? {
         let name = field.name().unwrap_or_default().to_string();
-        if name == "photos" || name == "photo" {
+        // `signature` = ภาพลายเซ็น (เก็บ URL ไว้ในฟิลด์ `signature_url`)
+        if name == "photos" || name == "photo" || name == "signature" {
             let ext = match field.content_type() {
                 Some("image/png") => "png",
                 Some("image/webp") => "webp",
@@ -89,17 +93,25 @@ pub async fn parse(mut form: Multipart, upload_dir: &Path, prefix: &str) -> AppR
             if bytes.is_empty() {
                 continue;
             }
-            if photos.len() >= MAX_PHOTOS {
+            if name != "signature" && photos.len() >= MAX_PHOTOS {
                 return Err(AppError::BadRequest(format!("แนบรูปได้สูงสุด {MAX_PHOTOS} รูป")));
             }
             let file = format!("{prefix}-{}.{ext}", uuid::Uuid::new_v4());
             tokio::fs::write(upload_dir.join(&file), &bytes)
                 .await
                 .map_err(|e| AppError::Internal(e.into()))?;
-            photos.push(format!("/uploads/{file}"));
+            if name == "signature" {
+                fields.insert("signature_url".into(), format!("/uploads/{file}"));
+            } else {
+                photos.push(format!("/uploads/{file}"));
+            }
             continue;
         }
-        fields.insert(name, field.text().await.map_err(bad)?);
+        let value = field.text().await.map_err(bad)?;
+        // กันการส่ง URL ไฟล์ปลอมมาเป็นข้อความ
+        if name != "signature_url" {
+            fields.insert(name, value);
+        }
     }
     Ok(Form { fields, photos })
 }
