@@ -99,6 +99,7 @@ pub async fn setup_with_line(line_api: &str) -> Client {
         limiter: Default::default(),
         public_url: "https://estate.test".into(),
         slip_api_base: None,
+        mailer: Default::default(),
     };
     Client {
         state: state.clone(),

@@ -298,3 +298,79 @@ pub async fn update_user(
             .await?,
     ))
 }
+
+// ---------- อีเมล ----------
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct EmailRow {
+    id: i64,
+    to_addr: String,
+    subject: String,
+    kind: String,
+    status: String,
+    attempts: i64,
+    last_error: Option<String>,
+    created_at: String,
+    sent_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct EmailQuery {
+    status: Option<String>,
+}
+
+/// คิวอีเมลล่าสุด (ตรวจว่าส่งได้จริงหรือไม่)
+pub async fn emails(
+    State(s): State<AppState>,
+    _: SuperAdmin,
+    axum::extract::Query(q): axum::extract::Query<EmailQuery>,
+) -> AppResult<Json<Value>> {
+    let rows: Vec<EmailRow> = sqlx::query_as(
+        "SELECT id, to_addr, subject, kind, status, attempts, last_error, created_at, sent_at FROM email_outbox
+         WHERE (?1 IS NULL OR status = ?1) ORDER BY id DESC LIMIT 200",
+    )
+    .bind(&q.status)
+    .fetch_all(&s.db)
+    .await?;
+    Ok(Json(
+        json!({ "smtp_configured": s.mailer.configured(), "emails": rows }),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct TestEmailInput {
+    to: String,
+}
+
+/// ส่งอีเมลทดสอบทันที (ไม่รอคิว) เพื่อตรวจการตั้งค่า SMTP
+pub async fn test_email(
+    State(s): State<AppState>,
+    _: SuperAdmin,
+    Json(t): Json<TestEmailInput>,
+) -> AppResult<Json<Value>> {
+    if !t.to.contains('@') {
+        return Err(AppError::BadRequest("อีเมลไม่ถูกต้อง".into()));
+    }
+    let id = crate::mail::queue(
+        &s.db,
+        crate::mail::Email {
+            to: t.to.trim(),
+            kind: "test",
+            subject: "ทดสอบการส่งอีเมล — Estate".into(),
+            heading: "ส่งอีเมลได้แล้ว".into(),
+            paragraphs: vec!["ถ้าคุณได้รับอีเมลนี้ แปลว่าการตั้งค่า SMTP ถูกต้อง".into()],
+            button: None,
+            footer: "อีเมลทดสอบจากหน้าผู้ดูแลแพลตฟอร์ม".into(),
+        },
+    )
+    .await?;
+    crate::mail::flush(&s.db, &s.mailer).await?;
+    let (status, error): (String, Option<String>) =
+        sqlx::query_as("SELECT status, last_error FROM email_outbox WHERE id = ?")
+            .bind(id)
+            .fetch_one(&s.db)
+            .await?;
+    Ok(Json(
+        json!({ "status": status, "error": error, "smtp_configured": s.mailer.configured() }),
+    ))
+}

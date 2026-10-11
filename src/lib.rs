@@ -11,6 +11,7 @@ pub mod error;
 pub mod i18n;
 pub mod ical;
 pub mod line;
+pub mod mail;
 pub mod models;
 pub mod pricing;
 pub mod promptpay;
@@ -43,6 +44,8 @@ pub struct AppState {
     pub public_url: String,
     /// แทนที่ URL ของผู้ให้บริการตรวจสลิป (ใช้ทดสอบกับ mock server)
     pub slip_api_base: Option<String>,
+    /// ส่งอีเมล (ไม่ได้ตั้งค่า SMTP = เขียนลง log)
+    pub mailer: std::sync::Arc<mail::Mailer>,
 }
 
 pub struct Config {
@@ -148,7 +151,9 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
         limiter: Default::default(),
         public_url: config.public_url.clone(),
         slip_api_base: std::env::var("SLIP_API_BASE").ok(),
+        mailer: std::sync::Arc::new(mail::Mailer::from_env()?),
     };
+    mail::spawn_sender(state.db.clone(), state.mailer.clone());
     line::spawn_reminders(state.clone());
     routes::spawn_background(state.clone());
     let app = build_app(state, &config.static_dir);

@@ -5,6 +5,7 @@ edition = "2021"
 description = "ระบบบริหารจัดการอสังหาริมทรัพย์ให้เช่า: หอพัก อพาร์ทเมนต์ คอนโด และห้องพักรายวัน"
 
 [dependencies]
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls-tls", "ring", "hostname"] }
 anyhow = "1"
 axum = { version = "0.7", features = ["multipart"] }
 chrono = { version = "0.4", features = ["serde"] }

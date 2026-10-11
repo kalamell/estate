@@ -406,7 +406,117 @@ async fn issue(
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
+    email_owners(
+        s,
+        org_id,
+        "invoice",
+        format!("ใบแจ้งหนี้ค่าบริการ {doc_no}"),
+        vec![
+            format!(
+                "แพ็กเกจ {} ({}) รอบ {} – {}",
+                d.pkg.name,
+                if d.cycle == "yearly" {
+                    "รายปี"
+                } else {
+                    "รายเดือน"
+                },
+                crate::thai::long_date(d.start),
+                crate::thai::long_date(period_end(d.start, &d.cycle))
+            ),
+            format!(
+                "ยอดชำระ {} บาท ครบกำหนด {}",
+                crate::thai::money(amount),
+                crate::thai::long_date(d.due)
+            ),
+            "ชำระด้วย QR พร้อมเพย์ในหน้าแพ็กเกจ แล้วแนบสลิปเพื่อยืนยันการชำระ".into(),
+        ],
+    )
+    .await;
     Ok(id)
+}
+
+/// แจ้งผู้ดูแลแพลตฟอร์มว่ามีสลิปรอตรวจ
+async fn notify_super_admins(s: &AppState, inv: &SubInvoice) {
+    let admins: Vec<String> =
+        sqlx::query_scalar("SELECT email FROM users WHERE is_super_admin = 1 AND is_active = 1")
+            .fetch_all(&s.db)
+            .await
+            .unwrap_or_default();
+    for to in admins {
+        let _ = crate::mail::queue(
+            &s.db,
+            crate::mail::Email {
+                to: &to,
+                kind: "slip_review",
+                subject: format!("สลิปรอตรวจ {} — {}", inv.doc_no, inv.org_name),
+                heading: "มีสลิปค่าบริการรอตรวจ".into(),
+                paragraphs: vec![format!(
+                    "{} แนบสลิปสำหรับ {} ({} {}) ยอด {} บาท",
+                    inv.org_name,
+                    inv.doc_no,
+                    inv.package_name,
+                    if inv.cycle == "yearly" {
+                        "รายปี"
+                    } else {
+                        "รายเดือน"
+                    },
+                    crate::thai::money(inv.total)
+                )],
+                button: Some((
+                    "เปิดหน้าค่าบริการ".into(),
+                    format!("{}/admin/billing", s.public_url),
+                )),
+                footer: "อีเมลแจ้งเตือนสำหรับผู้ดูแลแพลตฟอร์ม Estate".into(),
+            },
+        )
+        .await;
+    }
+}
+
+/// ส่งอีเมลถึงเจ้าของบัญชีองค์กร (ล้มเหลวไม่กระทบการทำงานหลัก)
+async fn email_owners(
+    s: &AppState,
+    org_id: i64,
+    kind: &str,
+    subject: String,
+    paragraphs: Vec<String>,
+) {
+    let owners: Vec<(String, String)> = match sqlx::query_as(
+        "SELECT u.email, o.name FROM org_members m JOIN users u ON u.id = m.user_id
+         JOIN organizations o ON o.id = m.org_id
+         WHERE m.org_id = ? AND m.role = 'owner' AND u.is_active = 1",
+    )
+    .bind(org_id)
+    .fetch_all(&s.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error = %e, "อ่านอีเมลเจ้าของบัญชีไม่ได้");
+            return;
+        }
+    };
+    for (to, org_name) in owners {
+        let r = crate::mail::queue(
+            &s.db,
+            crate::mail::Email {
+                to: &to,
+                kind,
+                subject: format!("{subject} — {org_name}"),
+                heading: subject.clone(),
+                paragraphs: paragraphs.clone(),
+                button: Some((
+                    "เปิดหน้าแพ็กเกจและการชำระเงิน".into(),
+                    format!("{}/billing", s.public_url),
+                )),
+                footer: format!("อีเมลนี้ส่งถึงเจ้าของบัญชี {org_name} บนระบบ Estate"),
+            },
+        )
+        .await;
+        if let Err(e) = r {
+            tracing::warn!(error = %e, "เข้าคิวอีเมลไม่สำเร็จ");
+        }
+    }
 }
 
 fn with_payment(inv: &SubInvoice, plat: &Platform) -> Value {
@@ -675,10 +785,15 @@ pub async fn upload_slip(
         },
     )
     .await?;
+    let mut paid = false;
     if auto && check.verified() {
-        if let Err(e) = mark_paid(&s, id, None, None, check.trans_ref.as_deref()).await {
-            tracing::warn!(id, error = %e, "ยืนยันค่าแพ็กเกจอัตโนมัติไม่สำเร็จ");
+        match mark_paid(&s, id, None, None, check.trans_ref.as_deref()).await {
+            Ok(()) => paid = true,
+            Err(e) => tracing::warn!(id, error = %e, "ยืนยันค่าแพ็กเกจอัตโนมัติไม่สำเร็จ"),
         }
+    }
+    if !paid {
+        notify_super_admins(&s, &inv).await;
     }
     let plat = load_platform(&s.db).await?;
     Ok(Json(with_payment(&load_invoice(&s.db, id).await?, &plat)))
@@ -970,6 +1085,18 @@ async fn mark_paid(
         Some(json!({ "receipt_no": receipt_no, "ends_at": end, "auto": approver.is_none() })),
     )
     .await;
+    email_owners(
+        s,
+        org_id,
+        "receipt",
+        format!("ได้รับชำระค่าบริการแล้ว ใบเสร็จ {receipt_no}"),
+        vec![
+            "ขอบคุณที่ชำระค่าบริการ ระบบต่ออายุแพ็กเกจให้เรียบร้อยแล้ว".into(),
+            format!("ใช้งานได้ถึง {}", crate::thai::long_date(end)),
+            "ดาวน์โหลดใบเสร็จรับเงิน/ใบกำกับภาษีได้ที่ประวัติในหน้าแพ็กเกจ".into(),
+        ],
+    )
+    .await;
     Ok(())
 }
 
@@ -1010,6 +1137,17 @@ pub async fn reject(
         "subscription",
         Some(id),
         Some(json!({ "doc_no": inv.doc_no, "reason": reason })),
+    )
+    .await;
+    email_owners(
+        &s,
+        inv.org_id,
+        "slip_rejected",
+        format!("สลิปค่าบริการ {} ยังไม่ผ่านการตรวจสอบ", inv.doc_no),
+        vec![
+            format!("เหตุผล: {reason}"),
+            "กรุณาตรวจสอบและแนบสลิปใหม่ในหน้าแพ็กเกจ".into(),
+        ],
     )
     .await;
     let plat = load_platform(&s.db).await?;
