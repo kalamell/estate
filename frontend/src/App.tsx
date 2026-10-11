@@ -32,6 +32,17 @@ const AdminOverview = lazy(() => import('@/pages/admin/overview'))
 const AdminPackages = lazy(() => import('@/pages/admin/packages'))
 const AdminOrgs = lazy(() => import('@/pages/admin/orgs'))
 const AdminUsers = lazy(() => import('@/pages/admin/users'))
+const AdminSupport = lazy(() => import('@/pages/admin/support'))
+const TicketsPage = lazy(() => import('@/pages/tickets'))
+const MoveOutsPage = lazy(() => import('@/pages/move-outs'))
+const ReportsPage = lazy(() => import('@/pages/reports'))
+const SupportPage = lazy(() => import('@/pages/support'))
+const PortalPage = lazy(() => import('@/pages/portal'))
+const StaffInvoicePrint = lazy(() => import('@/pages/print/invoice').then((m) => ({ default: m.StaffInvoicePrint })))
+const PortalInvoicePrint = lazy(() => import('@/pages/print/invoice').then((m) => ({ default: m.PortalInvoicePrint })))
+const StaffReceiptPrint = lazy(() => import('@/pages/print/receipt').then((m) => ({ default: m.StaffReceiptPrint })))
+const PortalReceiptPrint = lazy(() => import('@/pages/print/receipt').then((m) => ({ default: m.PortalReceiptPrint })))
+const StaffMoveOutPrint = lazy(() => import('@/pages/print/move-out').then((m) => ({ default: m.StaffMoveOutPrint })))
 const NotFoundPage = lazy(() => import('@/pages/not-found'))
 
 const page = (el: ReactNode) => <Suspense fallback={<PageSkeleton />}>{el}</Suspense>
@@ -48,7 +59,14 @@ export default function App() {
                 <Routes>
                   <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
                   <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+                  {/* พอร์ทัลผู้เช่า — สาธารณะ ไม่ต้องล็อกอิน */}
+                  <Route path="/p/:token" element={<PortalPage />} />
+                  <Route path="/p/:token/print/invoice/:id" element={<PortalInvoicePrint />} />
+                  <Route path="/p/:token/print/receipt/:id" element={<PortalReceiptPrint />} />
                   <Route element={<RequireAuth />}>
+                    <Route path="/print/invoice/:id" element={<StaffInvoicePrint />} />
+                    <Route path="/print/receipt/:id" element={<StaffReceiptPrint />} />
+                    <Route path="/print/move-out/:id" element={<StaffMoveOutPrint />} />
                     <Route
                       path="/admin"
                       element={<RequireSuperAdmin><AdminLayout /></RequireSuperAdmin>}
@@ -57,6 +75,7 @@ export default function App() {
                       <Route path="packages" element={page(<AdminPackages />)} />
                       <Route path="orgs" element={page(<AdminOrgs />)} />
                       <Route path="users" element={page(<AdminUsers />)} />
+                      <Route path="support" element={page(<AdminSupport />)} />
                     </Route>
                     <Route element={<RequireOrg><AppShell /></RequireOrg>}>
                       <Route index element={page(<DashboardPage />)} />
@@ -66,6 +85,10 @@ export default function App() {
                       <Route path="meters" element={page(<MetersPage />)} />
                       <Route path="invoices" element={page(<InvoicesPage />)} />
                       <Route path="tenants" element={page(<TenantsPage />)} />
+                      <Route path="tickets" element={page(<TicketsPage />)} />
+                      <Route path="move-outs" element={page(<MoveOutsPage />)} />
+                      <Route path="reports" element={page(<ReportsPage />)} />
+                      <Route path="support" element={page(<SupportPage />)} />
                       <Route path="settings" element={page(<SettingsPage />)} />
                       <Route path="*" element={page(<NotFoundPage />)} />
                     </Route>

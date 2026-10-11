@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { CalendarPlus, Droplets, Loader2, Move3d, Plus, Save, Trash2, X, Zap } from 'lucide-react'
-import { api, type FurnitureKind, type Unit, type UnitStatus } from '@/lib/api'
+import { api, type ExtraCharge, type FurnitureKind, type Unit, type UnitStatus } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { FURNITURE, UNIT_STATUS, baht, num, thDate } from '@/lib/format'
 import { useSession } from '@/contexts/session'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -36,7 +37,11 @@ function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
   const { features, canManage, readOnly } = useSession()
   const confirm = useConfirm()
   const { openBooking } = useBookingDialog()
-  const [draft, setDraft] = useState<Unit>(() => ({ ...unit, layout: [...(unit.layout || [])] }))
+  const [draft, setDraft] = useState<Unit>(() => ({
+    ...unit,
+    layout: [...(unit.layout || [])],
+    extra_charges: [...(unit.extra_charges || [])],
+  }))
   const [tabState, setTab] = useState(features.view3d ? 'room3d' : 'info')
   const tab = !features.view3d && tabState === 'room3d' ? 'info' : tabState
   const [newKind, setNewKind] = useState<FurnitureKind>('bed')
@@ -57,9 +62,19 @@ function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
   )
 
   const save = useMutation({
-    mutationFn: () => api.updateUnit(draft),
+    mutationFn: () =>
+      api.updateUnit({
+        ...draft,
+        extra_charges: draft.extra_charges
+          .filter((c) => c.label.trim())
+          .map((c) => ({ ...c, label: c.label.trim(), amount: Number(c.amount) || 0 })),
+      }),
     onSuccess: async (saved) => {
-      setDraft({ ...saved, layout: [...(saved.layout || [])] })
+      setDraft({
+        ...saved,
+        layout: [...(saved.layout || [])],
+        extra_charges: [...(saved.extra_charges || [])],
+      })
       toast.success('บันทึกห้องแล้ว')
       await invalidate('units', 'dashboard')
     },
@@ -112,9 +127,9 @@ function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
           <div className="p-6">
             {features.view3d && (
               <TabsContent value="room3d" className="space-y-5">
-                <div className="relative h-72 overflow-hidden rounded-xl bg-gradient-to-b from-slate-100 to-white sm:h-80 dark:from-slate-800 dark:to-slate-900">
+                <div className="relative h-72 overflow-hidden rounded-md border bg-muted sm:h-80">
                   <RoomView room={room} />
-                  <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">
+                  <div className="pointer-events-none absolute bottom-2 left-2 rounded-sm border bg-card px-2 py-1 text-[11px] text-muted-foreground">
                     ลากเพื่อหมุน · เลื่อนเพื่อซูม
                   </div>
                 </div>
@@ -233,6 +248,10 @@ function UnitEditor({ unit, onClose }: { unit: Unit; onClose: () => void }) {
                   <Textarea id="u-note" rows={3} value={draft.note} onChange={(e) => set('note', e.target.value)} />
                 </Field>
               </div>
+              <ExtraChargesEditor
+                value={draft.extra_charges}
+                onChange={(v) => set('extra_charges', v)}
+              />
             </TabsContent>
 
             <TabsContent value="history">
@@ -323,11 +342,11 @@ function UnitHistory({ unitId }: { unitId: number }) {
               <div key={m.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
                 {m.meter_type === 'electric' ? (
                   <span className="flex items-center gap-1.5">
-                    <Zap className="size-4 text-amber-500" /> ไฟฟ้า
+                    <Zap className="size-4 text-warning" /> ไฟฟ้า
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5">
-                    <Droplets className="size-4 text-sky-500" /> น้ำ
+                    <Droplets className="size-4 text-info" /> น้ำ
                   </span>
                 )}
                 <span className="ml-auto font-medium tabular-nums">{num(m.value)}</span>
@@ -340,5 +359,91 @@ function UnitHistory({ unitId }: { unitId: number }) {
         )}
       </section>
     </div>
+  )
+}
+
+const CHARGE_PRESETS = ['อินเทอร์เน็ต', 'ที่จอดรถ', 'ค่าส่วนกลาง', 'ค่าเฟอร์นิเจอร์']
+
+function ExtraChargesEditor({
+  value,
+  onChange,
+}: {
+  value: ExtraCharge[]
+  onChange: (v: ExtraCharge[]) => void
+}) {
+  const update = (i: number, patch: Partial<ExtraCharge>) =>
+    onChange(value.map((c, j) => (j === i ? { ...c, ...patch } : c)))
+  const add = (label = '') => onChange([...value, { label, amount: 0, vatable: false }])
+  const total = value.reduce((s, c) => s + (Number(c.amount) || 0), 0)
+  return (
+    <section className="mt-8 border-t pt-6">
+      <div className="flex items-baseline gap-3">
+        <h3 className="text-sm font-semibold">ค่าบริการรายเดือนเพิ่มเติม</h3>
+        {value.length > 0 && (
+          <span className="ml-auto text-sm text-muted-foreground tabular-nums">รวม {baht(total)}/เดือน</span>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        เพิ่มเข้าใบแจ้งหนี้รายเดือนอัตโนมัติ เช่น อินเทอร์เน็ต 300 ที่จอดรถ 500 — ติ๊ก "VAT" สำหรับรายการที่ต้องคิดภาษี
+      </p>
+      {value.length > 0 && (
+        <div className="mt-3 divide-y rounded-md border">
+          <div className="hidden grid-cols-[1fr_7rem_3.5rem_2rem] gap-2 bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground sm:grid">
+            <span>รายการ</span>
+            <span className="text-right">บาท/เดือน</span>
+            <span className="text-center">VAT</span>
+            <span />
+          </div>
+          {value.map((c, i) => (
+            <div key={i} className="grid grid-cols-[1fr_6rem_auto_2rem] items-center gap-2 px-3 py-2 sm:grid-cols-[1fr_7rem_3.5rem_2rem]">
+              <Input
+                value={c.label}
+                onChange={(e) => update(i, { label: e.target.value })}
+                placeholder="ชื่อรายการ"
+                aria-label="ชื่อรายการ"
+                className="h-8"
+              />
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={c.amount}
+                onChange={(e) => update(i, { amount: e.target.value === '' ? 0 : Number(e.target.value) })}
+                aria-label="จำนวนเงินต่อเดือน"
+                className="h-8 text-right tabular-nums"
+              />
+              <label className="flex items-center justify-center gap-1.5 text-xs">
+                <Checkbox
+                  checked={c.vatable}
+                  onCheckedChange={(v) => update(i, { vatable: v === true })}
+                  aria-label="คิด VAT"
+                />
+                <span className="sm:hidden">VAT</span>
+              </label>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => onChange(value.filter((_, j) => j !== i))}
+                aria-label="ลบรายการ"
+              >
+                <X />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => add()}>
+          <Plus /> เพิ่มรายการ
+        </Button>
+        {CHARGE_PRESETS.filter((p) => !value.some((c) => c.label === p)).map((p) => (
+          <Button key={p} type="button" size="sm" variant="ghost" className="text-muted-foreground" onClick={() => add(p)}>
+            + {p}
+          </Button>
+        ))}
+      </div>
+    </section>
   )
 }

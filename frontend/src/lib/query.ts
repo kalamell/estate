@@ -28,12 +28,19 @@ export function handleApiError(err: unknown) {
   if (msg === lastToast.msg && now - lastToast.at < 1500) return
   lastToast = { msg, at: now }
 
-  if (e?.status === 402 && (e.code === 'limit_reached' || e.code === 'subscription_inactive')) {
+  if (
+    e?.status === 402 &&
+    (e.code === 'limit_reached' ||
+      e.code === 'subscription_inactive' ||
+      e.code === 'feature_unavailable')
+  ) {
     toast.error(msg, {
       description:
         e.code === 'limit_reached'
           ? 'เกินขีดจำกัดของแพ็กเกจปัจจุบัน'
-          : 'การสมัครใช้งานไม่อยู่ในสถานะใช้งาน',
+          : e.code === 'feature_unavailable'
+            ? 'ฟีเจอร์นี้ไม่รวมอยู่ในแพ็กเกจปัจจุบัน'
+            : 'การสมัครใช้งานไม่อยู่ในสถานะใช้งาน',
       action: { label: 'ดูแพ็กเกจ', onClick: () => navigateTo('/settings?tab=package') },
       duration: 8000,
     })

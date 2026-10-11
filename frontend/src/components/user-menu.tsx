@@ -35,7 +35,7 @@ export function useLogout() {
 function UserAvatar({ user, className }: { user: User; className?: string }) {
   return (
     <Avatar className={className ?? 'size-8 rounded-lg'}>
-      <AvatarFallback className="rounded-lg bg-brand text-sm font-semibold text-white">
+      <AvatarFallback className="rounded-md bg-primary text-sm font-semibold text-primary-foreground">
         {initials(user.name)}
       </AvatarFallback>
     </Avatar>

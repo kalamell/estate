@@ -68,7 +68,7 @@ export default function RegisterPage() {
         <Field label="ชื่อองค์กร / ธุรกิจ" htmlFor="org" hint="เช่น ชื่อหอพักหรือบริษัท — เปลี่ยนภายหลังได้">
           <Input id="org" value={form.org_name} onChange={set('org_name')} required className="h-11" />
         </Field>
-        <Button type="submit" size="lg" className="mt-2 h-11 bg-brand text-white" disabled={register.isPending}>
+        <Button type="submit" size="lg" className="mt-2 h-11" disabled={register.isPending}>
           {register.isPending ? <Loader2 className="animate-spin" /> : <Rocket />}
           สร้างบัญชีและองค์กร
         </Button>

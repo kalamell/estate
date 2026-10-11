@@ -50,7 +50,14 @@ interface Session {
 
 const SessionContext = createContext<Session | null>(null)
 
-const ALL_FEATURES: Features = { ocr: true, view3d: true, short_stay: true, invoices: true }
+const ALL_FEATURES: Features = {
+  ocr: true,
+  view3d: true,
+  short_stay: true,
+  invoices: true,
+  portal: true,
+  reports: true,
+}
 
 const NON_ORG_KEYS = new Set(['me', 'admin'])
 

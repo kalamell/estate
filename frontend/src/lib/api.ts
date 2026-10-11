@@ -32,10 +32,35 @@ export interface Features {
   view3d: boolean
   short_stay: boolean
   invoices: boolean
+  portal: boolean
+  reports: boolean
 }
 
+/** ข้อมูลผู้ออกเอกสาร (ใบแจ้งหนี้/ใบเสร็จ) */
+export interface OrgLegal {
+  legal_name: string
+  tax_id: string
+  /** "00000" = สำนักงานใหญ่ */
+  branch_code: string
+  address: string
+  phone: string
+  vat_registered: boolean
+  vat_rate: number
+  receipt_note: string
+}
+
+export interface OrgProfile extends Partial<OrgLegal> {
+  id: number
+  name: string
+  status: OrgStatus
+  ends_at: string | null
+  created_at: string
+}
+
+export type OrgUpdate = { name: string } & OrgLegal
+
 export interface OrgInfo {
-  org: { id: number; name: string; status: OrgStatus; ends_at: string | null; created_at: string }
+  org: OrgProfile
   package: {
     id: number
     name: string
@@ -140,8 +165,13 @@ export interface Property {
   electric_rate: number
   water_rate: number
   promptpay_id: string | null
+  late_fee_type: LateFeeType
+  late_fee_amount: number
+  late_fee_grace_days: number
   created_at: string
 }
+
+export type LateFeeType = 'none' | 'flat' | 'per_day'
 
 export type PropertyInput = Omit<Property, 'id' | 'created_at'>
 
@@ -169,6 +199,13 @@ export interface Unit {
   height: number
   layout: Furniture[]
   note: string
+  extra_charges: ExtraCharge[]
+}
+
+export interface ExtraCharge {
+  label: string
+  amount: number
+  vatable: boolean
 }
 
 export type UnitInput = Partial<Omit<Unit, 'id'>> & { property_id: number; name: string }
@@ -180,10 +217,17 @@ export interface Tenant {
   email: string
   id_card: string
   note: string
+  tax_id: string
+  address: string
+  branch_code: string
+  portal_token: string | null
   created_at: string
 }
 
-export type TenantInput = Pick<Tenant, 'full_name' | 'phone' | 'email' | 'id_card' | 'note'>
+export type TenantInput = Pick<
+  Tenant,
+  'full_name' | 'phone' | 'email' | 'id_card' | 'note' | 'tax_id' | 'address' | 'branch_code'
+>
 
 export interface Booking {
   id: number
@@ -230,30 +274,262 @@ export interface LineItem {
   qty: number
   unit_price: number
   amount: number
+  vatable: boolean
 }
+
+export type LineItemInput = Omit<LineItem, 'amount'>
+
+export type InvoiceKind = 'monthly' | 'manual' | 'move_out'
+export type InvoiceStatus = 'unpaid' | 'paid' | 'void'
 
 export interface Invoice {
   id: number
+  doc_no: string
+  kind: InvoiceKind
   unit_id: number
+  unit_name: string
+  property_id: number
+  property_name: string
   booking_id: number | null
+  tenant_name: string | null
   period: string
   issue_date: string
   due_date: string
   items: LineItem[]
+  subtotal: number
+  vat_amount: number
   total: number
-  status: 'unpaid' | 'paid' | string
+  status: InvoiceStatus
+  void_reason: string | null
+  paid_amount: number
+  overdue_days: number
+  late_fee: number
   paid_at: string | null
   created_at: string
-  unit_name: string
-  property_id: number
-  property_name: string
-  tenant_name: string | null
+}
+
+export interface Issuer {
+  legal_name: string
+  tax_id: string
+  branch_code: string
+  address: string
+  phone: string
+  vat_registered?: boolean
+  /** (ถ้ามี) หมายเหตุท้ายเอกสาร */
+  receipt_note?: string
+}
+
+export interface DocParty {
+  name?: string
+  full_name?: string
+  address: string
+  tax_id: string
+  branch_code: string
+  phone?: string
 }
 
 export interface InvoiceDetail {
   invoice: Invoice
   promptpay_payload: string | null
   paid_amount: number
+  receipts: Receipt[]
+  issuer: Issuer
+  tenant: { full_name: string; address: string; tax_id: string; branch_code: string; phone: string } | null
+  property: { name: string; address: string }
+}
+
+export type PayMethod = 'promptpay' | 'transfer' | 'cash' | 'deposit'
+
+export interface PayInput {
+  method: PayMethod
+  paid_at: string
+  amount?: number
+  include_late_fee?: boolean
+  wht_amount?: number
+  note?: string
+}
+
+export interface ManualInvoiceInput {
+  unit_id: number
+  due_date: string
+  period?: string
+  items: LineItemInput[]
+}
+
+export interface Receipt {
+  id: number
+  doc_no: string
+  is_tax_invoice: boolean
+  invoice_id: number | null
+  invoice_doc_no: string | null
+  issue_date: string
+  issuer: Issuer
+  payer: { name: string; address: string; tax_id: string; branch_code: string }
+  unit_name: string
+  property_name: string
+  items: LineItem[]
+  subtotal: number
+  vat_amount: number
+  total: number
+  wht_amount: number
+  net_received: number
+  amount_text: string
+  method: PayMethod | string
+  status: 'issued' | 'void'
+  void_reason: string | null
+  created_at: string
+}
+
+// ----- Tickets -----
+export type TicketScope = 'org' | 'platform'
+export type TicketPriority = 'low' | 'normal' | 'high' | 'urgent'
+export type TicketStatus = 'open' | 'in_progress' | 'waiting' | 'resolved' | 'closed'
+
+export interface Ticket {
+  id: number
+  scope: TicketScope
+  title: string
+  description: string
+  category: string
+  priority: TicketPriority
+  status: TicketStatus
+  property_id: number | null
+  property_name: string | null
+  unit_id: number | null
+  unit_name: string | null
+  tenant_id: number | null
+  tenant_name: string | null
+  org_name?: string | null
+  reporter_name: string | null
+  source: 'tenant' | 'staff' | 'org'
+  assignee_user_id: number | null
+  assignee_name: string | null
+  photos: string[]
+  message_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TicketMessage {
+  id: number
+  author_type: 'staff' | 'tenant' | 'platform'
+  author_name: string
+  body: string
+  internal: boolean
+  photos: string[]
+  created_at: string
+}
+
+export interface TicketDetail {
+  ticket: Ticket
+  messages: TicketMessage[]
+}
+
+export interface TicketPatch {
+  status?: TicketStatus
+  priority?: TicketPriority
+  assignee_user_id?: number | null
+}
+
+export interface Announcement {
+  id: number
+  property_id: number | null
+  property_name: string | null
+  title: string
+  body: string
+  pinned: boolean
+  created_at: string
+}
+
+export interface AnnouncementInput {
+  property_id: number | null
+  title: string
+  body: string
+  pinned: boolean
+}
+
+// ----- Move-out -----
+export interface Deduction {
+  label: string
+  amount: number
+}
+
+export interface MoveOut {
+  id: number
+  doc_no: string | null
+  booking_id: number
+  tenant_name: string
+  unit_name: string
+  property_name: string
+  move_out_date: string
+  deposit_amount: number
+  deductions: Deduction[]
+  deductions_total: number
+  outstanding_total: number
+  include_outstanding: boolean
+  refund_amount: number
+  status: 'draft' | 'settled'
+  refund_method: 'transfer' | 'cash' | null
+  settled_at: string | null
+  note: string
+  created_at: string
+}
+
+export interface MoveOutInput {
+  booking_id: number
+  move_out_date: string
+  deductions: Deduction[]
+  include_outstanding: boolean
+  note: string
+}
+
+export interface MoveOutDetail {
+  move_out: MoveOut
+  issuer: Issuer
+  tenant: { full_name: string; address: string; tax_id: string; branch_code: string; phone: string } | null
+}
+
+// ----- Reports -----
+export interface ReportSummary {
+  revenue: { month: string; amount: number }[]
+  billed: { month: string; amount: number }[]
+  occupancy: { month: string; rate: number }[]
+  aging: { current: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number }
+  top_debtors: {
+    tenant_name: string
+    unit_name: string
+    property_name: string
+    amount: number
+    oldest_due: string
+  }[]
+}
+
+// ----- Tenant portal -----
+export interface PortalHome {
+  tenant: { full_name: string; phone: string }
+  org: { name: string; phone: string }
+  property: { name: string; address: string } | null
+  unit: { name: string; floor: number } | null
+  booking: {
+    kind: BookingKind
+    start_date: string
+    end_date: string | null
+    price: number
+    deposit_amount: number
+  } | null
+  announcements: Announcement[]
+  invoices: {
+    id: number
+    doc_no: string
+    period: string
+    due_date: string
+    total: number
+    status: InvoiceStatus
+    paid_amount: number
+    overdue_days: number
+  }[]
+  receipts: { id: number; doc_no: string; issue_date: string; total: number; status: 'issued' | 'void' }[]
+  features: { portal: boolean }
 }
 
 export interface Dashboard {
@@ -264,6 +540,9 @@ export interface Dashboard {
   outstanding: number
   outstanding_count: number
   deposits_held: number
+  open_tickets: number
+  overdue_count: number
+  overdue_amount: number
   properties: { id: number; name: string; kind: PropertyKind; units: number; occupied: number }[]
   upcoming_checkins: {
     id: number
@@ -377,9 +656,13 @@ const get = <T>(path: string, query?: Query, org = true) => request<T>(path, { q
 const post = <T>(path: string, json: unknown = {}, org = true) => request<T>(path, { json, org })
 const put = <T>(path: string, json: unknown, org = true) =>
   request<T>(path, { method: 'PUT', json, org })
-const patch = <T>(path: string, json: unknown) => request<T>(path, { method: 'PATCH', json })
+const patch = <T>(path: string, json: unknown, org = true) =>
+  request<T>(path, { method: 'PATCH', json, org })
+const form = <T>(path: string, body: FormData, org = true) => request<T>(path, { body, org })
 const del = <T = unknown>(path: string, org = true) =>
   request<T>(path, { method: 'DELETE', org })
+
+const enc = encodeURIComponent
 
 export const api = {
   // auth
@@ -392,7 +675,7 @@ export const api = {
 
   // org
   org: () => get<OrgInfo>('/api/org'),
-  updateOrg: (name: string) => put<OrgInfo>('/api/org', { name }),
+  updateOrg: (b: OrgUpdate) => put<OrgInfo>('/api/org', b),
   members: () => get<Member[]>('/api/org/members'),
   addMember: (b: { email: string; name?: string; password?: string; role: Role }) =>
     post<Member>('/api/org/members', b),
@@ -415,6 +698,8 @@ export const api = {
   saveTenant: (t: TenantInput & { id?: number }) =>
     t.id ? put<Tenant>(`/api/tenants/${t.id}`, t) : post<Tenant>('/api/tenants', t),
   deleteTenant: (id: number) => del(`/api/tenants/${id}`),
+  regenPortalToken: (id: number) =>
+    post<{ portal_token: string }>(`/api/tenants/${id}/portal-token`),
 
   bookings: (f: { unit_id?: number; property_id?: number; status?: string } = {}) =>
     get<Booking[]>('/api/bookings', f),
@@ -431,9 +716,61 @@ export const api = {
     get<Invoice[]>('/api/invoices', f),
   generateInvoices: (property_id: number, period: string) =>
     post<{ created: number[]; skipped: string[] }>('/api/invoices/generate', { property_id, period }),
+  createInvoice: (b: ManualInvoiceInput) => post<Invoice>('/api/invoices', b),
   invoice: (id: number) => get<InvoiceDetail>(`/api/invoices/${id}`),
-  payInvoice: (id: number, method: 'cash' | 'promptpay') =>
-    post<Invoice>(`/api/invoices/${id}/pay`, { method }),
+  payInvoice: (id: number, b: PayInput) =>
+    post<{ invoice: Invoice; receipt: Receipt }>(`/api/invoices/${id}/pay`, b),
+  voidInvoice: (id: number, reason: string) => post<Invoice>(`/api/invoices/${id}/void`, { reason }),
+
+  receipts: (f: { property_id?: number | string; period?: string; status?: string } = {}) =>
+    get<Receipt[]>('/api/receipts', f),
+  receipt: (id: number) => get<{ receipt: Receipt }>(`/api/receipts/${id}`),
+  voidReceipt: (id: number, reason: string) => post<Receipt>(`/api/receipts/${id}/void`, { reason }),
+
+  tickets: (f: { status?: string; property_id?: number | string; category?: string } = {}) =>
+    get<Ticket[]>('/api/tickets', f),
+  createTicket: (fd: FormData) => form<Ticket>('/api/tickets', fd),
+  ticket: (id: number) => get<TicketDetail>(`/api/tickets/${id}`),
+  patchTicket: (id: number, b: TicketPatch) => patch<Ticket>(`/api/tickets/${id}`, b),
+  replyTicket: (id: number, fd: FormData) => form<unknown>(`/api/tickets/${id}/messages`, fd),
+
+  announcements: () => get<Announcement[]>('/api/announcements'),
+  createAnnouncement: (b: AnnouncementInput) => post<Announcement>('/api/announcements', b),
+  deleteAnnouncement: (id: number) => del(`/api/announcements/${id}`),
+
+  support: () => get<Ticket[]>('/api/support'),
+  createSupport: (fd: FormData) => form<Ticket>('/api/support', fd),
+  supportTicket: (id: number) => get<TicketDetail>(`/api/support/${id}`),
+  replySupport: (id: number, fd: FormData) => form<unknown>(`/api/support/${id}/messages`, fd),
+
+  moveOuts: () => get<MoveOut[]>('/api/move-outs'),
+  createMoveOut: (b: MoveOutInput) => post<MoveOut>('/api/move-outs', b),
+  updateMoveOut: (id: number, b: MoveOutInput) => put<MoveOut>(`/api/move-outs/${id}`, b),
+  moveOut: (id: number) => get<MoveOutDetail>(`/api/move-outs/${id}`),
+  settleMoveOut: (id: number, b: { refund_method: 'transfer' | 'cash'; refunded_at: string }) =>
+    post<MoveOut>(`/api/move-outs/${id}/settle`, b),
+
+  reportSummary: (f: { months?: number; property_id?: number | string } = {}) =>
+    get<ReportSummary>('/api/reports/summary', f),
+  /** ลิงก์ดาวน์โหลด CSV (ใช้ <a href> — แนบ org_id แทน header) */
+  reportExportUrl: (type: 'invoices' | 'receipts' | 'payments', from: string, to: string) =>
+    '/api/reports/export' + qs({ type, from, to, org_id: currentOrgId }),
+
+  // tenant portal (สาธารณะ ไม่ต้องล็อกอิน ไม่ส่ง X-Org-Id)
+  portal: {
+    home: (token: string) => get<PortalHome>(`/api/portal/${enc(token)}`, undefined, false),
+    invoice: (token: string, id: number) =>
+      get<InvoiceDetail>(`/api/portal/${enc(token)}/invoices/${id}`, undefined, false),
+    receipt: (token: string, id: number) =>
+      get<{ receipt: Receipt }>(`/api/portal/${enc(token)}/receipts/${id}`, undefined, false),
+    tickets: (token: string) => get<Ticket[]>(`/api/portal/${enc(token)}/tickets`, undefined, false),
+    createTicket: (token: string, fd: FormData) =>
+      form<Ticket>(`/api/portal/${enc(token)}/tickets`, fd, false),
+    ticket: (token: string, id: number) =>
+      get<TicketDetail>(`/api/portal/${enc(token)}/tickets/${id}`, undefined, false),
+    reply: (token: string, id: number, fd: FormData) =>
+      form<unknown>(`/api/portal/${enc(token)}/tickets/${id}/messages`, fd, false),
+  },
 
   // super admin (ไม่ต้องใช้ X-Org-Id)
   admin: {
@@ -451,5 +788,11 @@ export const api = {
     users: () => get<AdminUser[]>('/api/admin/users', undefined, false),
     updateUser: (id: number, b: { is_super_admin?: boolean; is_active?: boolean }) =>
       put<AdminUser>(`/api/admin/users/${id}`, b, false),
+    support: (f: { status?: string } = {}) => get<Ticket[]>('/api/admin/support', f, false),
+    supportTicket: (id: number) => get<TicketDetail>(`/api/admin/support/${id}`, undefined, false),
+    replySupport: (id: number, fd: FormData) =>
+      form<unknown>(`/api/admin/support/${id}/messages`, fd, false),
+    patchSupport: (id: number, b: { status?: TicketStatus; priority?: TicketPriority }) =>
+      patch<Ticket>(`/api/admin/support/${id}`, b, false),
   },
 }

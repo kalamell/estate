@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Crosshair, Loader2 } from 'lucide-react'
-import { api, type Property, type PropertyInput, type PropertyKind } from '@/lib/api'
+import { api, type LateFeeType, type Property, type PropertyInput, type PropertyKind } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { KINDS } from '@/lib/format'
 import { useSession } from '@/contexts/session'
@@ -20,12 +20,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Field } from '@/components/common'
 import { LeafletMap } from '@/components/leaflet-map'
 
-type Form = Omit<PropertyInput, 'lat' | 'lng' | 'electric_rate' | 'water_rate'> & {
+type Form = Omit<
+  PropertyInput,
+  'lat' | 'lng' | 'electric_rate' | 'water_rate' | 'late_fee_amount' | 'late_fee_grace_days'
+> & {
   id?: number
   lat: string
   lng: string
   electric_rate: string
   water_rate: string
+  late_fee_amount: string
+  late_fee_grace_days: string
+}
+
+const LATE_FEE_TYPES: Record<LateFeeType, string> = {
+  none: 'ไม่คิดค่าปรับ',
+  flat: 'เหมาจ่ายครั้งเดียว',
+  per_day: 'คิดรายวัน',
 }
 
 const EMPTY: Form = {
@@ -37,6 +48,9 @@ const EMPTY: Form = {
   electric_rate: '8',
   water_rate: '18',
   promptpay_id: '',
+  late_fee_type: 'none',
+  late_fee_amount: '0',
+  late_fee_grace_days: '0',
 }
 
 const toForm = (p: Property): Form => ({
@@ -49,6 +63,9 @@ const toForm = (p: Property): Form => ({
   electric_rate: String(p.electric_rate),
   water_rate: String(p.water_rate),
   promptpay_id: p.promptpay_id ?? '',
+  late_fee_type: p.late_fee_type ?? 'none',
+  late_fee_amount: String(p.late_fee_amount ?? 0),
+  late_fee_grace_days: String(p.late_fee_grace_days ?? 0),
 })
 
 function PropertyForm({
@@ -78,6 +95,9 @@ function PropertyForm({
         electric_rate: Number(form.electric_rate || 0),
         water_rate: Number(form.water_rate || 0),
         promptpay_id: form.promptpay_id?.trim() || null,
+        late_fee_type: form.late_fee_type,
+        late_fee_amount: form.late_fee_type === 'none' ? 0 : Number(form.late_fee_amount || 0),
+        late_fee_grace_days: Math.max(0, Math.round(Number(form.late_fee_grace_days || 0))),
       })
     },
     onSuccess: async () => {
@@ -178,6 +198,56 @@ function PropertyForm({
           <Input id="p-pp" inputMode="numeric" value={form.promptpay_id ?? ''} onChange={(e) => set('promptpay_id', e.target.value)} />
         </Field>
       </div>
+      <fieldset className="grid gap-3 rounded-md border p-4">
+        <legend className="px-1 text-sm font-medium">ค่าปรับชำระล่าช้า</legend>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="รูปแบบ" htmlFor="p-lf-type">
+            <Select value={form.late_fee_type} onValueChange={(v) => set('late_fee_type', v as LateFeeType)}>
+              <SelectTrigger id="p-lf-type" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(LATE_FEE_TYPES) as LateFeeType[]).map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {LATE_FEE_TYPES[k]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          {form.late_fee_type !== 'none' && (
+            <>
+              <Field label={form.late_fee_type === 'per_day' ? 'บาท / วัน' : 'จำนวนเงิน (บาท)'} htmlFor="p-lf-amt">
+                <Input
+                  id="p-lf-amt"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.late_fee_amount}
+                  onChange={(e) => set('late_fee_amount', e.target.value)}
+                />
+              </Field>
+              <Field label="ผ่อนผัน (วัน)" htmlFor="p-lf-grace">
+                <Input
+                  id="p-lf-grace"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={form.late_fee_grace_days}
+                  onChange={(e) => set('late_fee_grace_days', e.target.value)}
+                />
+              </Field>
+            </>
+          )}
+        </div>
+        {form.late_fee_type !== 'none' && (
+          <p className="text-xs text-muted-foreground">
+            เริ่มคิดค่าปรับหลังวันครบกำหนด {Number(form.late_fee_grace_days || 0)} วัน · ค่าปรับเป็นทางเลือกตอนรับชำระ
+            ไม่ถูกบวกในใบแจ้งหนี้อัตโนมัติ
+          </p>
+        )}
+      </fieldset>
+
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
           ยกเลิก

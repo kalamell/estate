@@ -73,7 +73,7 @@ export function RequireOrg({ children }: { children: ReactNode }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2">
-          <Button onClick={() => setOpen(true)} className="bg-brand text-white">
+          <Button onClick={() => setOpen(true)}>
             <Building2 /> สร้างองค์กร
           </Button>
           {user.is_super_admin && (

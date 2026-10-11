@@ -46,57 +46,56 @@ export const KINDS: Record<PropertyKind, string> = {
   short_stay: 'ห้องพักรายวัน / Airbnb',
 }
 
+/** โทนสีสถานะแบบเรียบ (ใช้กับ Badge: variant="outline" + ring-1) */
+export const TONE = {
+  green: 'border-0 ring-1 bg-success/10 text-success ring-success/25',
+  mustard: 'border-0 ring-1 bg-warning/15 text-warning-foreground ring-warning/35',
+  ink: 'border-0 ring-1 bg-info/10 text-info ring-info/25',
+  grey: 'border-0 ring-1 bg-muted text-muted-foreground ring-border',
+  red: 'border-0 ring-1 bg-destructive/10 text-destructive ring-destructive/25',
+  primary: 'border-0 ring-1 bg-primary/10 text-primary ring-primary/25',
+} as const
+export type Tone = keyof typeof TONE
+
 export const UNIT_STATUS: Record<
   UnitStatus,
-  { label: string; badge: string; tile: string; dot: string }
+  { label: string; badge: string; bar: string; dot: string; text: string }
 > = {
   vacant: {
     label: 'ว่าง',
-    badge:
-      'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
-    tile: 'from-emerald-400 to-emerald-500',
-    dot: 'bg-emerald-500',
+    badge: TONE.green,
+    bar: 'border-l-st-vacant',
+    dot: 'bg-st-vacant',
+    text: 'text-success',
   },
   reserved: {
     label: 'จองแล้ว',
-    badge:
-      'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
-    tile: 'from-amber-400 to-amber-500',
-    dot: 'bg-amber-500',
+    badge: TONE.mustard,
+    bar: 'border-l-st-reserved',
+    dot: 'bg-st-reserved',
+    text: 'text-warning-foreground',
   },
   occupied: {
     label: 'มีผู้เช่า',
-    badge:
-      'bg-indigo-100 text-indigo-700 ring-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/30',
-    tile: 'from-indigo-500 to-violet-500',
-    dot: 'bg-indigo-500',
+    badge: TONE.ink,
+    bar: 'border-l-st-occupied',
+    dot: 'bg-st-occupied',
+    text: 'text-info',
   },
   maintenance: {
     label: 'ปิดปรับปรุง',
-    badge:
-      'bg-slate-200 text-slate-600 ring-slate-300 dark:bg-slate-500/20 dark:text-slate-300 dark:ring-slate-500/30',
-    tile: 'from-slate-400 to-slate-500',
-    dot: 'bg-slate-400',
+    badge: TONE.grey,
+    bar: 'border-l-st-maintenance',
+    dot: 'bg-st-maintenance',
+    text: 'text-muted-foreground',
   },
 }
 
 export const BOOKING_STATUS: Record<BookingStatus, { label: string; badge: string }> = {
-  reserved: {
-    label: 'จองแล้ว',
-    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  },
-  active: {
-    label: 'กำลังเข้าพัก',
-    badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
-  },
-  completed: {
-    label: 'สิ้นสุดแล้ว',
-    badge: 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300',
-  },
-  cancelled: {
-    label: 'ยกเลิก',
-    badge: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-  },
+  reserved: { label: 'จองแล้ว', badge: TONE.mustard },
+  active: { label: 'กำลังเข้าพัก', badge: TONE.ink },
+  completed: { label: 'สิ้นสุดแล้ว', badge: TONE.grey },
+  cancelled: { label: 'ยกเลิก', badge: TONE.red },
 }
 
 export const DEPOSIT_STATUS: Record<DepositStatus, string> = {
@@ -132,30 +131,55 @@ export const ROLES: Record<Role, string> = {
 }
 
 export const ORG_STATUS: Record<OrgStatus, { label: string; badge: string; dot: string }> = {
-  trial: {
-    label: 'ทดลองใช้',
-    dot: 'bg-sky-500',
-    badge: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
-  },
-  active: {
-    label: 'ใช้งานอยู่',
-    dot: 'bg-emerald-500',
-    badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-  },
-  suspended: {
-    label: 'ถูกระงับ',
-    dot: 'bg-amber-500',
-    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  },
-  cancelled: {
-    label: 'ยกเลิกแล้ว',
-    dot: 'bg-rose-500',
-    badge: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-  },
+  trial: { label: 'ทดลองใช้', dot: 'bg-info', badge: TONE.ink },
+  active: { label: 'ใช้งานอยู่', dot: 'bg-success', badge: TONE.green },
+  suspended: { label: 'ถูกระงับ', dot: 'bg-warning', badge: TONE.mustard },
+  cancelled: { label: 'ยกเลิกแล้ว', dot: 'bg-destructive', badge: TONE.red },
 }
 
 /** อักษรแรกของชื่อ (ข้ามสระหน้า เ แ โ ใ ไ ของภาษาไทย) */
 export const initials = (name: string) => {
   const s = name.trim().replace(/^[เแโใไ]/, '')
   return s.slice(0, 1).toUpperCase() || '?'
+}
+
+/** จำนวนเงินทศนิยม 2 ตำแหน่ง (ใช้ในเอกสาร) */
+export const money = (n: number | null | undefined) =>
+  Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/** วันที่ + n วัน (YYYY-MM-DD) */
+export const addDays = (d: string, n: number) => {
+  const [y, m, day] = d.slice(0, 10).split('-').map(Number)
+  const dt = new Date(y, (m || 1) - 1, day || 1)
+  dt.setDate(dt.getDate() + n)
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`
+}
+
+export const PAY_METHODS: Record<string, string> = {
+  promptpay: 'พร้อมเพย์',
+  transfer: 'โอนเงินเข้าบัญชี',
+  cash: 'เงินสด',
+  deposit: 'หักจากเงินมัดจำ',
+}
+
+export const INVOICE_KINDS: Record<string, string> = {
+  monthly: 'รายเดือน',
+  manual: 'ออกเอง',
+  move_out: 'ย้ายออก',
+}
+
+/** "00000" → สำนักงานใหญ่, อื่นๆ → สาขาที่ xxxxx */
+export const branchLabel = (code: string | null | undefined) =>
+  !code ? '' : code === '00000' ? 'สำนักงานใหญ่' : `สาขาที่ ${code}`
+
+/** ดึงอัตรา VAT จากยอดภาษี/ฐานภาษี (ปัดเป็นจำนวนเต็มหรือทศนิยม 2 ตำแหน่ง) */
+export const vatRateOf = (
+  items: { amount: number; vatable: boolean }[],
+  vat: number,
+  fallback = 7,
+) => {
+  const base = items.filter((i) => i.vatable).reduce((s, i) => s + i.amount, 0)
+  if (!base || !vat) return fallback
+  const r = Math.round((vat / base) * 10000) / 100
+  return Number.isFinite(r) ? r : fallback
 }

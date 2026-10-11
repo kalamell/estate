@@ -1,6 +1,8 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { CalendarPlus, ShieldAlert } from 'lucide-react'
 import { useSession } from '@/contexts/session'
+import { api } from '@/lib/api'
 import { ORG_STATUS, thDateLong } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -14,6 +16,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -22,13 +25,22 @@ import {
 } from '@/components/ui/sidebar'
 import { Logo } from '@/components/common'
 import { BookingDialogProvider, useBookingDialog } from '@/components/booking-dialog'
-import { NAV, SETTINGS_NAV, titleFor, type NavItem } from '@/components/nav'
+import { NAV_GROUPS, SETTINGS_NAV, SUPPORT_NAV, titleFor, type NavItem } from '@/components/nav'
 import { OrgSwitcher } from '@/components/org-switcher'
 import { SidebarUserMenu } from '@/components/user-menu'
 
 function NavLinks({ items }: { items: NavItem[] }) {
   const { pathname } = useLocation()
   const { setOpenMobile } = useSidebar()
+  const { orgId } = useSession()
+  const needsCounts = items.some((n) => n.badge)
+  const dash = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: api.dashboard,
+    enabled: needsCounts && orgId != null,
+    staleTime: 60_000,
+    meta: { silent: true },
+  })
   return (
     <SidebarMenu>
       {items.map((n) => {
@@ -39,13 +51,24 @@ function NavLinks({ items }: { items: NavItem[] }) {
               asChild
               isActive={active}
               tooltip={n.label}
-              className="h-10 gap-3 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>svg]:size-[18px] data-[active=true]:[&>svg]:text-sidebar-primary"
+              className="relative h-9 gap-3 rounded-sm text-sidebar-foreground before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:bg-sidebar-primary before:opacity-0 hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[active=true]:before:opacity-100 [&>svg]:size-[17px] [&>svg]:text-sidebar-muted data-[active=true]:[&>svg]:text-sidebar-primary"
             >
               <NavLink to={n.to} end={n.to === '/'} onClick={() => setOpenMobile(false)}>
                 <n.icon />
                 <span>{n.label}</span>
               </NavLink>
             </SidebarMenuButton>
+            {n.badge && (dash.data?.[n.badge] ?? 0) > 0 && (
+              <SidebarMenuBadge
+                className={
+                  n.badge === 'overdue_count'
+                    ? 'rounded-sm bg-warning/20 text-warning'
+                    : 'rounded-sm bg-sidebar-accent text-sidebar-foreground'
+                }
+              >
+                {dash.data?.[n.badge]}
+              </SidebarMenuBadge>
+            )}
           </SidebarMenuItem>
         )
       })}
@@ -59,19 +82,21 @@ function AppSidebar() {
   return (
     <Sidebar collapsible="offcanvas" className="border-r-0">
       <SidebarHeader className="gap-3 p-3">
-        <Logo className="px-2 pt-2 pb-1 text-white" />
+        <Logo className="px-2 pt-2 pb-1 text-[#faf9f6]" />
         <OrgSwitcher />
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/50">เมนูหลัก</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <NavLinks items={NAV} />
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {NAV_GROUPS.map((g) => (
+          <SidebarGroup key={g.label} className="py-1">
+            <SidebarGroupLabel className="text-[11px] tracking-wide text-sidebar-muted">{g.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <NavLinks items={g.items} />
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
-            <NavLinks items={[SETTINGS_NAV]} />
+            <NavLinks items={[SUPPORT_NAV, SETTINGS_NAV]} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -87,10 +112,10 @@ function ReadOnlyBanner() {
   if (!readOnly) return null
   const status = orgInfo?.org.status
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-300/50 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 lg:px-8 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning-foreground lg:px-8">
       <ShieldAlert className="size-4 shrink-0" />
       <span className="font-medium">บัญชีถูกระงับ/หมดอายุ — อ่านได้อย่างเดียว</span>
-      <span className="text-amber-800/80 dark:text-amber-200/70">
+      <span className="opacity-80">
         {status && ORG_STATUS[status]?.label}
         {orgInfo?.org.ends_at && ` · สิ้นสุด ${thDateLong(orgInfo.org.ends_at)}`}
       </span>
@@ -106,12 +131,12 @@ function Header() {
   const { openBooking } = useBookingDialog()
   const { readOnly } = useSession()
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70 lg:px-8">
+    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4 lg:px-8">
       <SidebarTrigger className="-ml-1" aria-label="เมนู" />
       <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5" />
-      <h1 className="truncate text-lg font-semibold tracking-tight">{titleFor(pathname)}</h1>
+      <h1 className="truncate text-[17px] font-semibold tracking-tight">{titleFor(pathname)}</h1>
       <div className="ml-auto flex items-center gap-2">
-        <Button onClick={() => openBooking()} disabled={readOnly} className="bg-brand text-white shadow-md shadow-indigo-500/25 hover:opacity-95">
+        <Button onClick={() => openBooking()} disabled={readOnly}>
           <CalendarPlus />
           <span className="hidden sm:inline">จองห้อง</span>
           <span className="sm:hidden">จอง</span>

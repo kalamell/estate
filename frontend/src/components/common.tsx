@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Lock, Sparkles, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Lock, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { BOOKING_STATUS, UNIT_STATUS } from '@/lib/format'
-import type { BookingStatus, UnitStatus } from '@/lib/api'
+import { BOOKING_STATUS, TONE, UNIT_STATUS, type Tone } from '@/lib/format'
+import type { BookingStatus, Invoice, UnitStatus } from '@/lib/api'
 
 /** Label + control ที่ผูก id กัน */
 export function Field({
@@ -55,8 +55,8 @@ export function EmptyState({
         className,
       )}
     >
-      <div className="grid size-12 place-items-center rounded-2xl bg-secondary text-secondary-foreground">
-        <Icon className="size-6" />
+      <div className="grid size-11 place-items-center rounded-md border bg-muted text-muted-foreground">
+        <Icon className="size-5" />
       </div>
       <div className="space-y-1">
         <p className="font-medium">{title}</p>
@@ -82,26 +82,27 @@ export function StatCard({
   value: ReactNode
   sub?: ReactNode
   icon?: LucideIcon
-  tone?: 'default' | 'success' | 'danger' | 'brand'
+  tone?: 'default' | 'success' | 'danger' | 'warning' | 'brand'
   children?: ReactNode
   className?: string
 }) {
   const toneCls = {
     default: '',
-    success: 'text-emerald-600 dark:text-emerald-400',
-    danger: 'text-rose-600 dark:text-rose-400',
+    success: 'text-success',
+    danger: 'text-destructive',
+    warning: 'text-warning-foreground',
     brand: 'text-primary',
   }[tone]
   return (
     <Card className={cn('gap-0 py-4', compact ? 'px-3 sm:px-5' : 'px-5', className)}>
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
         {Icon && <Icon className="size-4" />}
         <span className="truncate">{label}</span>
       </div>
       <div
         className={cn(
-          'mt-1 font-bold tracking-tight tabular-nums',
-          compact ? 'text-base sm:text-2xl' : 'text-2xl sm:text-3xl',
+          'mt-1.5 font-semibold tracking-tight tabular-nums',
+          compact ? 'text-base sm:text-xl' : 'text-xl sm:text-2xl',
           toneCls,
         )}
       >
@@ -126,7 +127,7 @@ export function StatCardSkeleton() {
 export function UnitStatusBadge({ status, className }: { status: UnitStatus; className?: string }) {
   const s = UNIT_STATUS[status] ?? UNIT_STATUS.maintenance
   return (
-    <Badge variant="outline" className={cn('border-0 ring-1', s.badge, className)}>
+    <Badge variant="outline" className={cn(s.badge, className)}>
       {s.label}
     </Badge>
   )
@@ -135,42 +136,54 @@ export function UnitStatusBadge({ status, className }: { status: UnitStatus; cla
 export function BookingStatusBadge({ status }: { status: BookingStatus }) {
   const s = BOOKING_STATUS[status]
   return (
-    <Badge variant="outline" className={cn('border-0', s?.badge)}>
+    <Badge variant="outline" className={cn(s?.badge)}>
       {s?.label ?? status}
     </Badge>
   )
 }
 
-export function InvoiceStatusBadge({ status }: { status: string }) {
-  const paid = status === 'paid'
+export function ToneBadge({
+  tone,
+  children,
+  className,
+}: {
+  tone: Tone
+  children: ReactNode
+  className?: string
+}) {
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        'border-0',
-        paid
-          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-          : 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-      )}
-    >
-      {paid ? 'ชำระแล้ว' : 'รอชำระ'}
+    <Badge variant="outline" className={cn(TONE[tone], className)}>
+      {children}
     </Badge>
   )
+}
+
+/** สถานะใบแจ้งหนี้ — เกินกำหนดแสดงเป็นสีมัสตาร์ด */
+export function InvoiceStatusBadge({
+  status,
+  overdueDays = 0,
+}: {
+  status: Invoice['status'] | string
+  overdueDays?: number
+}) {
+  if (status === 'paid') return <ToneBadge tone="green">ชำระแล้ว</ToneBadge>
+  if (status === 'void') return <ToneBadge tone="grey">ยกเลิก</ToneBadge>
+  if (overdueDays > 0) return <ToneBadge tone="mustard">เกินกำหนด {overdueDays} วัน</ToneBadge>
+  return <ToneBadge tone="ink">รอชำระ</ToneBadge>
 }
 
 /** การ์ดชวนอัปเกรดเมื่อฟีเจอร์ไม่อยู่ในแพ็กเกจ */
 export function UpsellCard({ title, description }: { title: string; description: string }) {
   return (
-    <Card className="relative overflow-hidden border-primary/20">
-      <div className="pointer-events-none absolute -top-24 -right-24 size-64 rounded-full bg-brand opacity-15 blur-3xl" />
+    <Card>
       <EmptyState
         icon={Lock}
         title={title}
         description={description}
         action={
-          <Button asChild className="bg-brand text-white">
+          <Button asChild variant="outline">
             <Link to="/settings?tab=package">
-              <Sparkles /> ดูแพ็กเกจที่รองรับ
+              ดูแพ็กเกจที่รองรับ <ArrowRight />
             </Link>
           </Button>
         }
@@ -181,8 +194,8 @@ export function UpsellCard({ title, description }: { title: string; description:
 
 export function UpsellHint({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-      <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+    <div className="flex items-start gap-2 rounded-md border border-dashed bg-muted/50 p-3 text-xs text-muted-foreground">
+      <Lock className="mt-0.5 size-3.5 shrink-0" />
       <div>
         {children}{' '}
         <Link to="/settings?tab=package" className="font-medium text-primary hover:underline">
@@ -193,10 +206,25 @@ export function UpsellHint({ children }: { children: ReactNode }) {
   )
 }
 
+/** โลโก้ monogram สี่เหลี่ยมสีเขียว */
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'grid size-8 shrink-0 place-items-center rounded-md bg-primary text-[15px] leading-none font-bold text-primary-foreground',
+        className,
+      )}
+    >
+      E
+    </span>
+  )
+}
+
 export function Logo({ className, subtitle = true }: { className?: string; subtitle?: boolean }) {
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      <img src="/icon.svg" alt="" className="size-9 rounded-xl shadow-md shadow-indigo-500/30" />
+      <LogoMark />
       <div className="leading-tight">
         <div className="font-semibold tracking-tight">Estate</div>
         {subtitle && <div className="text-xs opacity-70">บริหารห้องเช่าครบวงจร</div>}
@@ -205,11 +233,29 @@ export function Logo({ className, subtitle = true }: { className?: string; subti
   )
 }
 
+/** หัวข้อส่วนของหน้า */
+export function SectionTitle({
+  children,
+  action,
+  className,
+}: {
+  children: ReactNode
+  action?: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('flex items-center gap-3', className)}>
+      <h2 className="text-base font-semibold">{children}</h2>
+      {action && <div className="ml-auto">{action}</div>}
+    </div>
+  )
+}
+
 export function FullScreenLoader() {
   return (
     <div className="grid min-h-svh place-items-center bg-background">
       <div className="flex flex-col items-center gap-4">
-        <img src="/icon.svg" alt="" className="size-12 animate-pulse rounded-2xl" />
+        <LogoMark className="size-10 animate-pulse text-lg" />
         <p className="text-sm text-muted-foreground">กำลังโหลด…</p>
       </div>
     </div>

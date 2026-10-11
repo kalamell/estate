@@ -98,7 +98,7 @@ export default function AdminUsers() {
                     <TableCell className="pl-4">
                       <div className="flex items-center gap-3">
                         <Avatar className="size-9">
-                          <AvatarFallback className={u.is_super_admin ? 'bg-gradient-to-br from-amber-400 to-rose-500 font-semibold text-white' : 'bg-secondary font-semibold text-secondary-foreground'}>
+                          <AvatarFallback className={u.is_super_admin ? 'bg-primary font-semibold text-primary-foreground' : 'bg-secondary font-semibold text-secondary-foreground'}>
                             {initials(u.name)}
                           </AvatarFallback>
                         </Avatar>
@@ -124,7 +124,7 @@ export default function AdminUsers() {
                                 disabled={self || update.isPending}
                                 onCheckedChange={(v) => void toggle(u, { [k]: v })}
                                 aria-label={`${k === 'is_super_admin' ? 'Super Admin' : 'ใช้งาน'} — ${u.name}`}
-                                className={k === 'is_super_admin' ? 'data-[state=checked]:bg-amber-500' : undefined}
+                                className={k === 'is_super_admin' ? 'data-[state=checked]:bg-warning' : undefined}
                               />
                             </span>
                           </TooltipTrigger>

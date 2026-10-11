@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
+  AlertTriangle,
   ArrowRight,
   BedDouble,
   CalendarClock,
@@ -8,6 +9,8 @@ import {
   PiggyBank,
   TrendingUp,
   Wallet,
+  Wrench,
+  type LucideIcon,
 } from 'lucide-react'
 import { api, type UnitStatus } from '@/lib/api'
 import { KINDS, UNIT_STATUS, baht, thDate } from '@/lib/format'
@@ -15,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState, StatCard, StatCardSkeleton } from '@/components/common'
+import { cn } from '@/lib/utils'
 import { LeafletMap } from '@/components/leaflet-map'
 
 export default function DashboardPage() {
@@ -35,7 +39,7 @@ export default function DashboardPage() {
               value={`${Math.round(d.occupancy_rate * 100)}%`}
               sub={`${d.units_by_status.occupied ?? 0} จาก ${d.total_units} ห้อง`}
             >
-              <Progress value={d.occupancy_rate * 100} className="mt-3 h-2 [&>div]:bg-brand" />
+              <Progress value={d.occupancy_rate * 100} className="mt-3 h-1.5" />
             </StatCard>
             <StatCard
               label="รายรับเดือนนี้"
@@ -61,6 +65,29 @@ export default function DashboardPage() {
         )}
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <AttentionRow
+          to="/invoices?status=overdue"
+          icon={AlertTriangle}
+          tone="warning"
+          title="บิลเกินกำหนด"
+          loading={!d}
+          count={d?.overdue_count ?? 0}
+          detail={d ? `${d.overdue_count} ใบ · ${baht(d.overdue_amount)}` : ''}
+          empty="ไม่มีบิลเกินกำหนด"
+        />
+        <AttentionRow
+          to="/tickets"
+          icon={Wrench}
+          tone="info"
+          title="งานแจ้งซ่อมค้าง"
+          loading={!d}
+          count={d?.open_tickets ?? 0}
+          detail={d ? `${d.open_tickets} รายการที่ยังไม่ปิด` : ''}
+          empty="ไม่มีงานค้าง"
+        />
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="gap-0 overflow-hidden py-0 lg:col-span-2">
           <div className="flex items-center px-5 pt-5 pb-3">
@@ -83,7 +110,7 @@ export default function DashboardPage() {
             <div className="space-y-3">
               {(Object.keys(UNIT_STATUS) as UnitStatus[]).map((k) => (
                 <div key={k} className="flex items-center gap-3">
-                  <span className={`size-3 rounded-full bg-gradient-to-br ${UNIT_STATUS[k].tile}`} />
+                  <span className={`size-2.5 rounded-sm ${UNIT_STATUS[k].dot}`} />
                   <span className="text-sm">{UNIT_STATUS[k].label}</span>
                   <span className="ml-auto font-semibold tabular-nums">
                     {d ? (d.units_by_status[k] ?? 0) : <Skeleton className="h-4 w-6" />}
@@ -106,9 +133,9 @@ export default function DashboardPage() {
                   {d.upcoming_checkins.map((c) => (
                     <div
                       key={c.id}
-                      className="flex items-center gap-3 rounded-lg bg-amber-50 p-2.5 dark:bg-amber-500/10"
+                      className="flex items-center gap-3 rounded-md border p-2.5"
                     >
-                      <div className="w-14 shrink-0 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
+                      <div className="w-14 shrink-0 border-r pr-2 text-center text-xs font-medium tabular-nums">
                         {thDate(c.start_date)}
                       </div>
                       <div className="min-w-0">
@@ -152,7 +179,7 @@ export default function DashboardPage() {
                         <span className="ml-2 font-medium text-foreground">{Math.round(pct)}%</span>
                       </span>
                     </div>
-                    <Progress value={pct} className="h-2.5" />
+                    <Progress value={pct} className="h-1.5" />
                   </div>
                 )
               })}
@@ -172,5 +199,50 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function AttentionRow({
+  to,
+  icon: Icon,
+  tone,
+  title,
+  count,
+  detail,
+  empty,
+  loading,
+}: {
+  to: string
+  icon: LucideIcon
+  tone: 'warning' | 'info'
+  title: string
+  count: number
+  detail: string
+  empty: string
+  loading: boolean
+}) {
+  const active = count > 0
+  return (
+    <Link
+      to={to}
+      className={cn(
+        'group flex items-center gap-4 rounded-lg border border-l-4 bg-card px-4 py-3.5 transition-colors hover:bg-muted/50',
+        active ? (tone === 'warning' ? 'border-l-warning' : 'border-l-info') : 'border-l-border',
+      )}
+    >
+      <Icon
+        className={cn(
+          'size-5 shrink-0',
+          active ? (tone === 'warning' ? 'text-warning' : 'text-info') : 'text-muted-foreground',
+        )}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{title}</div>
+        <div className="text-sm text-muted-foreground tabular-nums">
+          {loading ? <Skeleton className="mt-1 h-4 w-32" /> : active ? detail : empty}
+        </div>
+      </div>
+      <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+    </Link>
   )
 }

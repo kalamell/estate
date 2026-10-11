@@ -101,7 +101,7 @@ export default function UnitsPage() {
             <span
               key={k}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1',
+                'inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium',
                 UNIT_STATUS[k].badge,
               )}
             >
@@ -149,10 +149,10 @@ export default function UnitsPage() {
         </Card>
       ) : show3d ? (
         <Card className="relative overflow-hidden py-0">
-          <div className="h-[420px] bg-gradient-to-b from-sky-50 to-white sm:h-[520px] dark:from-slate-800 dark:to-slate-900">
+          <div className="h-[420px] bg-muted sm:h-[520px]">
             <BuildingView units={list} onPick={(u) => setOpenId(u.id)} />
           </div>
-          <div className="pointer-events-none absolute top-3 left-3 flex items-center gap-2 rounded-lg bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur">
+          <div className="pointer-events-none absolute top-3 left-3 flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground">
             <MousePointerClick className="size-4" />
             ลากเพื่อหมุน · เลื่อนเพื่อซูม · คลิกห้องเพื่อดูรายละเอียด
           </div>
@@ -168,13 +168,15 @@ export default function UnitsPage() {
                     key={u.id}
                     onClick={() => setOpenId(u.id)}
                     className={cn(
-                      'rounded-xl bg-gradient-to-br px-2 py-3 text-center text-white shadow-[0_6px_16px_-8px_rgb(15_23_42/0.45)] transition-all outline-none hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-8px_rgb(15_23_42/0.5)] focus-visible:ring-[3px] focus-visible:ring-ring/60',
-                      UNIT_STATUS[u.status].tile,
+                      'rounded-md border border-l-4 bg-card px-2.5 py-2.5 text-left transition-colors outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring',
+                      UNIT_STATUS[u.status].bar,
                     )}
                   >
-                    <div className="text-lg font-bold">{u.name}</div>
-                    <div className="text-[11px] opacity-90">{UNIT_STATUS[u.status].label}</div>
-                    <div className="mt-1 text-[11px] opacity-80">
+                    <div className="text-base font-semibold tabular-nums">{u.name}</div>
+                    <div className={cn('text-[11px] font-medium', UNIT_STATUS[u.status].text)}>
+                      {UNIT_STATUS[u.status].label}
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground tabular-nums">
                       {u.rent_monthly ? `${baht(u.rent_monthly)}/ด.` : `${baht(u.rate_daily)}/คืน`}
                     </div>
                   </button>

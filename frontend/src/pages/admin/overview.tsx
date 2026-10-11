@@ -28,7 +28,7 @@ export default function AdminOverview() {
           tone="success"
           value={baht(s.mrr)}
           sub="จากองค์กรที่ใช้งานอยู่"
-          className="col-span-2 border-emerald-500/20 bg-gradient-to-br from-emerald-50 to-transparent dark:from-emerald-500/10"
+          className="col-span-2"
         />
         <StatCard label="องค์กรทั้งหมด" icon={Building2} value={n(s.orgs)} />
         <StatCard label="ใช้งานอยู่" icon={Zap} tone="brand" value={n(s.active_orgs)} />

@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CalendarDays, LogIn, LogOut, Plus, XCircle } from 'lucide-react'
+import { CalendarDays, DoorOpen, LogIn, LogOut, Plus, XCircle } from 'lucide-react'
 import { api, type Booking, type BookingStatus, type DepositStatus } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { BOOKING_SOURCES, BOOKING_STATUS, DEPOSIT_STATUS, baht, thDate } from '@/lib/format'
@@ -28,6 +29,7 @@ export default function BookingsPage() {
   const { readOnly } = useSession()
   const { openBooking } = useBookingDialog()
   const confirm = useConfirm()
+  const navigate = useNavigate()
   const [status, setStatus] = useState<string>(ALL)
   const filter = status === ALL ? {} : { status }
   const { data: bookings, isLoading } = useQuery({
@@ -174,6 +176,17 @@ export default function BookingsPage() {
                         onClick={() => patch.mutate({ b, patch: { status: 'active' }, msg: 'เช็คอินแล้ว' })}
                       >
                         <LogIn /> เช็คอิน
+                      </Button>
+                    )}
+                    {b.status === 'active' && b.kind === 'lease' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-primary"
+                        disabled={readOnly}
+                        onClick={() => navigate(`/move-outs?booking=${b.id}`)}
+                      >
+                        <DoorOpen /> เริ่มย้ายออก
                       </Button>
                     )}
                     {b.status === 'active' && (

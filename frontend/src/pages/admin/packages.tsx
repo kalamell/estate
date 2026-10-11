@@ -34,7 +34,7 @@ const EMPTY: PackageInput = {
   max_properties: 1,
   max_units: 20,
   max_members: 2,
-  features: { ocr: false, view3d: false, short_stay: false, invoices: true },
+  features: { ocr: false, view3d: false, short_stay: false, invoices: true, portal: false, reports: false },
   is_active: true,
   is_default: false,
   sort_order: 0,
@@ -82,12 +82,12 @@ export default function AdminPackages() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {packages.map((p) => (
-            <Card key={p.id} className={cn('relative gap-4', !p.is_active && 'opacity-70', p.is_default && 'border-amber-400/60 ring-1 ring-amber-400/30')}>
+            <Card key={p.id} className={cn('relative gap-4', !p.is_active && 'opacity-70', p.is_default && 'border-primary/40')}>
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle className="text-lg">{p.name}</CardTitle>
                   {p.is_default && (
-                    <Badge className="border-0 bg-gradient-to-r from-amber-400 to-rose-500 text-white">ค่าเริ่มต้น</Badge>
+                    <Badge variant="outline" className="border-primary/40 text-primary">ค่าเริ่มต้น</Badge>
                   )}
                   {!p.is_active && <Badge variant="outline">ปิดใช้งาน</Badge>}
                 </div>
@@ -116,7 +116,7 @@ export default function AdminPackages() {
                   {(Object.keys(FEATURE_LABELS) as (keyof Features)[]).map((k) => (
                     <li key={k} className={cn('flex items-center gap-2', !p.features[k] && 'text-muted-foreground')}>
                       {p.features[k] ? (
-                        <Check className="size-4 text-emerald-500" />
+                        <Check className="size-4 text-success" />
                       ) : (
                         <X className="size-4 text-muted-foreground/60" />
                       )}

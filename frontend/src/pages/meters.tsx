@@ -212,10 +212,10 @@ export default function MetersPage() {
           <Tabs value={meterType} onValueChange={(v) => setMeterType(v as MeterType)}>
             <TabsList className="grid h-11 w-full grid-cols-2">
               <TabsTrigger value="electric">
-                <Zap className="text-amber-500" /> ไฟฟ้า
+                <Zap className="text-warning" /> ไฟฟ้า
               </TabsTrigger>
               <TabsTrigger value="water">
-                <Droplets className="text-sky-500" /> น้ำประปา
+                <Droplets className="text-info" /> น้ำประปา
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -237,7 +237,7 @@ export default function MetersPage() {
               aria-label="ถ่ายรูปหน้าปัดมิเตอร์"
             >
               {preview ? (
-                <img src={preview} alt="รูปมิเตอร์" className="absolute inset-0 size-full bg-slate-950/5 object-contain" />
+                <img src={preview} alt="รูปมิเตอร์" className="absolute inset-0 size-full bg-muted object-contain" />
               ) : (
                 <div className="text-center text-muted-foreground">
                   <div className="mx-auto mb-2 grid size-14 place-items-center rounded-2xl bg-primary/10 text-primary">
@@ -250,7 +250,7 @@ export default function MetersPage() {
                 </div>
               )}
               {ocrBusy && (
-                <div className="absolute inset-0 grid place-items-center bg-slate-950/65 text-sm text-white backdrop-blur-[1px]">
+                <div className="absolute inset-0 grid place-items-center bg-[#1c1b19]/70 text-sm text-white">
                   <div className="w-48 text-center">
                     <ScanLine className="mx-auto mb-2 size-8 animate-pulse" />
                     กำลังอ่านตัวเลข {ocrProgress}%
@@ -313,7 +313,7 @@ export default function MetersPage() {
               <p className="text-xs text-muted-foreground">
                 ครั้งก่อน: <b className="text-foreground">{num(lastMeter.value)}</b> ({thDate(lastMeter.reading_date)})
                 {usage !== null && (
-                  <span className={usage < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}>
+                  <span className={usage < 0 ? 'text-destructive' : 'text-success'}>
                     {' '}
                     → ใช้ไป {usage.toFixed(2)} หน่วย
                   </span>
@@ -338,7 +338,7 @@ export default function MetersPage() {
             </div>
           </div>
 
-          <Button size="lg" className="h-12 w-full bg-brand text-base text-white" disabled={!canSave} onClick={() => save.mutate()}>
+          <Button size="lg" className="h-12 w-full text-base" disabled={!canSave} onClick={() => save.mutate()}>
             {save.isPending ? <Loader2 className="animate-spin" /> : <Save />}
             บันทึก
           </Button>
@@ -377,9 +377,9 @@ export default function MetersPage() {
                 ) : (
                   <div className="grid size-14 shrink-0 place-items-center rounded-lg bg-muted">
                     {m.meter_type === 'electric' ? (
-                      <Zap className="size-5 text-amber-500" />
+                      <Zap className="size-5 text-warning" />
                     ) : (
-                      <Droplets className="size-5 text-sky-500" />
+                      <Droplets className="size-5 text-info" />
                     )}
                   </div>
                 )}

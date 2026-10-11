@@ -93,7 +93,7 @@ function OrgRow({ org, packages }: { org: AdminOrg; packages: Package[] }) {
   })
 
   return (
-    <TableRow className={cn(dirty && 'bg-amber-50/60 dark:bg-amber-500/5')}>
+    <TableRow className={cn(dirty && 'bg-warning/10')}>
       <TableCell className="pl-4">
         <div className="font-medium">{org.name}</div>
         <div className="text-xs text-muted-foreground">

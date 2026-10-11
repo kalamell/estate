@@ -65,7 +65,7 @@ export default function LoginPage() {
             className="h-11"
           />
         </Field>
-        <Button type="submit" size="lg" className="h-11 bg-brand text-white" disabled={login.isPending}>
+        <Button type="submit" size="lg" className="h-11" disabled={login.isPending}>
           {login.isPending ? <Loader2 className="animate-spin" /> : <LogIn />}
           เข้าสู่ระบบ
         </Button>

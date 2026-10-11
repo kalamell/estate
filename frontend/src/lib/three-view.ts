@@ -4,21 +4,21 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { Furniture, Unit, UnitStatus } from './api'
 
 export const STATUS_COLORS: Record<UnitStatus, number> = {
-  vacant: 0x10b981,
-  reserved: 0xf59e0b,
-  occupied: 0x6366f1,
-  maintenance: 0x94a3b8,
+  vacant: 0x2f7d4f,
+  reserved: 0xc9962b,
+  occupied: 0x2c4a6b,
+  maintenance: 0x8c877d,
 }
 
 const FURNITURE_COLORS: Record<string, string> = {
-  bed: '#c7d2fe',
-  desk: '#d6b38a',
-  wardrobe: '#a78b6d',
-  sofa: '#fda4af',
-  fridge: '#e5e7eb',
-  tv: '#1f2937',
-  bathroom: '#e2e8f0',
-  kitchen: '#fde68a',
+  bed: '#d9d5cc',
+  desk: '#b89b74',
+  wardrobe: '#8f7558',
+  sofa: '#9fb5a6',
+  fridge: '#e6e2da',
+  tv: '#1c1b19',
+  bathroom: '#e6e2da',
+  kitchen: '#c9b48a',
 }
 
 export interface RoomSpec {
@@ -79,7 +79,7 @@ function createStage(container: HTMLElement): BaseStage {
   controls.enableDamping = true
   controls.maxPolarAngle = Math.PI / 2.05
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xcbd5e1, 1.1))
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xe6e2da, 1.1))
   const sun = new THREE.DirectionalLight(0xffffff, 1.4)
   sun.position.set(8, 14, 10)
   sun.castShadow = true
@@ -140,7 +140,7 @@ function label(text: string) {
   ctx.font = '600 64px "IBM Plex Sans Thai", system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.shadowColor = 'rgba(15,23,42,0.45)'
+  ctx.shadowColor = 'rgba(28,27,25,0.45)'
   ctx.shadowBlur = 8
   ctx.fillText(text, 128, 64)
   const tex = new THREE.CanvasTexture(c)
@@ -172,7 +172,7 @@ export function renderRoom(container: HTMLElement, initial: RoomSpec): RoomStage
     floor.position.y = -0.025
     group.add(floor)
 
-    const wallColor = 0xe2e8f0
+    const wallColor = 0xe6e2da
     const wallOpts = { transparent: true, opacity: 0.35 }
     const wt = 0.08
     const back = box(W, H, wt, wallColor, wallOpts)
@@ -183,12 +183,12 @@ export function renderRoom(container: HTMLElement, initial: RoomSpec): RoomStage
     right.position.set(W / 2, H / 2, 0)
     group.add(back, left, right)
 
-    const ring = box(W + 0.3, 0.02, L + 0.3, STATUS_COLORS[room.status] ?? 0x94a3b8)
+    const ring = box(W + 0.3, 0.02, L + 0.3, STATUS_COLORS[room.status] ?? 0x8c877d)
     ring.position.y = -0.06
     group.add(ring)
 
     for (const f of room.layout || []) {
-      const color = f.color || FURNITURE_COLORS[f.kind] || '#cbd5e1'
+      const color = f.color || FURNITURE_COLORS[f.kind] || '#d9d5cc'
       const isBath = f.kind === 'bathroom'
       const m = box(f.w, f.h, f.d, color, isBath ? { transparent: true, opacity: 0.55 } : {})
       m.position.set(f.x, f.h / 2, f.z)
@@ -196,7 +196,7 @@ export function renderRoom(container: HTMLElement, initial: RoomSpec): RoomStage
     }
 
     const size = Math.ceil(Math.max(W, L)) + 4
-    const grid = new THREE.GridHelper(size, size, 0xcbd5e1, 0xe2e8f0)
+    const grid = new THREE.GridHelper(size, size, 0xd9d5cc, 0xe6e2da)
     grid.position.y = -0.07
     group.add(grid)
     scene.add(group)
@@ -244,12 +244,12 @@ export function renderBuilding(
 
     floorNums.forEach((fl, fi) => {
       const row = floors[fl]
-      const slab = box(maxPerFloor * cellW + 0.4, 0.12, cellD + 0.6, 0xe2e8f0)
+      const slab = box(maxPerFloor * cellW + 0.4, 0.12, cellD + 0.6, 0xe6e2da)
       slab.position.set(0, fi * floorH - 0.06, 0)
       group!.add(slab)
       row.forEach((u, i) => {
         const x = (i - (row.length - 1) / 2) * cellW
-        const m = box(cellW - 0.25, floorH - 0.3, cellD, STATUS_COLORS[u.status] ?? 0x94a3b8, {
+        const m = box(cellW - 0.25, floorH - 0.3, cellD, STATUS_COLORS[u.status] ?? 0x8c877d, {
           transparent: true,
           opacity: 0.88,
         })
@@ -265,7 +265,7 @@ export function renderBuilding(
 
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(Math.max(maxPerFloor * cellW, 8), 48),
-      new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 1, transparent: true, opacity: 0.35 }),
+      new THREE.MeshStandardMaterial({ color: 0xd9d5cc, roughness: 1, transparent: true, opacity: 0.35 }),
     )
     ground.rotation.x = -Math.PI / 2
     ground.position.y = -0.13

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { IdCard, Mail, MoreHorizontal, Pencil, Phone, Plus, Search, Trash2, Users } from 'lucide-react'
+import { Building, IdCard, Link2, Mail, MoreHorizontal, Pencil, Phone, Plus, Search, Trash2, Users } from 'lucide-react'
 import { api, type Tenant } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { initials } from '@/lib/format'
@@ -20,9 +20,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/common'
 import { useConfirm } from '@/components/confirm'
 import { TenantDialog } from '@/components/tenant-dialog'
+import { PortalLinkDialog } from '@/components/portal-link-dialog'
 
 export default function TenantsPage() {
-  const { readOnly } = useSession()
+  const { readOnly, features } = useSession()
+  const [portalFor, setPortalFor] = useState<Tenant | null>(null)
   const confirm = useConfirm()
   const { data: tenants, isLoading } = useQuery({ queryKey: ['tenants'], queryFn: api.tenants })
   const [editing, setEditing] = useState<Tenant | null>(null)
@@ -85,8 +87,8 @@ export default function TenantsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((t) => (
             <Card key={t.id} className="flex-row items-start gap-4 p-4">
-              <Avatar className="size-12">
-                <AvatarFallback className="bg-secondary text-lg font-semibold text-secondary-foreground">
+              <Avatar className="size-11 rounded-md">
+                <AvatarFallback className="rounded-md bg-muted text-lg font-semibold text-muted-foreground">
                   {initials(t.full_name)}
                 </AvatarFallback>
               </Avatar>
@@ -113,6 +115,22 @@ export default function TenantsPage() {
                     <IdCard className="size-3.5" />
                     {t.id_card}
                   </div>
+                )}
+                {t.tax_id && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Building className="size-3.5" />
+                    เลขผู้เสียภาษี {t.tax_id}
+                  </div>
+                )}
+                {features.portal && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-7 text-xs"
+                    onClick={() => setPortalFor(t)}
+                  >
+                    <Link2 /> ลิงก์พอร์ทัลผู้เช่า
+                  </Button>
                 )}
               </div>
               <DropdownMenu>
@@ -149,6 +167,7 @@ export default function TenantsPage() {
       )}
 
       <TenantDialog open={open} onOpenChange={setOpen} tenant={editing} />
+      <PortalLinkDialog tenant={portalFor} onClose={() => setPortalFor(null)} />
     </div>
   )
 }

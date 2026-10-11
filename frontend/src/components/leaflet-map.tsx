@@ -7,20 +7,29 @@ import { cn } from '@/lib/utils'
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
+const svg = (paths: string) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`
+// lucide: house / bed / circle
+const HOUSE = svg(
+  '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+)
+const BED = svg('<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>')
+const DOT = svg('<circle cx="12" cy="12" r="4" fill="currentColor"/>')
+
 const pinIcon = (shortStay: boolean, extra = '') =>
   L.divIcon({
     className: '',
-    html: `<div class="estate-pin ${shortStay ? 'short-stay' : ''} ${extra}"><span>${shortStay ? '★' : '⌂'}</span></div>`,
-    iconSize: [34, 34],
-    iconAnchor: [17, 34],
-    popupAnchor: [0, -30],
+    html: `<div class="estate-pin ${shortStay ? 'short-stay' : ''} ${extra}">${shortStay ? BED : HOUSE}</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    popupAnchor: [0, -28],
   })
 
 const pickIcon = L.divIcon({
   className: '',
-  html: '<div class="estate-pin" style="background:#e11d48"><span>●</span></div>',
-  iconSize: [34, 34],
-  iconAnchor: [17, 34],
+  html: `<div class="estate-pin pick">${DOT}</div>`,
+  iconSize: [30, 30],
+  iconAnchor: [15, 30],
 })
 
 const TH_CENTER: L.LatLngTuple = [13.75, 100.5]

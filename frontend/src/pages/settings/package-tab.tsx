@@ -1,7 +1,7 @@
 import { Building, Check, DoorOpen, Users, X, type LucideIcon } from 'lucide-react'
 import { FEATURE_LABELS } from '@/lib/features'
 import type { Features } from '@/lib/api'
-import { ORG_STATUS, baht, thDateLong, today } from '@/lib/format'
+import { ORG_STATUS, TONE, baht, thDateLong, today } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/contexts/session'
 import { Badge } from '@/components/ui/badge'
@@ -24,7 +24,7 @@ function Usage({ icon: Icon, label, used, max }: { icon: LucideIcon; label: stri
       </div>
       <Progress
         value={pct}
-        className={cn('h-2', full ? '[&>div]:bg-destructive' : pct >= 80 ? '[&>div]:bg-amber-500' : '[&>div]:bg-brand')}
+        className={cn('h-2', full ? '[&>div]:bg-destructive' : pct >= 80 ? '[&>div]:bg-warning' : '[&>div]:bg-primary')}
         aria-label={label}
       />
     </div>
@@ -46,15 +46,14 @@ export function PackageTab() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <Card className="relative overflow-hidden">
-        <div className="pointer-events-none absolute -top-20 -right-20 size-56 rounded-full bg-brand opacity-15 blur-3xl" />
+      <Card>
         <CardHeader>
           <CardDescription>แพ็กเกจปัจจุบัน</CardDescription>
           <CardTitle className="flex flex-wrap items-center gap-2 text-2xl">
             {pkg.name}
-            <Badge variant="outline" className={`border-0 text-xs ${st?.badge}`}>{st?.label ?? org.status}</Badge>
+            <Badge variant="outline" className={`text-xs ${st?.badge}`}>{st?.label ?? org.status}</Badge>
             {expired && (
-              <Badge variant="outline" className="border-0 bg-rose-100 text-xs text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
+              <Badge variant="outline" className={`text-xs ${TONE.red}`}>
                 หมดอายุ
               </Badge>
             )}
@@ -82,7 +81,7 @@ export function PackageTab() {
                     <span
                       className={cn(
                         'grid size-5 place-items-center rounded-full',
-                        on ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400' : 'bg-muted text-muted-foreground',
+                        on ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground',
                       )}
                     >
                       {on ? <Check className="size-3.5" /> : <X className="size-3.5" />}

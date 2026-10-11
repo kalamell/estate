@@ -11,7 +11,7 @@ import {
   Pencil,
   Plus,
   QrCode,
-  Star,
+  BedDouble,
   Trash2,
   Zap,
 } from 'lucide-react'
@@ -116,15 +116,15 @@ export default function PropertiesPage() {
           {properties.map((p) => {
             const short = p.kind === 'short_stay'
             return (
-              <Card key={p.id} className="group gap-0 p-5 transition-shadow hover:shadow-md">
+              <Card key={p.id} className="group gap-0 p-5 transition-colors hover:border-foreground/20">
                 <div className="flex items-start gap-3">
                   <div
                     className={cn(
-                      'grid size-11 shrink-0 place-items-center rounded-xl text-white shadow-sm',
-                      short ? 'bg-gradient-to-br from-rose-400 to-orange-400' : 'bg-brand',
+                      'grid size-10 shrink-0 place-items-center rounded-md border',
+                      short ? 'bg-warning/10 text-warning-foreground' : 'bg-primary/10 text-primary',
                     )}
                   >
-                    {short ? <Star className="size-5" /> : <Building className="size-5" />}
+                    {short ? <BedDouble className="size-5" /> : <Building className="size-5" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-semibold">{p.name}</div>
@@ -154,10 +154,10 @@ export default function PropertiesPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Badge variant="secondary" className="font-normal">
-                    <Zap className="text-amber-500" /> {p.electric_rate} ฿/หน่วย
+                    <Zap className="text-warning" /> {p.electric_rate} ฿/หน่วย
                   </Badge>
                   <Badge variant="secondary" className="font-normal">
-                    <Droplets className="text-sky-500" /> {p.water_rate} ฿/หน่วย
+                    <Droplets className="text-info" /> {p.water_rate} ฿/หน่วย
                   </Badge>
                   {p.promptpay_id && (
                     <Badge variant="secondary" className="font-normal">
