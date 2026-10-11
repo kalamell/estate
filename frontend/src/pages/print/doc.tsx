@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Loader2, Printer } from 'lucide-react'
 import type { Issuer, LineItem } from '@/lib/api'
 import { branchLabel, money, num } from '@/lib/format'
+import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -31,6 +32,7 @@ export function PrintShell({
   children?: ReactNode
 }) {
   const [params] = useSearchParams()
+  const { t } = useI18n()
   const printed = useRef(false)
   const auto = params.get('autoprint') === '1'
 
@@ -59,7 +61,7 @@ export function PrintShell({
           className="text-[#1c1b19] hover:bg-[#f2f0eb]"
           onClick={() => (window.history.length > 1 ? window.history.back() : window.close())}
         >
-          <ArrowLeft /> กลับ
+          <ArrowLeft /> {t('กลับ', 'Back')}
         </Button>
         <span className="truncate text-sm text-[#6b675f]">{title}</span>
         <Button
@@ -68,7 +70,7 @@ export function PrintShell({
           onClick={() => window.print()}
           disabled={loading || !!error}
         >
-          <Printer /> พิมพ์ / บันทึก PDF
+          <Printer /> {t('พิมพ์ / บันทึก PDF', 'Print / Save PDF')}
         </Button>
       </div>
       {loading ? (
@@ -115,25 +117,29 @@ export function DocHeader({
   issuer,
   fallbackName,
   title,
+  subtitle,
   copyLabel,
   meta,
 }: {
   issuer: Partial<Issuer> | null | undefined
   fallbackName?: string
   title: string
+  /** ชื่อเอกสารภาษาอังกฤษใต้ชื่อภาษาไทย */
+  subtitle?: string
   copyLabel?: string
   meta: [string, ReactNode][]
 }) {
-  const branch = branchLabel(issuer?.branch_code)
+  const { t, en } = useI18n()
+  const branch = branchLabelOf(issuer?.branch_code, en)
   return (
     <header className="grid grid-cols-[1fr_auto] gap-6 border-b-2 border-black pb-4">
       <div className="min-w-0">
         <div className="text-[17px] leading-snug font-semibold">{issuer?.legal_name || fallbackName || '—'}</div>
         {issuer?.address && <div className="whitespace-pre-line">{issuer.address}</div>}
-        {issuer?.phone && <div>โทร {issuer.phone}</div>}
+        {issuer?.phone && <div>{t('โทร', 'Tel.')} {issuer.phone}</div>}
         {issuer?.tax_id && (
           <div>
-            เลขประจำตัวผู้เสียภาษี <span className="tabular-nums">{issuer.tax_id}</span>
+            {t('เลขประจำตัวผู้เสียภาษี', 'Tax ID')} <span className="tabular-nums">{issuer.tax_id}</span>
             {branch && <> · {branch}</>}
           </div>
         )}
@@ -143,6 +149,7 @@ export function DocHeader({
           <div className="mb-1 inline-block border border-black px-2 py-0.5 text-[11px] font-semibold">{copyLabel}</div>
         )}
         <div className="text-[19px] leading-tight font-semibold">{title}</div>
+        {subtitle && <div className="text-[13px] font-medium text-black/70">{subtitle}</div>}
         <table className="mt-2 ml-auto text-left">
           <tbody>
             {meta.map(([k, v]) => (
@@ -175,17 +182,18 @@ export function PartyBlock({
   party: PartyInfo | null
   details: [string, ReactNode][]
 }) {
-  const branch = branchLabel(party?.branch_code)
+  const { t, en } = useI18n()
+  const branch = branchLabelOf(party?.branch_code, en)
   return (
     <div className="mt-4 grid grid-cols-[1.4fr_1fr] border border-black/70">
       <div className="border-r border-black/70 p-3">
         <div className="text-[11px] text-black/60">{label}</div>
         <div className="font-semibold">{party?.name || '—'}</div>
         {party?.address && <div className="whitespace-pre-line">{party.address}</div>}
-        {party?.phone && <div>โทร {party.phone}</div>}
+        {party?.phone && <div>{t('โทร', 'Tel.')} {party.phone}</div>}
         {party?.tax_id && (
           <div>
-            เลขประจำตัวผู้เสียภาษี <span className="tabular-nums">{party.tax_id}</span>
+            {t('เลขประจำตัวผู้เสียภาษี', 'Tax ID')} <span className="tabular-nums">{party.tax_id}</span>
             {branch && <> · {branch}</>}
           </div>
         )}
@@ -205,15 +213,16 @@ export function PartyBlock({
 }
 
 export function ItemsTable({ items }: { items: LineItem[] }) {
+  const { t } = useI18n()
   return (
     <table className="mt-4 w-full border-collapse text-left">
       <thead>
         <tr className="border-y border-black text-[12px]">
-          <th className="w-12 py-1.5 text-center font-semibold">ลำดับ</th>
-          <th className="py-1.5 font-semibold">รายการ</th>
-          <th className="w-20 py-1.5 text-right font-semibold">จำนวน</th>
-          <th className="w-28 py-1.5 text-right font-semibold">ราคาต่อหน่วย</th>
-          <th className="w-28 py-1.5 pr-1 text-right font-semibold">จำนวนเงิน</th>
+          <th className="w-12 py-1.5 text-center font-semibold">{t('ลำดับ', 'No.')}</th>
+          <th className="py-1.5 font-semibold">{t('รายการ', 'Description')}</th>
+          <th className="w-20 py-1.5 text-right font-semibold">{t('จำนวน', 'Qty')}</th>
+          <th className="w-28 py-1.5 text-right font-semibold">{t('ราคาต่อหน่วย', 'Unit price')}</th>
+          <th className="w-28 py-1.5 pr-1 text-right font-semibold">{t('จำนวนเงิน', 'Amount')}</th>
         </tr>
       </thead>
       <tbody>
@@ -248,10 +257,11 @@ export function Totals({
   amountText: string
   rows: { label: string; value: number; strong?: boolean; negative?: boolean }[]
 }) {
+  const { t } = useI18n()
   return (
     <div className="print-avoid mt-3 grid grid-cols-[1fr_auto] items-start gap-6">
       <div className="border border-black/70 bg-black/[0.03] px-3 py-2">
-        <div className="text-[11px] text-black/60">จำนวนเงิน (ตัวอักษร)</div>
+        <div className="text-[11px] text-black/60">{t('จำนวนเงิน (ตัวอักษร)', 'Amount in words')}</div>
         <div className="font-semibold">({amountText})</div>
       </div>
       <table className="min-w-64">
@@ -272,13 +282,14 @@ export function Totals({
 }
 
 export function Signatures({ labels }: { labels: string[] }) {
+  const { t } = useI18n()
   return (
     <div className="print-avoid mt-14 grid grid-cols-2 gap-16 px-6 text-center">
       {labels.map((l) => (
         <div key={l}>
           <div className="border-b border-dotted border-black pb-8" />
           <div className="mt-1.5">{l}</div>
-          <div className="mt-3 text-black/70">วันที่ ......../......../............</div>
+          <div className="mt-3 text-black/70">{t('วันที่', 'Date')} ......../......../............</div>
         </div>
       ))}
     </div>
@@ -286,10 +297,16 @@ export function Signatures({ labels }: { labels: string[] }) {
 }
 
 export function VoidNote({ reason }: { reason?: string | null }) {
+  const { t } = useI18n()
   return (
     <div className="mt-4 border-2 border-black px-3 py-2 font-semibold">
-      เอกสารนี้ถูกยกเลิก{reason ? ` — เหตุผล: ${reason}` : ''}
+      {t('เอกสารนี้ถูกยกเลิก', 'This document has been cancelled')}
+      {reason ? ` — ${t('เหตุผล', 'Reason')}: ${reason}` : ''}
     </div>
   )
 }
 
+
+/** "00000" → สำนักงานใหญ่ / Head office */
+const branchLabelOf = (code: string | null | undefined, en: boolean) =>
+  !en ? branchLabel(code) : !code ? '' : code === '00000' ? 'Head office' : `Branch ${code}`

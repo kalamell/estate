@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ChevronDown, Loader2, PlaneLanding } from 'lucide-react'
 import { api, type Gender, type Tenant, type TenantInput } from '@/lib/api'
+import type { Lang } from '@/lib/i18n'
 import { GENDERS, VISA_TYPES, isForeign } from '@/lib/countries'
 import { invalidate } from '@/lib/query'
 import { Button } from '@/components/ui/button'
@@ -85,6 +86,9 @@ function TenantForm({
   const [foreign, setForeign] = useState(wasForeign)
   const [fx, setFx] = useState<Foreign>(() => foreignOf(tenant))
   const setF = <K extends keyof Foreign>(k: K, v: Foreign[K]) => setFx((f) => ({ ...f, [k]: v }))
+  // ภาษาที่ใช้ติดต่อ — ผู้เช่าใหม่ชาวต่างชาติเริ่มที่ภาษาอังกฤษ (จนกว่าจะเลือกเอง)
+  const [langPick, setLangPick] = useState<Lang | null>(tenant?.lang ?? null)
+  const lang: Lang = langPick ?? (foreign ? 'en' : 'th')
   // PDPA: ถามความยินยอมเฉพาะเมื่อยังไม่มี
   const askConsent = !tenant?.consent_at
   const [consent, setConsent] = useState(false)
@@ -100,6 +104,7 @@ function TenantForm({
       const body: TenantInput & { id?: number } = { ...rest, tax_id: taxDigits }
       if (idCardChanged) body.id_card = id_card
       if (askConsent) body.consent_obtained = consent
+      body.lang = lang
       // ข้อมูลคนต่างชาติ: ส่งทั้งชุดเมื่อเป็นชาวต่างชาติ ('' = ล้างวันที่), ปิดสวิตช์ = กลับเป็นไทย
       if (foreign) Object.assign(body, { ...fx, visa_type: fx.visa_type.trim() })
       else if (wasForeign) body.nationality = ''
@@ -164,6 +169,21 @@ function TenantForm({
             if (idCardMasked && !idCardChanged) e.currentTarget.select()
           }}
         />
+      </Field>
+      <Field
+        label="ภาษาที่ใช้ติดต่อ"
+        htmlFor="t-lang"
+        hint="ข้อความ LINE พอร์ทัลผู้เช่า และเอกสารที่ผู้เช่าเปิดดูจะใช้ภาษานี้ — ผู้เช่าเปลี่ยนเองได้ในพอร์ทัล"
+      >
+        <Select value={lang} onValueChange={(v) => setLangPick(v as Lang)}>
+          <SelectTrigger id="t-lang" className="w-full sm:w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="th">ไทย</SelectItem>
+            <SelectItem value="en">English</SelectItem>
+          </SelectContent>
+        </Select>
       </Field>
       <div className="rounded-md border">
         <label className="flex items-center gap-3 px-3 py-2.5">

@@ -20,7 +20,8 @@ import {
   X,
 } from 'lucide-react'
 import { ApiError, api, type Property, type PublicQuote, type StayBusy, type StayInfo } from '@/lib/api'
-import { addMonths, baht, diffDays, thDayShort, today } from '@/lib/format'
+import { addMonths, baht, diffDays, today } from '@/lib/format'
+import { useI18n, useLocalLang, type Lang } from '@/lib/i18n'
 import { readLS, stayRequestKey, writeLS } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -40,19 +41,32 @@ import { Field, ToneBadge } from '@/components/common'
 import { LeafletMap } from '@/components/leaflet-map'
 import { RangeCalendar, type DateRange } from '@/components/range-calendar'
 import { useForcedColorTheme } from '@/components/theme-provider'
+import { LangProvider } from '@/components/lang'
 import { StayError, StayFooter, StayHeader, StaySkeleton } from './parts'
 
 const silent = { meta: { silent: true }, retry: false } as const
 
 export default function StayPage() {
   const { slug = '' } = useParams()
+  const [lang, setLang] = useLocalLang()
   const info = useQuery({ queryKey: ['stay', slug], queryFn: () => api.stay.info(slug), ...silent })
   useForcedColorTheme(info.data ? (info.data.org.theme ?? 'ink') : undefined)
 
-  if (info.isLoading) return <StaySkeleton wide />
-  if (info.error || !info.data)
-    return <StayError error={info.error} retry={() => info.refetch()} notFoundText="ไม่พบหน้าจองนี้" />
-  return <Booking slug={slug} d={info.data} />
+  return (
+    <LangProvider lang={lang}>
+      {info.isLoading ? (
+        <StaySkeleton wide />
+      ) : info.error || !info.data ? (
+        <StayError
+          error={info.error}
+          retry={() => info.refetch()}
+          notFoundText={lang === 'en' ? 'Booking page not found' : 'ไม่พบหน้าจองนี้'}
+        />
+      ) : (
+        <Booking slug={slug} d={info.data} lang={lang} setLang={setLang} />
+      )}
+    </LangProvider>
+  )
 }
 
 interface Guest {
@@ -63,12 +77,13 @@ interface Guest {
   note: string
 }
 
-function Booking({ slug, d }: { slug: string; d: StayInfo }) {
+function Booking({ slug, d, lang, setLang }: { slug: string; d: StayInfo; lang: Lang; setLang: (l: Lang) => void }) {
+  const { t, dayShort } = useI18n()
   const navigate = useNavigate()
-  const t = today()
+  const now = today()
   const p = d.property
   const minNights = Math.max(1, p.min_nights || 1)
-  const [month, setMonth] = useState(t.slice(0, 7))
+  const [month, setMonth] = useState(now.slice(0, 7))
   const [range, setRange] = useState<DateRange>({})
   const [unitId, setUnitId] = useState<number | null>(d.units.length === 1 ? d.units[0].id : null)
   const [guest, setGuest] = useState<Guest>({ guest_name: '', phone: '', email: '', guests: '1', note: '' })
@@ -79,7 +94,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
   const prevToken = readLS(stayRequestKey(slug))
 
   // ช่วงที่ต้องรู้ความว่าง = เดือนที่แสดง ∪ ช่วงที่เลือก
-  const viewFrom = `${month}-01` < t ? t : `${month}-01`
+  const viewFrom = `${month}-01` < now ? now : `${month}-01`
   const viewTo = `${addMonths(month, 2)}-01`
   const from = range.start && range.start < viewFrom ? range.start : viewFrom
   const to = range.end && range.end > viewTo ? range.end : viewTo
@@ -182,6 +197,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
         email: guest.email.trim(),
         note: guest.note.trim(),
         consent: true,
+        lang,
       }),
     meta: { silent: true },
     onSuccess: ({ token }) => {
@@ -189,7 +205,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
       navigate(`/stay/${slug}/r/${token}`)
     },
     onError: (e) => {
-      setFormError(e instanceof ApiError ? e.message : 'ส่งคำขอไม่สำเร็จ กรุณาลองใหม่')
+      setFormError(e instanceof ApiError ? e.message : t('ส่งคำขอไม่สำเร็จ กรุณาลองใหม่', 'Could not send your request — please try again'))
       if (e instanceof ApiError && e.status === 409) void avail.refetch()
     },
   })
@@ -209,7 +225,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
 
   return (
     <div className="min-h-svh bg-background pb-24 lg:pb-0">
-      <StayHeader org={d.org} subtitle="จองที่พักออนไลน์" wide />
+      <StayHeader org={d.org} subtitle={t('จองที่พักออนไลน์', 'Book online')} wide lang={lang} onLang={setLang} />
 
       <main className="mx-auto grid max-w-5xl gap-8 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-8">
         <div className="min-w-0 space-y-8">
@@ -219,7 +235,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
               className="flex items-center gap-3 rounded-md border bg-card px-4 py-3 text-sm hover:bg-muted/50"
             >
               <Send className="size-4 text-primary" />
-              <span className="flex-1">คุณมีคำขอจองที่ส่งไว้แล้ว — ดูสถานะ</span>
+              <span className="flex-1">{t('คุณมีคำขอจองที่ส่งไว้แล้ว — ดูสถานะ', 'You already sent a booking request — view status')}</span>
               <ArrowRight className="size-4 text-muted-foreground" />
             </Link>
           )}
@@ -236,10 +252,18 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
             </div>
             {p.intro && <p className="text-[15px] leading-relaxed whitespace-pre-line">{p.intro}</p>}
             <div className="flex flex-wrap gap-2 text-sm">
-              <InfoChip icon={LogIn}>เช็คอิน {p.check_in_time || '14:00'} น.</InfoChip>
-              <InfoChip icon={LogOut}>เช็คเอาท์ {p.check_out_time || '12:00'} น.</InfoChip>
-              <InfoChip icon={Moon}>ขั้นต่ำ {minNights} คืน</InfoChip>
-              {p.deposit_percent > 0 && <InfoChip icon={Clock}>มัดจำ {p.deposit_percent}%</InfoChip>}
+              <InfoChip icon={LogIn}>
+                {t(`เช็คอิน ${p.check_in_time || '14:00'} น.`, `Check-in ${p.check_in_time || '14:00'}`)}
+              </InfoChip>
+              <InfoChip icon={LogOut}>
+                {t(`เช็คเอาท์ ${p.check_out_time || '12:00'} น.`, `Check-out ${p.check_out_time || '12:00'}`)}
+              </InfoChip>
+              <InfoChip icon={Moon}>
+                {t(`ขั้นต่ำ ${minNights} คืน`, `Min. ${minNights} night${minNights === 1 ? '' : 's'}`)}
+              </InfoChip>
+              {p.deposit_percent > 0 && (
+                <InfoChip icon={Clock}>{t(`มัดจำ ${p.deposit_percent}%`, `${p.deposit_percent}% deposit`)}</InfoChip>
+              )}
             </div>
             {mapProperty.length > 0 && (
               <div className="overflow-hidden rounded-md border">
@@ -250,7 +274,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
 
           {/* เลือกวัน */}
           <section className="space-y-3">
-            <StepTitle n={1}>เลือกวันเข้าพัก</StepTitle>
+            <StepTitle n={1}>{t('เลือกวันเข้าพัก', 'Choose your dates')}</StepTitle>
             <Card className="gap-0 px-3 py-4 sm:px-5">
               <RangeCalendar
                 value={range}
@@ -268,9 +292,14 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                   <>
                     <CalendarDays className="size-4 text-muted-foreground" />
                     <span className="tabular-nums">
-                      {thDayShort(range.start)} → {range.end ? thDayShort(range.end) : <span className="text-muted-foreground">เลือกวันเช็คเอาท์</span>}
+                      {dayShort(range.start)} →{' '}
+                      {range.end ? (
+                        dayShort(range.end)
+                      ) : (
+                        <span className="text-muted-foreground">{t('เลือกวันเช็คเอาท์', 'choose check-out')}</span>
+                      )}
                     </span>
-                    {nights > 0 && <span className="font-medium">{nights} คืน</span>}
+                    {nights > 0 && <span className="font-medium">{nightsText(t, nights)}</span>}
                     <Button
                       type="button"
                       variant="ghost"
@@ -278,19 +307,23 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                       className="ml-auto text-muted-foreground"
                       onClick={() => setRange({})}
                     >
-                      <X /> ล้าง
+                      <X /> {t('ล้าง', 'Clear')}
                     </Button>
                   </>
                 ) : (
                   <span className="text-muted-foreground">
-                    แตะวันเช็คอิน แล้วแตะวันเช็คเอาท์
-                    {unit ? ` · ราคาต่อคืนของห้อง ${unit.name}` : minRate ? ` · ราคาเริ่มต้น/คืน` : ''}
+                    {t('แตะวันเช็คอิน แล้วแตะวันเช็คเอาท์', 'Tap your check-in date, then your check-out date')}
+                    {unit
+                      ? t(` · ราคาต่อคืนของห้อง ${unit.name}`, ` · nightly price for room ${unit.name}`)
+                      : minRate
+                        ? t(' · ราคาเริ่มต้น/คืน', ' · lowest price per night')
+                        : ''}
                   </span>
                 )}
               </div>
               {tooShort && (
                 <p className="mt-2 flex items-center gap-1.5 text-sm text-destructive">
-                  <AlertTriangle className="size-4" /> ขั้นต่ำ {minNights} คืน
+                  <AlertTriangle className="size-4" /> {t(`ขั้นต่ำ ${minNights} คืน`, `Minimum ${nightsText(t, minNights)}`)}
                 </p>
               )}
             </Card>
@@ -298,10 +331,10 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
 
           {/* เลือกห้อง */}
           <section className="space-y-3">
-            <StepTitle n={2}>เลือกห้อง</StepTitle>
+            <StepTitle n={2}>{t('เลือกห้อง', 'Choose a room')}</StepTitle>
             {d.units.length === 0 ? (
               <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                ยังไม่มีห้องเปิดให้จองออนไลน์
+                {t('ยังไม่มีห้องเปิดให้จองออนไลน์', 'No rooms are open for online booking yet')}
               </p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -330,33 +363,38 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold">ห้อง {u.name}</span>
-                          {free === true && <ToneBadge tone="green">ว่าง</ToneBadge>}
-                          {free === false && <ToneBadge tone="grey">ไม่ว่าง</ToneBadge>}
+                          <span className="font-semibold">{t(`ห้อง ${u.name}`, `Room ${u.name}`)}</span>
+                          {free === true && <ToneBadge tone="green">{t('ว่าง', 'Available')}</ToneBadge>}
+                          {free === false && <ToneBadge tone="grey">{t('ไม่ว่าง', 'Booked')}</ToneBadge>}
                         </div>
                         <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                          <span>ชั้น {u.floor}</span>
+                          <span>{t(`ชั้น ${u.floor}`, `Floor ${u.floor}`)}</span>
                           {area > 0 && (
                             <span className="inline-flex items-center gap-1">
                               <Ruler className="size-3" />
-                              {area.toLocaleString('th-TH', { maximumFractionDigits: 1 })} ตร.ม.
+                              {area.toLocaleString('th-TH', { maximumFractionDigits: 1 })} {t('ตร.ม.', 'm²')}
                             </span>
                           )}
                         </div>
                         {uq ? (
                           <div className="mt-2 text-sm">
                             <span className="font-semibold tabular-nums">{baht(uq.total)}</span>
-                            <span className="text-muted-foreground"> · {uq.nights_count} คืน</span>
+                            <span className="text-muted-foreground"> · {nightsText(t, uq.nights_count)}</span>
                             <div className="text-xs text-muted-foreground tabular-nums">
-                              เฉลี่ย {baht(uq.average_rate)}/คืน
-                              {uq.discount && <span className="text-success"> · ลด {uq.discount.percent}%</span>}
+                              {t(`เฉลี่ย ${baht(uq.average_rate)}/คืน`, `avg. ${baht(uq.average_rate)}/night`)}
+                              {uq.discount && (
+                                <span className="text-success">
+                                  {' '}
+                                  · {t(`ลด ${uq.discount.percent}%`, `${uq.discount.percent}% off`)}
+                                </span>
+                              )}
                             </div>
                           </div>
                         ) : (
                           <div className="mt-2 text-sm">
-                            {priceMap.size > 0 && <span className="text-muted-foreground">เริ่มต้น </span>}
+                            {priceMap.size > 0 && <span className="text-muted-foreground">{t('เริ่มต้น ', 'from ')}</span>}
                             <span className="font-semibold tabular-nums">{baht(fromPrice(u.id, u.rate_daily))}</span>
-                            <span className="text-muted-foreground"> / คืน</span>
+                            <span className="text-muted-foreground"> / {t('คืน', 'night')}</span>
                           </div>
                         )}
                       </div>
@@ -381,7 +419,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
         <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
           <Card className="gap-0 py-0">
             <div className="border-b px-5 py-4">
-              <h2 className="font-semibold">สรุปราคา</h2>
+              <h2 className="font-semibold">{t('สรุปราคา', 'Price summary')}</h2>
             </div>
             <div className="space-y-2 px-5 py-4 text-sm">
               {unit && nights > 0 ? (
@@ -390,38 +428,48 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                     <QuoteLines quote={quote} unitName={unit.name} />
                   ) : (
                     <Row
-                      label={`ห้อง ${unit.name}`}
+                      label={t(`ห้อง ${unit.name}`, `Room ${unit.name}`)}
                       value={
                         quoteLoading ? (
                           <Loader2 className="size-4 animate-spin text-muted-foreground" />
                         ) : (
-                          `${baht(unit.rate_daily)} × ${nights} คืน`
+                          `${baht(unit.rate_daily)} × ${nightsText(t, nights)}`
                         )
                       }
                     />
                   )}
-                  <Row label="ยอดรวม" value={baht(total)} strong />
+                  <Row label={t('ยอดรวม', 'Total')} value={baht(total)} strong />
                   <div className="!mt-3 rounded-md bg-primary/5 px-3 py-2.5">
                     <Row
-                      label={`มัดจำ${p.deposit_percent ? ` ${p.deposit_percent}%` : ''} (ชำระตอนนี้)`}
+                      label={t(
+                        `มัดจำ${p.deposit_percent ? ` ${p.deposit_percent}%` : ''} (ชำระตอนนี้)`,
+                        `Deposit${p.deposit_percent ? ` ${p.deposit_percent}%` : ''} (pay now)`,
+                      )}
                       value={<span className="text-base font-semibold text-primary">{baht(deposit)}</span>}
                     />
-                    <Row label="ชำระส่วนที่เหลือเมื่อเช็คอิน" value={baht(total - deposit)} muted />
+                    <Row
+                      label={t('ชำระส่วนที่เหลือเมื่อเช็คอิน', 'Balance due at check-in')}
+                      value={baht(total - deposit)}
+                      muted
+                    />
                   </div>
                   {!unitFree && (
                     <p className="flex items-center gap-1.5 text-destructive">
-                      <AlertTriangle className="size-4" /> ห้องนี้ไม่ว่างในช่วงที่เลือก
+                      <AlertTriangle className="size-4" />{' '}
+                      {t('ห้องนี้ไม่ว่างในช่วงที่เลือก', 'This room is not available for these dates')}
                     </p>
                   )}
                   {tooShort && (
                     <p className="flex items-center gap-1.5 text-destructive">
-                      <AlertTriangle className="size-4" /> ขั้นต่ำ {minNights} คืน
+                      <AlertTriangle className="size-4" /> {t(`ขั้นต่ำ ${minNights} คืน`, `Minimum ${nightsText(t, minNights)}`)}
                     </p>
                   )}
                 </>
               ) : (
                 <p className="text-muted-foreground">
-                  {!range.end ? 'เลือกวันเข้าพัก' : 'เลือกห้อง'}เพื่อดูราคา
+                  {!range.end
+                    ? t('เลือกวันเข้าพักเพื่อดูราคา', 'Choose your dates to see the price')
+                    : t('เลือกห้องเพื่อดูราคา', 'Choose a room to see the price')}
                 </p>
               )}
             </div>
@@ -433,17 +481,25 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
               className="grid gap-4 px-5 py-4"
               onSubmit={(e) => {
                 e.preventDefault()
-                if (!range.start || !range.end) return setFormError('กรุณาเลือกวันเช็คอินและเช็คเอาท์')
-                if (!unit) return setFormError('กรุณาเลือกห้อง')
-                if (tooShort) return setFormError(`ขั้นต่ำ ${minNights} คืน`)
-                if (!unitFree) return setFormError('ช่วงวันที่ไม่ว่าง กรุณาเลือกวันหรือห้องอื่น')
-                if (guest.phone.replace(/\D/g, '').length < 9) return setFormError('กรุณากรอกเบอร์โทรให้ถูกต้อง')
-                if (!consent) return setFormError('กรุณายอมรับการใช้ข้อมูลส่วนบุคคลเพื่อการจอง')
+                if (!range.start || !range.end)
+                  return setFormError(t('กรุณาเลือกวันเช็คอินและเช็คเอาท์', 'Please choose check-in and check-out dates'))
+                if (!unit) return setFormError(t('กรุณาเลือกห้อง', 'Please choose a room'))
+                if (tooShort) return setFormError(t(`ขั้นต่ำ ${minNights} คืน`, `Minimum ${nightsText(t, minNights)}`))
+                if (!unitFree)
+                  return setFormError(
+                    t('ช่วงวันที่ไม่ว่าง กรุณาเลือกวันหรือห้องอื่น', 'Those dates are not available — choose other dates or another room'),
+                  )
+                if (guest.phone.replace(/\D/g, '').length < 9)
+                  return setFormError(t('กรุณากรอกเบอร์โทรให้ถูกต้อง', 'Please enter a valid phone number'))
+                if (!consent)
+                  return setFormError(
+                    t('กรุณายอมรับการใช้ข้อมูลส่วนบุคคลเพื่อการจอง', 'Please agree to the use of your personal data for this booking'),
+                  )
                 submit.mutate()
               }}
             >
-              <StepTitle n={3}>ข้อมูลผู้จอง</StepTitle>
-              <Field label="ชื่อ-นามสกุล" htmlFor="g-name">
+              <StepTitle n={3}>{t('ข้อมูลผู้จอง', 'Your details')}</StepTitle>
+              <Field label={t('ชื่อ-นามสกุล', 'Full name')} htmlFor="g-name">
                 <Input
                   id="g-name"
                   className="h-11"
@@ -454,7 +510,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                 />
               </Field>
               <div className="grid grid-cols-[1fr_6rem] gap-3">
-                <Field label="เบอร์โทร" htmlFor="g-phone">
+                <Field label={t('เบอร์โทร', 'Phone')} htmlFor="g-phone">
                   <Input
                     id="g-phone"
                     className="h-11"
@@ -466,7 +522,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                     required
                   />
                 </Field>
-                <Field label="ผู้เข้าพัก" htmlFor="g-guests">
+                <Field label={t('ผู้เข้าพัก', 'Guests')} htmlFor="g-guests">
                   <Input
                     id="g-guests"
                     className="h-11"
@@ -479,7 +535,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                   />
                 </Field>
               </div>
-              <Field label="อีเมล (ไม่บังคับ)" htmlFor="g-email">
+              <Field label={t('อีเมล (ไม่บังคับ)', 'Email (optional)')} htmlFor="g-email">
                 <Input
                   id="g-email"
                   className="h-11"
@@ -489,12 +545,12 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                   onChange={(e) => setG('email', e.target.value)}
                 />
               </Field>
-              <Field label="หมายเหตุ (ไม่บังคับ)" htmlFor="g-note">
+              <Field label={t('หมายเหตุ (ไม่บังคับ)', 'Note (optional)')} htmlFor="g-note">
                 <Textarea
                   id="g-note"
                   rows={2}
                   value={guest.note}
-                  placeholder="เช่น เวลาที่คาดว่าจะมาถึง"
+                  placeholder={t('เช่น เวลาที่คาดว่าจะมาถึง', 'e.g. expected arrival time')}
                   onChange={(e) => setG('note', e.target.value)}
                 />
               </Field>
@@ -511,16 +567,21 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                 />
                 <div className="text-sm leading-relaxed">
                   <label htmlFor="g-consent">
-                    ข้าพเจ้ายินยอมให้ {d.org.name} เก็บและใช้ข้อมูลส่วนบุคคลข้างต้นตาม
+                    {t(
+                      `ข้าพเจ้ายินยอมให้ ${d.org.name} เก็บและใช้ข้อมูลส่วนบุคคลข้างต้นตาม`,
+                      `I allow ${d.org.name} to collect and use the personal data above as described in the`,
+                    )}
                   </label>{' '}
                   <button
                     type="button"
                     onClick={() => setNoticeOpen(true)}
                     className="font-medium text-primary underline-offset-4 hover:underline"
                   >
-                    ประกาศความเป็นส่วนตัว
+                    {t('ประกาศความเป็นส่วนตัว', 'privacy notice')}
                   </button>
-                  <p className="mt-0.5 text-xs text-muted-foreground">ข้อมูลของท่านใช้เพื่อการจองและติดต่อเท่านั้น</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t('ข้อมูลของท่านใช้เพื่อการจองและติดต่อเท่านั้น', 'Your data is used only for this booking and to contact you')}
+                  </p>
                 </div>
               </div>
               {formError && (
@@ -534,10 +595,13 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
               )}
               <Button type="submit" className="h-11" disabled={submit.isPending}>
                 {submit.isPending ? <Loader2 className="animate-spin" /> : <Send />}
-                ส่งคำขอจอง
+                {t('ส่งคำขอจอง', 'Send booking request')}
               </Button>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                การจองจะสมบูรณ์เมื่อที่พักยืนยันหลังได้รับมัดจำ
+                {t(
+                  'การจองจะสมบูรณ์เมื่อที่พักยืนยันหลังได้รับมัดจำ',
+                  'Your booking is confirmed once the property receives your deposit',
+                )}
               </p>
             </form>
           </Card>
@@ -563,7 +627,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
           <div className="mx-auto flex max-w-lg items-center gap-3">
             <div className="min-w-0 flex-1 leading-tight">
               <div className="text-xs text-muted-foreground">
-                {nights} คืน · มัดจำ {baht(deposit)}
+                {nightsText(t, nights)} · {t('มัดจำ', 'deposit')} {baht(deposit)}
               </div>
               <div className="font-semibold tabular-nums">{baht(total)}</div>
             </div>
@@ -574,7 +638,7 @@ function Booking({ slug, d }: { slug: string; d: StayInfo }) {
                 setTimeout(() => document.getElementById('g-name')?.focus({ preventScroll: true }), 400)
               }}
             >
-              กรอกข้อมูลจอง <ArrowRight />
+              {t('กรอกข้อมูลจอง', 'Enter details')} <ArrowRight />
             </Button>
           </div>
         </div>
@@ -597,25 +661,37 @@ function StayPrivacyDialog({
   phone: string
   onAccept: () => void
 }) {
-  const items: [string, string][] = [
-    ['ข้อมูลที่เก็บ', 'ชื่อ-นามสกุล เบอร์โทร อีเมล จำนวนผู้เข้าพัก หมายเหตุ และสลิปการโอนมัดจำ'],
-    ['วัตถุประสงค์', 'ยืนยันการจอง ติดต่อเรื่องการเข้าพัก และออกหลักฐานการชำระเงิน'],
-    ['การเปิดเผย', 'ไม่ขายหรือเปิดเผยแก่บุคคลภายนอก เว้นแต่กฎหมายกำหนด'],
-    ['ระยะเวลาเก็บ', 'เท่าที่จำเป็นต่อการเข้าพัก ส่วนหลักฐานการชำระเงินเก็บตามที่กฎหมายกำหนด'],
-    [
-      'สิทธิของท่าน',
-      `ขอเข้าถึง แก้ไข ลบ หรือถอนความยินยอมได้ โดยติดต่อ ${orgName}${phone ? ` โทร ${phone}` : ''}`,
-    ],
-  ]
+  const { t, en } = useI18n()
+  const items: [string, string][] = en
+    ? [
+        ['Data we collect', 'Full name, phone, email, number of guests, notes and the deposit transfer slip'],
+        ['Purpose', 'To confirm your booking, contact you about your stay and issue payment records'],
+        ['Disclosure', 'Never sold or shared with third parties unless required by law'],
+        ['Retention', 'Only as long as needed for your stay; payment records are kept as required by law'],
+        [
+          'Your rights',
+          `Access, correct, delete or withdraw consent at any time by contacting ${orgName}${phone ? ` (tel. ${phone})` : ''}`,
+        ],
+      ]
+    : [
+        ['ข้อมูลที่เก็บ', 'ชื่อ-นามสกุล เบอร์โทร อีเมล จำนวนผู้เข้าพัก หมายเหตุ และสลิปการโอนมัดจำ'],
+        ['วัตถุประสงค์', 'ยืนยันการจอง ติดต่อเรื่องการเข้าพัก และออกหลักฐานการชำระเงิน'],
+        ['การเปิดเผย', 'ไม่ขายหรือเปิดเผยแก่บุคคลภายนอก เว้นแต่กฎหมายกำหนด'],
+        ['ระยะเวลาเก็บ', 'เท่าที่จำเป็นต่อการเข้าพัก ส่วนหลักฐานการชำระเงินเก็บตามที่กฎหมายกำหนด'],
+        [
+          'สิทธิของท่าน',
+          `ขอเข้าถึง แก้ไข ลบ หรือถอนความยินยอมได้ โดยติดต่อ ${orgName}${phone ? ` โทร ${phone}` : ''}`,
+        ],
+      ]
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ShieldCheck className="size-5 text-primary" /> ประกาศความเป็นส่วนตัว
+            <ShieldCheck className="size-5 text-primary" /> {t('ประกาศความเป็นส่วนตัว', 'Privacy notice')}
           </DialogTitle>
           <DialogDescription>
-            {orgName} · ข้อมูลของท่านใช้เพื่อการจองและติดต่อเท่านั้น
+            {orgName} · {t('ข้อมูลของท่านใช้เพื่อการจองและติดต่อเท่านั้น', 'Your data is used only for this booking and to contact you')}
           </DialogDescription>
         </DialogHeader>
         <dl className="divide-y rounded-md border text-sm">
@@ -627,20 +703,27 @@ function StayPrivacyDialog({
           ))}
         </dl>
         <p className="text-xs text-muted-foreground">
-          เป็นไปตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 — สอบถามประกาศฉบับเต็มได้ที่ที่พัก
+          {t(
+            'เป็นไปตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 — สอบถามประกาศฉบับเต็มได้ที่ที่พัก',
+            'In line with the Thai Personal Data Protection Act B.E. 2562 (2019) — ask the property for the full notice',
+          )}
         </p>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-            ปิด
+            {t('ปิด', 'Close')}
           </Button>
           <Button type="button" onClick={onAccept}>
-            ยอมรับ
+            {t('ยอมรับ', 'Accept')}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
+
+/** "3 คืน" / "3 nights" */
+const nightsText = (t: (th: string, en: string) => string, n: number) =>
+  t(`${n} คืน`, `${n} night${n === 1 ? '' : 's'}`)
 
 function StepTitle({ n, children }: { n: number; children: React.ReactNode }) {
   return (
@@ -683,6 +766,7 @@ function Row({
 
 /** รายละเอียดราคาจากใบเสนอราคา: รายคืน (ย่อ/ขยาย) + ส่วนลดพักหลายคืน */
 function QuoteLines({ quote, unitName }: { quote: PublicQuote; unitName: string }) {
+  const { t, dayShort } = useI18n()
   const [open, setOpen] = useState(false)
   const uniform = quote.nights.every((n) => n.price === quote.nights[0]?.price)
   return (
@@ -694,9 +778,9 @@ function QuoteLines({ quote, unitName }: { quote: PublicQuote; unitName: string 
         className="flex w-full items-baseline justify-between gap-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <span className="text-muted-foreground">
-          ห้อง {unitName} · {quote.nights_count} คืน
+          {t(`ห้อง ${unitName}`, `Room ${unitName}`)} · {nightsText(t, quote.nights_count)}
           <span className="ml-1.5 inline-flex items-center gap-0.5 text-xs font-medium text-primary">
-            {open ? 'ซ่อน' : 'ดูรายคืน'}
+            {open ? t('ซ่อน', 'Hide') : t('ดูรายคืน', 'Per night')}
             <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
           </span>
         </span>
@@ -708,7 +792,7 @@ function QuoteLines({ quote, unitName }: { quote: PublicQuote; unitName: string 
         <ul className="max-h-60 space-y-1 overflow-y-auto rounded-md border bg-muted/30 px-3 py-2 text-xs">
           {quote.nights.map((n) => (
             <li key={n.date} className="flex items-baseline gap-2">
-              <span className="w-20 shrink-0 tabular-nums">{thDayShort(n.date)}</span>
+              <span className="w-20 shrink-0 tabular-nums">{dayShort(n.date)}</span>
               <span className="min-w-0 flex-1 truncate text-muted-foreground">{n.rules.join(' · ')}</span>
               {n.price !== n.base && (
                 <span className="text-muted-foreground line-through tabular-nums">{baht(n.base)}</span>
@@ -721,7 +805,8 @@ function QuoteLines({ quote, unitName }: { quote: PublicQuote; unitName: string 
       {quote.discount && (
         <div className="flex items-baseline justify-between gap-3 text-success">
           <span>
-            ส่วนลด{quote.discount.name ? ` ${quote.discount.name}` : ''} ({quote.discount.percent}%)
+            {t('ส่วนลด', 'Discount')}
+            {quote.discount.name ? ` ${quote.discount.name}` : ''} ({quote.discount.percent}%)
           </span>
           <span className="tabular-nums">−{baht(quote.discount.amount)}</span>
         </div>

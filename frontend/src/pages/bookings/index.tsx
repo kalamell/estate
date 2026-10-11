@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CalendarDays, CalendarRange, DoorOpen, Inbox, LogIn, LogOut, Plus, XCircle } from 'lucide-react'
+import { CalendarDays, CalendarRange, DoorOpen, FileSignature, Inbox, LogIn, LogOut, Plus, XCircle } from 'lucide-react'
 import { api, type Booking, type BookingStatus, type DepositStatus } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { BOOKING_SOURCES, BOOKING_STATUS, DEPOSIT_STATUS, baht, thDate } from '@/lib/format'
@@ -228,6 +228,16 @@ function AllBookings({ highlight }: { highlight: number | null }) {
                     <BookingStatusBadge status={b.status} />
                   </TableCell>
                   <TableCell className="pr-4 text-right whitespace-nowrap">
+                    {b.status !== 'cancelled' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground"
+                        onClick={() => navigate(`/contracts?booking=${b.id}`)}
+                      >
+                        <FileSignature /> สัญญา
+                      </Button>
+                    )}
                     {b.status === 'reserved' && (
                       <Button
                         size="sm"

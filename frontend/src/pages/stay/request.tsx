@@ -23,20 +23,22 @@ import {
 } from 'lucide-react'
 import { ApiError, api, withUploadAccess, type StayRequestStatus } from '@/lib/api'
 import { queryClient } from '@/lib/query'
-import { baht, thDateLong, thDayShort } from '@/lib/format'
-import { dateTime } from '@/lib/docs'
+import { baht } from '@/lib/format'
+import { useI18n, useLocalLang, type I18n, type Lang } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { CopyField } from '@/components/copy-field'
 import { PromptPayQR } from '@/components/promptpay-qr'
 import { useForcedColorTheme } from '@/components/theme-provider'
+import { LangProvider } from '@/components/lang'
 import { StayError, StayFooter, StayHeader, StaySkeleton } from './parts'
 
 const silent = { meta: { silent: true }, retry: false } as const
 
 export default function StayRequestPage() {
   const { slug = '', token = '' } = useParams()
+  const [lang, setLang] = useLocalLang()
   const q = useQuery({
     queryKey: ['stay-request', token],
     queryFn: () => api.stay.request(token),
@@ -49,11 +51,21 @@ export default function StayRequestPage() {
   const info = useQuery({ queryKey: ['stay', slug], queryFn: () => api.stay.info(slug), ...silent })
   useForcedColorTheme(q.data ? (q.data.org.theme ?? 'ink') : undefined)
 
-  if (q.isLoading) return <StaySkeleton />
-  if (q.error || !q.data)
-    return <StayError error={q.error} retry={() => q.refetch()} notFoundText="ไม่พบคำขอจองนี้" />
-
-  return <Status slug={slug} token={token} d={q.data} info={info.data} />
+  return (
+    <LangProvider lang={lang}>
+      {q.isLoading ? (
+        <StaySkeleton />
+      ) : q.error || !q.data ? (
+        <StayError
+          error={q.error}
+          retry={() => q.refetch()}
+          notFoundText={lang === 'en' ? 'Booking request not found' : 'ไม่พบคำขอจองนี้'}
+        />
+      ) : (
+        <Status slug={slug} token={token} d={q.data} info={info.data} lang={lang} setLang={setLang} />
+      )}
+    </LangProvider>
+  )
 }
 
 function Status({
@@ -61,18 +73,30 @@ function Status({
   token,
   d,
   info,
+  lang,
+  setLang,
 }: {
   slug: string
   token: string
   d: StayRequestStatus
   info?: Awaited<ReturnType<typeof api.stay.info>>
+  lang: Lang
+  setLang: (l: Lang) => void
 }) {
+  const i18n = useI18n()
+  const { t, dateLong } = i18n
   const r = d.request
   const p = info?.property
-  const hero = HERO[r.status]?.(r) ?? HERO.pending(r)
+  const hero = HERO[r.status]?.(r, i18n) ?? HERO.pending(r, i18n)
   return (
     <div className="min-h-svh bg-background">
-      <StayHeader org={d.org} subtitle="สถานะคำขอจอง" to={`/stay/${slug}`} />
+      <StayHeader
+        org={d.org}
+        subtitle={t('สถานะคำขอจอง', 'Booking status')}
+        to={`/stay/${slug}`}
+        lang={lang}
+        onLang={setLang}
+      />
       <main className="mx-auto max-w-lg space-y-4 p-4">
         <section className="flex items-start gap-3 pt-2">
           <div className={cn('grid size-11 shrink-0 place-items-center rounded-md', hero.tone)}>
@@ -88,19 +112,26 @@ function Status({
 
         <Card className="gap-0 py-0">
           <div className="space-y-1 border-b px-5 py-4">
-            <div className="text-xs text-muted-foreground">คุณ{r.guest_name}</div>
+            <div className="text-xs text-muted-foreground">{t(`คุณ${r.guest_name}`, r.guest_name)}</div>
             <div className="font-semibold">
-              {r.property_name} · ห้อง {r.unit_name}
+              {r.property_name} · {t(`ห้อง ${r.unit_name}`, `Room ${r.unit_name}`)}
             </div>
           </div>
           <div className="grid grid-cols-2 divide-x border-b">
-            <DateCell label="เช็คอิน" date={r.check_in} time={p?.check_in_time} from />
-            <DateCell label="เช็คเอาท์" date={r.check_out} time={p?.check_out_time} />
+            <DateCell label={t('เช็คอิน', 'Check-in')} date={r.check_in} time={p?.check_in_time} from />
+            <DateCell label={t('เช็คเอาท์', 'Check-out')} date={r.check_out} time={p?.check_out_time} />
           </div>
           <dl className="space-y-1.5 px-5 py-4 text-sm">
-            <Line label={`${baht(r.rate)} × ${r.nights} คืน`} value={baht(r.total)} />
-            <Line label="มัดจำ" value={baht(r.deposit_amount)} strong />
-            <Line label="ชำระส่วนที่เหลือเมื่อเช็คอิน" value={baht(r.total - r.deposit_amount)} muted />
+            <Line
+              label={`${baht(r.rate)} × ${t(`${r.nights} คืน`, `${r.nights} night${r.nights === 1 ? '' : 's'}`)}`}
+              value={baht(r.total)}
+            />
+            <Line label={t('มัดจำ', 'Deposit')} value={baht(r.deposit_amount)} strong />
+            <Line
+              label={t('ชำระส่วนที่เหลือเมื่อเช็คอิน', 'Balance due at check-in')}
+              value={baht(r.total - r.deposit_amount)}
+              muted
+            />
           </dl>
         </Card>
 
@@ -109,16 +140,16 @@ function Status({
         {r.status === 'approved' && (
           <Card className="gap-3 px-5 py-4">
             <h2 className="flex items-center gap-2 font-semibold">
-              <CalendarCheck className="size-4 text-success" /> ข้อมูลการเข้าพัก
+              <CalendarCheck className="size-4 text-success" /> {t('ข้อมูลการเข้าพัก', 'Your stay')}
             </h2>
             <ul className="space-y-2 text-sm">
               <li>
-                เช็คอิน <b>{thDateLong(r.check_in)}</b>
-                {p?.check_in_time && ` ตั้งแต่ ${p.check_in_time} น.`}
+                {t('เช็คอิน', 'Check-in')} <b>{dateLong(r.check_in)}</b>
+                {p?.check_in_time && t(` ตั้งแต่ ${p.check_in_time} น.`, ` from ${p.check_in_time}`)}
               </li>
               <li>
-                เช็คเอาท์ <b>{thDateLong(r.check_out)}</b>
-                {p?.check_out_time && ` ก่อน ${p.check_out_time} น.`}
+                {t('เช็คเอาท์', 'Check-out')} <b>{dateLong(r.check_out)}</b>
+                {p?.check_out_time && t(` ก่อน ${p.check_out_time} น.`, ` by ${p.check_out_time}`)}
               </li>
               {p?.address && (
                 <li className="flex items-start gap-1.5 text-muted-foreground">
@@ -130,14 +161,14 @@ function Status({
               {p?.lat != null && p.lng != null && (
                 <Button asChild variant="outline" className="h-11">
                   <a href={`https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`} target="_blank" rel="noreferrer">
-                    <Navigation /> นำทาง
+                    <Navigation /> {t('นำทาง', 'Directions')}
                   </a>
                 </Button>
               )}
               {d.org.phone && (
                 <Button asChild variant="outline" className="h-11">
                   <a href={`tel:${d.org.phone}`}>
-                    <Phone /> โทรหาที่พัก
+                    <Phone /> {t('โทรหาที่พัก', 'Call the property')}
                   </a>
                 </Button>
               )}
@@ -149,18 +180,24 @@ function Status({
           <Card className="gap-3 px-5 py-4">
             {r.status === 'rejected' && r.reject_reason && (
               <p className="rounded-md bg-muted px-3 py-2 text-sm">
-                <span className="text-muted-foreground">เหตุผลจากที่พัก: </span>
+                <span className="text-muted-foreground">{t('เหตุผลจากที่พัก', 'Reason from the property')}: </span>
                 {r.reject_reason}
               </p>
             )}
             <p className="text-sm text-muted-foreground">
               {r.status === 'expired'
-                ? 'คำขอนี้หมดเวลาชำระมัดจำแล้ว หากโอนเงินไปแล้วกรุณาติดต่อที่พัก'
-                : 'หากชำระมัดจำไปแล้ว ที่พักจะติดต่อกลับเพื่อคืนเงิน'}
+                ? t(
+                    'คำขอนี้หมดเวลาชำระมัดจำแล้ว หากโอนเงินไปแล้วกรุณาติดต่อที่พัก',
+                    'The deposit deadline has passed. If you already transferred money, please contact the property.',
+                  )
+                : t(
+                    'หากชำระมัดจำไปแล้ว ที่พักจะติดต่อกลับเพื่อคืนเงิน',
+                    'If you already paid a deposit, the property will contact you about a refund.',
+                  )}
             </p>
             <Button asChild className="h-11">
               <Link to={`/stay/${slug}`}>
-                <CalendarCheck /> เลือกวันใหม่
+                <CalendarCheck /> {t('เลือกวันใหม่', 'Choose new dates')}
               </Link>
             </Button>
           </Card>
@@ -169,9 +206,14 @@ function Status({
         <Card className="gap-3 px-5 py-4">
           <div className="flex items-start gap-2 text-sm">
             <Bookmark className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <span>บันทึกลิงก์นี้ไว้ (บุ๊กมาร์กหรือส่งเข้าแชทตัวเอง) เพื่อกลับมาดูสถานะการจอง</span>
+            <span>
+              {t(
+                'บันทึกลิงก์นี้ไว้ (บุ๊กมาร์กหรือส่งเข้าแชทตัวเอง) เพื่อกลับมาดูสถานะการจอง',
+                'Save this link (bookmark it or send it to yourself) to check your booking status later',
+              )}
+            </span>
           </div>
-          <CopyField value={window.location.href} label="ลิงก์สถานะการจอง" />
+          <CopyField value={window.location.href} label={t('ลิงก์สถานะการจอง', 'booking status link')} />
         </Card>
       </main>
       <StayFooter />
@@ -180,52 +222,70 @@ function Status({
 }
 
 type Hero = { icon: LucideIcon; tone: string; title: string; text: string }
-const HERO: Record<string, (r: StayRequestStatus['request']) => Hero> = {
-  pending: (r) =>
+const HERO: Record<string, (r: StayRequestStatus['request'], i: I18n) => Hero> = {
+  pending: (r, { t, dateTime }) =>
     r.slip_url
       ? {
           icon: Clock,
           tone: 'bg-warning/15 text-warning-foreground',
-          title: 'ได้รับสลิปแล้ว รอยืนยัน',
-          text: 'ที่พักกำลังตรวจสอบการชำระเงิน หน้านี้จะอัปเดตอัตโนมัติ',
+          title: t('ได้รับสลิปแล้ว รอยืนยัน', 'Slip received — awaiting confirmation'),
+          text: t(
+            'ที่พักกำลังตรวจสอบการชำระเงิน หน้านี้จะอัปเดตอัตโนมัติ',
+            'The property is checking your payment. This page updates automatically.',
+          ),
         }
       : {
           icon: Clock,
           tone: 'bg-warning/15 text-warning-foreground',
-          title: 'รอชำระมัดจำ',
-          text: `กรุณาชำระมัดจำภายใน ${dateTime(r.expires_at)} เพื่อยืนยันห้อง`,
+          title: t('รอชำระมัดจำ', 'Deposit due'),
+          text: t(
+            `กรุณาชำระมัดจำภายใน ${dateTime(r.expires_at)} เพื่อยืนยันห้อง`,
+            `Please pay the deposit by ${dateTime(r.expires_at)} to secure the room`,
+          ),
         },
-  approved: () => ({
+  approved: (_r, { t }) => ({
     icon: CheckCircle2,
     tone: 'bg-success/10 text-success',
-    title: 'ยืนยันการจองแล้ว',
-    text: 'แล้วพบกัน — แสดงหน้านี้ตอนเช็คอินได้เลย',
+    title: t('ยืนยันการจองแล้ว', 'Booking confirmed'),
+    text: t('แล้วพบกัน — แสดงหน้านี้ตอนเช็คอินได้เลย', 'See you soon — show this page at check-in'),
   }),
-  rejected: () => ({
+  rejected: (_r, { t }) => ({
     icon: XCircle,
     tone: 'bg-destructive/10 text-destructive',
-    title: 'คำขอจองไม่ได้รับการอนุมัติ',
-    text: 'ขออภัย ที่พักไม่สามารถรับการจองนี้ได้',
+    title: t('คำขอจองไม่ได้รับการอนุมัติ', 'Booking request declined'),
+    text: t('ขออภัย ที่พักไม่สามารถรับการจองนี้ได้', 'Sorry, the property cannot accept this booking'),
   }),
-  expired: () => ({
+  expired: (_r, { t }) => ({
     icon: CalendarX2,
     tone: 'bg-muted text-muted-foreground',
-    title: 'คำขอหมดอายุ',
-    text: 'ไม่ได้รับมัดจำภายในเวลาที่กำหนด วันที่เลือกถูกเปิดให้จองใหม่แล้ว',
+    title: t('คำขอหมดอายุ', 'Request expired'),
+    text: t(
+      'ไม่ได้รับมัดจำภายในเวลาที่กำหนด วันที่เลือกถูกเปิดให้จองใหม่แล้ว',
+      'No deposit was received in time, so the dates have been released',
+    ),
   }),
 }
 
 function Timeline({ r }: { r: StayRequestStatus['request'] }) {
+  const { t, dateTime } = useI18n()
   const failed = r.status === 'rejected' || r.status === 'expired'
   const steps: { label: string; sub?: string; state: 'done' | 'current' | 'todo' | 'failed' }[] = [
-    { label: 'ส่งคำขอ', sub: dateTime(r.created_at), state: 'done' },
+    { label: t('ส่งคำขอ', 'Requested'), sub: dateTime(r.created_at), state: 'done' },
     {
-      label: 'ชำระมัดจำ',
-      sub: r.slip_url ? 'ส่งสลิปแล้ว' : r.status === 'pending' ? `ภายใน ${dateTime(r.expires_at)}` : undefined,
+      label: t('ชำระมัดจำ', 'Deposit'),
+      sub: r.slip_url
+        ? t('ส่งสลิปแล้ว', 'Slip sent')
+        : r.status === 'pending'
+          ? t(`ภายใน ${dateTime(r.expires_at)}`, `by ${dateTime(r.expires_at)}`)
+          : undefined,
       state: r.slip_url || r.status === 'approved' ? 'done' : r.status === 'pending' ? 'current' : 'failed',
     },
     {
-      label: failed ? (r.status === 'expired' ? 'หมดอายุ' : 'ไม่อนุมัติ') : 'ยืนยันการจอง',
+      label: failed
+        ? r.status === 'expired'
+          ? t('หมดอายุ', 'Expired')
+          : t('ไม่อนุมัติ', 'Declined')
+        : t('ยืนยันการจอง', 'Confirmed'),
       state: r.status === 'approved' ? 'done' : failed ? 'failed' : r.slip_url ? 'current' : 'todo',
     },
   ]
@@ -253,6 +313,7 @@ function Timeline({ r }: { r: StayRequestStatus['request'] }) {
 }
 
 function PaySection({ token, d }: { token: string; d: StayRequestStatus }) {
+  const { t, dateTime } = useI18n()
   const r = d.request
   const inputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
@@ -270,45 +331,73 @@ function PaySection({ token, d }: { token: string; d: StayRequestStatus }) {
     meta: { silent: true },
     onSuccess: async (res) => {
       const r = res.check?.result
-      if (r === 'duplicate') toast.warning('สลิปนี้เคยถูกใช้แล้ว — ที่พักจะตรวจสอบและติดต่อกลับ')
-      else if (r === 'unreadable') toast.success('ส่งสลิปแล้ว — ระบบอ่าน QR บนสลิปไม่ได้ ที่พักจะตรวจสอบจากรูป')
-      else if (r === 'mismatch') toast.warning('ส่งสลิปแล้ว แต่ยอดเงินไม่ตรงกับยอดมัดจำ — ที่พักจะตรวจสอบ')
-      else toast.success('ส่งสลิปแล้ว — รอที่พักยืนยัน')
+      if (r === 'duplicate')
+        toast.warning(
+          t('สลิปนี้เคยถูกใช้แล้ว — ที่พักจะตรวจสอบและติดต่อกลับ', 'This slip has been used before — the property will check and contact you'),
+        )
+      else if (r === 'unreadable')
+        toast.success(
+          t(
+            'ส่งสลิปแล้ว — ระบบอ่าน QR บนสลิปไม่ได้ ที่พักจะตรวจสอบจากรูป',
+            'Slip sent — the QR code could not be read, so the property will check the image',
+          ),
+        )
+      else if (r === 'mismatch')
+        toast.warning(
+          t(
+            'ส่งสลิปแล้ว แต่ยอดเงินไม่ตรงกับยอดมัดจำ — ที่พักจะตรวจสอบ',
+            'Slip sent, but the amount does not match the deposit — the property will check',
+          ),
+        )
+      else toast.success(t('ส่งสลิปแล้ว — รอที่พักยืนยัน', 'Slip sent — waiting for the property to confirm'))
       setFile(null)
       await queryClient.invalidateQueries({ queryKey: ['stay-request', token] })
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'อัปโหลดไม่สำเร็จ กรุณาลองใหม่'),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t('อัปโหลดไม่สำเร็จ กรุณาลองใหม่', 'Upload failed — please try again')),
   })
 
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <div className="border-b px-5 py-4">
-        <h2 className="font-semibold">ชำระมัดจำ {baht(r.deposit_amount)}</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">ชำระภายใน {dateTime(r.expires_at)} มิฉะนั้นคำขอจะหมดอายุ</p>
+        <h2 className="font-semibold">
+          {t('ชำระมัดจำ', 'Pay deposit')} {baht(r.deposit_amount)}
+        </h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {t(
+            `ชำระภายใน ${dateTime(r.expires_at)} มิฉะนั้นคำขอจะหมดอายุ`,
+            `Pay by ${dateTime(r.expires_at)} or the request will expire`,
+          )}
+        </p>
       </div>
       <div className="bg-muted/40 px-5 py-5">
         {d.promptpay_payload ? (
           <>
             <PromptPayQR payload={d.promptpay_payload} amount={baht(r.deposit_amount)} className="w-60" />
             <p className="mt-3 text-center text-xs text-muted-foreground">
-              บันทึกภาพ QR แล้วเปิดในแอปธนาคาร · ยอดเงินถูกกรอกให้อัตโนมัติ
+              {t(
+                'บันทึกภาพ QR แล้วเปิดในแอปธนาคาร · ยอดเงินถูกกรอกให้อัตโนมัติ',
+                'Save the QR image and open it in your banking app · the amount is filled in for you',
+              )}
             </p>
           </>
         ) : (
           <p className="text-center text-sm text-muted-foreground">
-            ติดต่อที่พัก{d.org.phone ? ` ${d.org.phone}` : ''} เพื่อรับช่องทางชำระเงิน
+            {t(
+              `ติดต่อที่พัก${d.org.phone ? ` ${d.org.phone}` : ''} เพื่อรับช่องทางชำระเงิน`,
+              `Contact the property${d.org.phone ? ` (${d.org.phone})` : ''} for payment details`,
+            )}
           </p>
         )}
       </div>
       <div className="space-y-3 border-t px-5 py-4">
         <div className="flex items-center gap-2 text-sm font-medium">
           <ReceiptText className="size-4 text-muted-foreground" />
-          {r.slip_url ? 'สลิปที่ส่งแล้ว' : 'แนบสลิปการโอน'}
+          {r.slip_url ? t('สลิปที่ส่งแล้ว', 'Slip sent') : t('แนบสลิปการโอน', 'Attach transfer slip')}
         </div>
         {(preview || r.slip_url) && (
           <img
             src={preview ?? withUploadAccess(r.slip_url!, { r: token })}
-            alt="สลิปการโอน"
+            alt={t('สลิปการโอน', 'Transfer slip')}
             className="max-h-72 w-full rounded-md border bg-muted object-contain"
           />
         )}
@@ -325,11 +414,11 @@ function PaySection({ token, d }: { token: string; d: StayRequestStatus }) {
         {file ? (
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" className="h-11" onClick={() => setFile(null)} disabled={upload.isPending}>
-              เลือกใหม่
+              {t('เลือกใหม่', 'Choose again')}
             </Button>
             <Button className="h-11" onClick={() => upload.mutate()} disabled={upload.isPending}>
               {upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
-              ส่งสลิป
+              {t('ส่งสลิป', 'Send slip')}
             </Button>
           </div>
         ) : (
@@ -338,7 +427,7 @@ function PaySection({ token, d }: { token: string; d: StayRequestStatus }) {
             className="h-11 w-full"
             onClick={() => inputRef.current?.click()}
           >
-            <ImagePlus /> {r.slip_url ? 'ส่งสลิปใหม่' : 'เลือกรูปสลิป'}
+            <ImagePlus /> {r.slip_url ? t('ส่งสลิปใหม่', 'Send a new slip') : t('เลือกรูปสลิป', 'Choose slip image')}
           </Button>
         )}
       </div>
@@ -347,13 +436,14 @@ function PaySection({ token, d }: { token: string; d: StayRequestStatus }) {
 }
 
 function DateCell({ label, date, time, from }: { label: string; date: string; time?: string; from?: boolean }) {
+  const { t, dayShort } = useI18n()
   return (
     <div className="px-5 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="font-semibold tabular-nums">{thDayShort(date)}</div>
+      <div className="font-semibold tabular-nums">{dayShort(date)}</div>
       {time && (
         <div className="text-xs text-muted-foreground">
-          {from ? 'ตั้งแต่' : 'ก่อน'} {time} น.
+          {from ? t(`ตั้งแต่ ${time} น.`, `from ${time}`) : t(`ก่อน ${time} น.`, `by ${time}`)}
         </div>
       )}
     </div>

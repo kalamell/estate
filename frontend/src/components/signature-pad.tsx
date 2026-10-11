@@ -2,6 +2,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Eraser } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 
 export interface SignaturePadHandle {
@@ -15,7 +16,9 @@ const INK = '#1c1b19'
 export const SignaturePad = forwardRef<
   SignaturePadHandle,
   { className?: string; onChange?: (signed: boolean) => void; label?: string }
->(function SignaturePad({ className, onChange, label = 'ลงชื่อผู้รับ' }, ref) {
+>(function SignaturePad({ className, onChange, label: labelProp }, ref) {
+  const { t } = useI18n()
+  const label = labelProp ?? t('ลงชื่อผู้รับ', 'Signature')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
   const last = useRef<{ x: number; y: number } | null>(null)
@@ -120,15 +123,15 @@ export const SignaturePad = forwardRef<
         />
         {!signed && (
           <span className="pointer-events-none absolute inset-x-0 bottom-3 text-center text-xs text-[#8a877f]">
-            ใช้นิ้วเซ็นชื่อในกรอบนี้
+            {t('ใช้นิ้วเซ็นชื่อในกรอบนี้', 'Sign with your finger in this box')}
           </span>
         )}
         <span className="pointer-events-none absolute inset-x-6 bottom-8 border-b border-dashed border-[#d6d3cb]" />
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">{signed ? 'ลงชื่อแล้ว' : label}</span>
+        <span className="text-xs text-muted-foreground">{signed ? t('ลงชื่อแล้ว', 'Signed') : label}</span>
         <Button type="button" variant="ghost" size="sm" className="h-7" onClick={clear} disabled={!signed}>
-          <Eraser /> ล้าง
+          <Eraser /> {t('ล้าง', 'Clear')}
         </Button>
       </div>
     </div>

@@ -7,6 +7,7 @@ import { ApiError, api, type Tenant } from '@/lib/api'
 import { invalidate } from '@/lib/query'
 import { thDate } from '@/lib/format'
 import { CONFIRM_WORD, CONSENT_SOURCE } from '@/lib/privacy'
+import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -47,9 +48,10 @@ export function ConsentBadge({ tenant, className }: { tenant: Tenant; className?
 
 /** ประกาศความเป็นส่วนตัว (ข้อความล้วน รักษาการขึ้นบรรทัด) */
 export function NoticeText({ text, className }: { text: string; className?: string }) {
+  const { t } = useI18n()
   return (
     <div className={cn('text-sm leading-relaxed whitespace-pre-wrap', className)}>
-      {text.trim() || 'ยังไม่มีประกาศความเป็นส่วนตัว'}
+      {text.trim() || t('ยังไม่มีประกาศความเป็นส่วนตัว', 'No privacy notice yet')}
     </div>
   )
 }

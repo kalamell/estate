@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, ImagePlus, Loader2, Lock, Send, X } from 'lucide-react'
 import type { TicketMessage, TicketPriority, TicketStatus } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { dateTime } from '@/lib/docs'
+import { TICKET_STATUS_EN, useI18n } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
@@ -11,8 +11,9 @@ import { ToneBadge } from '@/components/common'
 import { PRIORITY, TICKET_STATUS } from './labels'
 
 export function TicketStatusBadge({ status }: { status: TicketStatus }) {
+  const { en } = useI18n()
   const s = TICKET_STATUS[status] ?? TICKET_STATUS.open
-  return <ToneBadge tone={s.tone}>{s.label}</ToneBadge>
+  return <ToneBadge tone={s.tone}>{en ? (TICKET_STATUS_EN[status] ?? s.label) : s.label}</ToneBadge>
 }
 
 export function PriorityBadge({ priority }: { priority: TicketPriority }) {
@@ -24,6 +25,7 @@ export function PriorityBadge({ priority }: { priority: TicketPriority }) {
 /** รูปย่อ + lightbox */
 export function PhotoGrid({ photos, className }: { photos: string[]; className?: string }) {
   const [open, setOpen] = useState<number | null>(null)
+  const { t } = useI18n()
   if (!photos?.length) return null
   return (
     <>
@@ -34,7 +36,7 @@ export function PhotoGrid({ photos, className }: { photos: string[]; className?:
             type="button"
             onClick={() => setOpen(i)}
             className="size-20 overflow-hidden rounded-md border bg-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
-            aria-label={`ดูรูปที่ ${i + 1}`}
+            aria-label={t(`ดูรูปที่ ${i + 1}`, `View photo ${i + 1}`)}
           >
             <img src={p} alt="" loading="lazy" className="size-full object-cover" />
           </button>
@@ -42,7 +44,7 @@ export function PhotoGrid({ photos, className }: { photos: string[]; className?:
       </div>
       <Dialog open={open != null} onOpenChange={(o) => !o && setOpen(null)}>
         <DialogContent className="max-w-[calc(100%-1rem)] gap-3 p-3 sm:max-w-3xl">
-          <DialogTitle className="sr-only">รูปภาพ</DialogTitle>
+          <DialogTitle className="sr-only">{t('รูปภาพ', 'Photo')}</DialogTitle>
           {open != null && (
             <img src={photos[open]} alt="" className="max-h-[75svh] w-full rounded-sm object-contain" />
           )}
@@ -54,7 +56,7 @@ export function PhotoGrid({ photos, className }: { photos: string[]; className?:
                   type="button"
                   onClick={() => setOpen(i)}
                   className={cn('size-12 overflow-hidden rounded-sm border', i === open && 'ring-2 ring-primary')}
-                  aria-label={`รูปที่ ${i + 1}`}
+                  aria-label={t(`รูปที่ ${i + 1}`, `Photo ${i + 1}`)}
                 >
                   <img src={p} alt="" className="size-full object-cover" />
                 </button>
@@ -79,6 +81,7 @@ export function PhotoPicker({
   max?: number
   large?: boolean
 }) {
+  const { t } = useI18n()
   const pickRef = useRef<HTMLInputElement>(null)
   const camRef = useRef<HTMLInputElement>(null)
   const urls = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files])
@@ -100,7 +103,7 @@ export function PhotoPicker({
                 type="button"
                 onClick={() => onChange(files.filter((_, j) => j !== i))}
                 className="absolute top-0.5 right-0.5 grid size-5 place-items-center rounded-sm bg-[#1c1b19]/80 text-white"
-                aria-label="ลบรูป"
+                aria-label={t('ลบรูป', 'Remove photo')}
               >
                 <X className="size-3" />
               </button>
@@ -111,10 +114,10 @@ export function PhotoPicker({
       {files.length < max && (
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" className={size} onClick={() => camRef.current?.click()}>
-            <Camera /> ถ่ายรูป
+            <Camera /> {t('ถ่ายรูป', 'Take photo')}
           </Button>
           <Button type="button" variant="outline" size="sm" className={size} onClick={() => pickRef.current?.click()}>
-            <ImagePlus /> เลือกรูป
+            <ImagePlus /> {t('เลือกรูป', 'Choose photo')}
           </Button>
           <input
             ref={camRef}
@@ -152,8 +155,9 @@ export function MessageThread({
   messages: TicketMessage[]
   self: TicketMessage['author_type']
 }) {
+  const { t, dateTime } = useI18n()
   if (!messages.length)
-    return <p className="py-6 text-center text-sm text-muted-foreground">ยังไม่มีการตอบกลับ</p>
+    return <p className="py-6 text-center text-sm text-muted-foreground">{t('ยังไม่มีการตอบกลับ', 'No replies yet')}</p>
   return (
     <ol className="space-y-3">
       {messages.map((m) => {
@@ -196,7 +200,7 @@ export function ReplyBox({
   allowInternal,
   disabled,
   large,
-  placeholder = 'พิมพ์ข้อความตอบกลับ…',
+  placeholder: placeholderProp,
 }: {
   onSend: (fd: FormData) => Promise<unknown>
   pending?: boolean
@@ -205,6 +209,8 @@ export function ReplyBox({
   large?: boolean
   placeholder?: string
 }) {
+  const { t } = useI18n()
+  const placeholder = placeholderProp ?? t('พิมพ์ข้อความตอบกลับ…', 'Type a reply…')
   const [body, setBody] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [internal, setInternal] = useState(false)
@@ -238,7 +244,7 @@ export function ReplyBox({
         rows={large ? 3 : 2}
         className="resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
         disabled={disabled}
-        aria-label="ข้อความ"
+        aria-label={t('ข้อความ', 'Message')}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault()
@@ -256,7 +262,7 @@ export function ReplyBox({
         )}
         <Button type="submit" size={large ? 'lg' : 'sm'} className={cn('ml-auto', large && 'h-11')} disabled={!can}>
           {pending ? <Loader2 className="animate-spin" /> : <Send />}
-          ส่ง
+          {t('ส่ง', 'Send')}
         </Button>
       </div>
     </form>

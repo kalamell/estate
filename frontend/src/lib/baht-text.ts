@@ -41,3 +41,63 @@ export function bahtText(value: number): string {
   out += satang === 0 ? 'ถ้วน' : readGroup(satang, false) + 'สตางค์'
   return (neg ? 'ลบ' : '') + out
 }
+
+// ---------- ภาษาอังกฤษ (ใช้ในเอกสารที่ผู้เช่าเลือกภาษาอังกฤษ) ----------
+// 4644 → "Four Thousand Six Hundred Forty-Four Baht Only"
+
+const ONES = [
+  '',
+  'One',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Eleven',
+  'Twelve',
+  'Thirteen',
+  'Fourteen',
+  'Fifteen',
+  'Sixteen',
+  'Seventeen',
+  'Eighteen',
+  'Nineteen',
+]
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+const SCALES = ['', 'Thousand', 'Million', 'Billion']
+
+function under1000(n: number): string {
+  const h = Math.floor(n / 100)
+  const r = n % 100
+  const parts: string[] = []
+  if (h) parts.push(`${ONES[h]} Hundred`)
+  if (r >= 20) parts.push(TENS[Math.floor(r / 10)] + (r % 10 ? `-${ONES[r % 10]}` : ''))
+  else if (r) parts.push(ONES[r])
+  return parts.join(' ')
+}
+
+function wordsEn(n: number): string {
+  if (n === 0) return 'Zero'
+  const parts: string[] = []
+  for (let i = 0; n > 0 && i < SCALES.length; i++) {
+    const chunk = n % 1000
+    if (chunk) parts.unshift(under1000(chunk) + (SCALES[i] ? ` ${SCALES[i]}` : ''))
+    n = Math.floor(n / 1000)
+  }
+  return parts.join(' ')
+}
+
+export function bahtTextEn(value: number): string {
+  if (!Number.isFinite(value)) return ''
+  const neg = value < 0
+  const satangTotal = Math.round(Math.abs(value) * 100)
+  const baht = Math.floor(satangTotal / 100)
+  const satang = satangTotal % 100
+  let out = `${wordsEn(baht)} Baht`
+  out += satang ? ` and ${wordsEn(satang)} Satang` : ' Only'
+  return (neg ? 'Minus ' : '') + out
+}

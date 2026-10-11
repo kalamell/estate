@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { Phone, SearchX, WifiOff } from 'lucide-react'
 import { ApiError, type StayOrg } from '@/lib/api'
 import { initials } from '@/lib/format'
+import { useI18n, type Lang } from '@/lib/i18n'
+import { LangSwitch } from '@/components/lang'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -27,12 +29,18 @@ export function StayHeader({
   subtitle,
   to,
   wide,
+  lang,
+  onLang,
 }: {
   org: StayOrg
   subtitle: ReactNode
   to?: string
   wide?: boolean
+  /** แสดงตัวเลือกภาษา TH | EN */
+  lang?: Lang
+  onLang?: (l: Lang) => void
 }) {
+  const { t } = useI18n()
   const brand = (
     <>
       <OrgMark name={org.name} />
@@ -52,12 +60,13 @@ export function StayHeader({
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-3">{brand}</div>
         )}
+        {lang && onLang && <LangSwitch value={lang} onChange={onLang} />}
         {org.phone && (
-          <Button asChild variant="outline" className="h-10 shrink-0">
-            <a href={`tel:${org.phone}`} aria-label={`โทร ${org.phone}`}>
+          <Button asChild variant="outline" className="h-10 shrink-0 px-3">
+            <a href={`tel:${org.phone}`} aria-label={`${t('โทร', 'Call')} ${org.phone}`}>
               <Phone />
               <span className="hidden tabular-nums sm:inline">{org.phone}</span>
-              <span className="sm:hidden">โทร</span>
+              <span className="sm:hidden">{t('โทร', 'Call')}</span>
             </a>
           </Button>
         )}
@@ -67,6 +76,7 @@ export function StayHeader({
 }
 
 export function StayError({ error, retry, notFoundText }: { error: unknown; retry: () => void; notFoundText: string }) {
+  const { t } = useI18n()
   const notFound = error instanceof ApiError && error.status >= 400 && error.status < 500
   const Icon = notFound ? SearchX : WifiOff
   return (
@@ -75,15 +85,18 @@ export function StayError({ error, retry, notFoundText }: { error: unknown; retr
         <div className="mx-auto grid size-12 place-items-center rounded-md border bg-muted text-muted-foreground">
           <Icon className="size-5" />
         </div>
-        <h1 className="mt-5 text-lg font-semibold">{notFound ? notFoundText : 'เชื่อมต่อไม่สำเร็จ'}</h1>
+        <h1 className="mt-5 text-lg font-semibold">{notFound ? notFoundText : t('เชื่อมต่อไม่สำเร็จ', 'Could not connect')}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {notFound
-            ? 'ลิงก์อาจพิมพ์ผิด หรือที่พักปิดรับจองออนไลน์ชั่วคราว กรุณาติดต่อที่พักโดยตรง'
-            : 'ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง'}
+            ? t(
+                'ลิงก์อาจพิมพ์ผิด หรือที่พักปิดรับจองออนไลน์ชั่วคราว กรุณาติดต่อที่พักโดยตรง',
+                'The link may be mistyped, or online booking is paused. Please contact the property directly.',
+              )
+            : t('ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง', 'Check your internet connection and try again')}
         </p>
         {!notFound && (
           <Button className="mt-5 h-11" onClick={retry}>
-            ลองใหม่
+            {t('ลองใหม่', 'Try again')}
           </Button>
         )}
       </div>
@@ -102,9 +115,10 @@ export function StaySkeleton({ wide }: { wide?: boolean }) {
 }
 
 export function StayFooter() {
+  const { t } = useI18n()
   return (
     <footer className="mx-auto max-w-5xl px-4 pt-6 pb-10 text-center text-xs text-muted-foreground">
-      ระบบจองออนไลน์โดย Estate
+      {t('ระบบจองออนไลน์โดย Estate', 'Online booking by Estate')}
     </footer>
   )
 }

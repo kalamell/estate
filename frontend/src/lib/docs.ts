@@ -2,16 +2,18 @@ import { ApiError, type OrgInfo, type OrgLegal, type OrgPrivacyInput } from './a
 import { DEFAULT_COLOR_THEME, isColorTheme, type ColorThemeId } from './themes'
 
 /** ลิงก์หน้าพิมพ์เอกสาร (เปิดแท็บใหม่ + สั่งพิมพ์อัตโนมัติ) */
-export const printHref = (kind: 'invoice' | 'receipt' | 'move-out', id: number) =>
+export const printHref = (kind: 'invoice' | 'receipt' | 'move-out' | 'contract', id: number) =>
   `/print/${kind}/${id}?autoprint=1`
 
 export const portalUrl = (token: string) => `${window.location.origin}/p/${token}`
 
 /** ข้อความแสดงเมื่อโหลดเอกสารไม่สำเร็จ */
-export const docErrorText = (e: unknown) =>
+export const docErrorText = (e: unknown, lang: 'th' | 'en' = 'th') =>
   e instanceof ApiError && e.status === 404
-    ? 'ไม่พบเอกสาร หรือคุณไม่มีสิทธิ์เข้าถึง'
-    : (e as Error)?.message || 'โหลดเอกสารไม่สำเร็จ'
+    ? lang === 'en'
+      ? 'Document not found, or you do not have access'
+      : 'ไม่พบเอกสาร หรือคุณไม่มีสิทธิ์เข้าถึง'
+    : (e as Error)?.message || (lang === 'en' ? 'Could not load the document' : 'โหลดเอกสารไม่สำเร็จ')
 
 /** ดึงข้อมูลผู้ออกเอกสารจาก org (ใส่ค่าเริ่มต้นเมื่อ backend ยังไม่ส่งมา) */
 export function orgLegalOf(info: OrgInfo): OrgLegal {

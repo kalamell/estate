@@ -1,41 +1,55 @@
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, type Receipt } from '@/lib/api'
-import { bahtText } from '@/lib/baht-text'
-import { PAY_METHODS, vatRateOf, thDateLong } from '@/lib/format'
+import { bahtText, bahtTextEn } from '@/lib/baht-text'
+import { PAY_METHODS, vatRateOf } from '@/lib/format'
+import { isLang, useI18n } from '@/lib/i18n'
+import { LangProvider } from '@/components/lang'
 import { useSession } from '@/contexts/session'
 import { DocHeader, ItemsTable, PartyBlock, PrintShell, Sheet, Signatures, Totals, VoidNote } from './doc'
 import { docErrorText as errorText } from '@/lib/docs'
 
 const METHOD_ORDER = ['cash', 'transfer', 'promptpay', 'deposit']
+const PAY_METHODS_EN: Record<string, string> = {
+  promptpay: 'PromptPay',
+  transfer: 'Bank transfer',
+  cash: 'Cash',
+  deposit: 'Deducted from deposit',
+}
 
-function ReceiptSheet({ r, copy, fallbackName }: { r: Receipt; copy: string; fallbackName?: string }) {
+function ReceiptSheet({ r, copy, fallbackName }: { r: Receipt; copy: 'original' | 'copy'; fallbackName?: string }) {
+  const { t, en, dateLong } = useI18n()
   const isVoid = r.status === 'void'
   const rows: { label: string; value: number; strong?: boolean; negative?: boolean }[] = [
-    { label: 'รวมเงิน', value: r.subtotal },
+    { label: t('รวมเงิน', 'Subtotal'), value: r.subtotal },
   ]
   if (r.vat_amount > 0)
-    rows.push({ label: `ภาษีมูลค่าเพิ่ม ${vatRateOf(r.items, r.vat_amount)}%`, value: r.vat_amount })
-  rows.push({ label: 'จำนวนเงินรวมทั้งสิ้น', value: r.total, strong: true })
+    rows.push({ label: `${t('ภาษีมูลค่าเพิ่ม', 'VAT')} ${vatRateOf(r.items, r.vat_amount)}%`, value: r.vat_amount })
+  rows.push({ label: t('จำนวนเงินรวมทั้งสิ้น', 'Total'), value: r.total, strong: true })
   if (r.wht_amount > 0) {
-    rows.push({ label: 'หัก ภาษีเงินได้ ณ ที่จ่าย', value: r.wht_amount, negative: true })
-    rows.push({ label: 'รับเงินสุทธิ', value: r.net_received, strong: true })
+    rows.push({ label: t('หัก ภาษีเงินได้ ณ ที่จ่าย', 'Less withholding tax'), value: r.wht_amount, negative: true })
+    rows.push({ label: t('รับเงินสุทธิ', 'Net received'), value: r.net_received, strong: true })
   }
+  // ชื่อเอกสารตามกฎหมายคงภาษาไทยไว้ + คำแปลใต้ชื่อเมื่อเลือกภาษาอังกฤษ
+  const title = r.is_tax_invoice ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' : en ? 'ใบเสร็จรับเงิน' : 'ใบเสร็จรับเงิน / Receipt'
   return (
-    <Sheet watermark={isVoid ? 'ยกเลิก' : null}>
+    <Sheet watermark={isVoid ? t('ยกเลิก', 'VOID') : null}>
       <DocHeader
         issuer={r.issuer}
         fallbackName={fallbackName}
-        title={r.is_tax_invoice ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' : 'ใบเสร็จรับเงิน / Receipt'}
-        copyLabel={copy}
+        title={title}
+        subtitle={en ? (r.is_tax_invoice ? 'Receipt / Tax Invoice' : 'Receipt') : undefined}
+        copyLabel={copy === 'original' ? t('ต้นฉบับ', 'Original') : t('สำเนา', 'Copy')}
         meta={[
-          ['เลขที่', r.doc_no],
-          ['วันที่', thDateLong(r.issue_date)],
-          ...(r.invoice_doc_no ? ([['อ้างอิงใบแจ้งหนี้', r.invoice_doc_no]] as [string, string][]) : []),
+          [t('เลขที่', 'No.'), r.doc_no],
+          [t('วันที่', 'Date'), dateLong(r.issue_date)],
+          ...(r.invoice_doc_no
+            ? ([[t('อ้างอิงใบแจ้งหนี้', 'Invoice ref.'), r.invoice_doc_no]] as [string, string][])
+            : []),
         ]}
       />
       <PartyBlock
-        label="ได้รับเงินจาก"
+        label={t('ได้รับเงินจาก', 'Received from')}
         party={{
           name: r.payer?.name,
           address: r.payer?.address,
@@ -43,26 +57,26 @@ function ReceiptSheet({ r, copy, fallbackName }: { r: Receipt; copy: string; fal
           branch_code: r.payer?.tax_id ? r.payer?.branch_code : null,
         }}
         details={[
-          ['ห้อง', r.unit_name],
-          ['โครงการ', r.property_name],
+          [t('ห้อง', 'Room'), r.unit_name],
+          [t('โครงการ', 'Property'), r.property_name],
         ]}
       />
       <ItemsTable items={r.items} />
-      <Totals amountText={r.amount_text || bahtText(r.total)} rows={rows} />
+      <Totals amountText={en ? bahtTextEn(r.total) : r.amount_text || bahtText(r.total)} rows={rows} />
       <div className="print-avoid mt-4 flex flex-wrap gap-x-6 gap-y-1">
-        <span className="text-black/70">ชำระโดย</span>
+        <span className="text-black/70">{t('ชำระโดย', 'Paid by')}</span>
         {METHOD_ORDER.map((m) => (
           <span key={m} className="inline-flex items-center gap-1.5">
             <span className="grid size-3.5 place-items-center border border-black text-[10px] leading-none">
               {r.method === m ? '✓' : ''}
             </span>
-            {PAY_METHODS[m]}
+            {en ? PAY_METHODS_EN[m] : PAY_METHODS[m]}
           </span>
         ))}
         {!METHOD_ORDER.includes(r.method) && <span>{r.method}</span>}
       </div>
       {isVoid && <VoidNote reason={r.void_reason} />}
-      <Signatures labels={['ผู้รับเงิน', 'ผู้จ่ายเงิน']} />
+      <Signatures labels={[t('ผู้รับเงิน', 'Received by'), t('ผู้จ่ายเงิน', 'Paid by')]} />
     </Sheet>
   )
 }
@@ -70,8 +84,8 @@ function ReceiptSheet({ r, copy, fallbackName }: { r: Receipt; copy: string; fal
 export function ReceiptDocument({ receipt, fallbackName }: { receipt: Receipt; fallbackName?: string }) {
   return (
     <>
-      <ReceiptSheet r={receipt} copy="ต้นฉบับ" fallbackName={fallbackName} />
-      <ReceiptSheet r={receipt} copy="สำเนา" fallbackName={fallbackName} />
+      <ReceiptSheet r={receipt} copy="original" fallbackName={fallbackName} />
+      <ReceiptSheet r={receipt} copy="copy" fallbackName={fallbackName} />
     </>
   )
 }
@@ -105,13 +119,16 @@ export function PortalReceiptPrint() {
     meta: { silent: true },
     retry: false,
   })
+  const lang = isLang(home.data?.tenant.lang) ? home.data.tenant.lang : 'th'
   return (
-    <PrintShell
-      title={`ใบเสร็จ ${q.data?.receipt.doc_no ?? ''}`}
-      loading={q.isLoading}
-      error={q.error ? errorText(q.error) : null}
-    >
-      {q.data && <ReceiptDocument receipt={q.data.receipt} fallbackName={home.data?.org.name} />}
-    </PrintShell>
+    <LangProvider lang={lang}>
+      <PrintShell
+        title={`${lang === 'en' ? 'Receipt' : 'ใบเสร็จ'} ${q.data?.receipt.doc_no ?? ''}`}
+        loading={q.isLoading || home.isLoading}
+        error={q.error ? errorText(q.error, lang) : null}
+      >
+        {q.data && <ReceiptDocument receipt={q.data.receipt} fallbackName={home.data?.org.name} />}
+      </PrintShell>
+    </LangProvider>
   )
 }

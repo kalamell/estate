@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { BOOKING_STATUS, TONE, UNIT_STATUS, type Tone } from '@/lib/format'
 import type { BookingStatus, Invoice, UnitStatus } from '@/lib/api'
+import { useI18n } from '@/lib/i18n'
 
 /** Label + control ที่ผูก id กัน */
 export function Field({
@@ -166,10 +167,12 @@ export function InvoiceStatusBadge({
   status: Invoice['status'] | string
   overdueDays?: number
 }) {
-  if (status === 'paid') return <ToneBadge tone="green">ชำระแล้ว</ToneBadge>
-  if (status === 'void') return <ToneBadge tone="grey">ยกเลิก</ToneBadge>
-  if (overdueDays > 0) return <ToneBadge tone="mustard">เกินกำหนด {overdueDays} วัน</ToneBadge>
-  return <ToneBadge tone="ink">รอชำระ</ToneBadge>
+  const { t } = useI18n()
+  if (status === 'paid') return <ToneBadge tone="green">{t('ชำระแล้ว', 'Paid')}</ToneBadge>
+  if (status === 'void') return <ToneBadge tone="grey">{t('ยกเลิก', 'Void')}</ToneBadge>
+  if (overdueDays > 0)
+    return <ToneBadge tone="mustard">{t(`เกินกำหนด ${overdueDays} วัน`, `${overdueDays} days overdue`)}</ToneBadge>
+  return <ToneBadge tone="ink">{t('รอชำระ', 'Unpaid')}</ToneBadge>
 }
 
 /** หน้าที่จำกัดเฉพาะเจ้าของ/ผู้ดูแลองค์กร */

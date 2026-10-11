@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
+import { useI18n } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -18,6 +19,7 @@ export function CopyField({
   inputClassName?: string
 }) {
   const [copied, setCopied] = useState(false)
+  const { t } = useI18n()
   return (
     <div className={cn('flex gap-2', className)}>
       <Input
@@ -32,7 +34,7 @@ export function CopyField({
         variant="outline"
         size="icon"
         className="shrink-0"
-        aria-label={`คัดลอก${label}`}
+        aria-label={t(`คัดลอก${label}`, `Copy ${label}`)}
         onClick={async () => {
           if (await copyText(value)) {
             setCopied(true)

@@ -6,9 +6,8 @@ import { toast } from 'sonner'
 import { AlertTriangle, CheckCircle2, Clock, ImagePlus, Loader2, Printer, Upload, XCircle } from 'lucide-react'
 import { api, type PortalNotice, type PortalSlipResult } from '@/lib/api'
 import { queryClient } from '@/lib/query'
-import { sqlUtc } from '@/lib/billing'
-import { dateTime } from '@/lib/docs'
 import { baht } from '@/lib/format'
+import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,13 +17,12 @@ import { LineIcon } from '@/components/line'
 
 /** ป้ายสถานะการแจ้งชำระในรายการบิล */
 export function NoticeBadge({ notice }: { notice: PortalNotice | null }) {
+  const { t } = useI18n()
   if (!notice) return null
-  if (notice.status === 'pending') return <ToneBadge tone="ink">รอตรวจสลิป</ToneBadge>
-  if (notice.status === 'rejected') return <ToneBadge tone="red">สลิปไม่ผ่าน</ToneBadge>
+  if (notice.status === 'pending') return <ToneBadge tone="ink">{t('รอตรวจสลิป', 'Slip pending')}</ToneBadge>
+  if (notice.status === 'rejected') return <ToneBadge tone="red">{t('สลิปไม่ผ่าน', 'Slip rejected')}</ToneBadge>
   return null
 }
-
-const at = (s: string) => dateTime(sqlUtc(s))
 
 /**
  * ส่วนแจ้งชำระในหน้าบิล:
@@ -46,6 +44,7 @@ export function PayWithSlip({
   lineLinked: boolean
   autoStart?: boolean
 }) {
+  const { t, at } = useI18n()
   const [step, setStep] = useState<'idle' | 'form'>(autoStart && notice?.status !== 'pending' ? 'form' : 'idle')
   const [result, setResult] = useState<PortalSlipResult | null>(null)
 
@@ -67,9 +66,9 @@ export function PayWithSlip({
         <div className="flex items-start gap-3 rounded-md border bg-muted/40 px-3 py-3 text-sm">
           <Clock className="mt-0.5 size-5 shrink-0 text-info" />
           <div>
-            <div className="font-medium">แจ้งชำระแล้ว รอเจ้าหน้าที่ตรวจสอบ</div>
+            <div className="font-medium">{t('แจ้งชำระแล้ว รอเจ้าหน้าที่ตรวจสอบ', 'Payment sent, waiting for staff to check')}</div>
             <div className="text-xs text-muted-foreground">
-              ยอด {baht(notice.amount)} · ส่งเมื่อ {at(notice.created_at)}
+              {t('ยอด', 'Amount')} {baht(notice.amount)} · {t('ส่งเมื่อ', 'sent')} {at(notice.created_at)}
             </div>
           </div>
         </div>
@@ -79,20 +78,29 @@ export function PayWithSlip({
             <div className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 px-3 py-3 text-sm">
               <XCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
               <div>
-                <div className="font-medium">สลิปที่ส่งไม่ผ่านการตรวจสอบ</div>
-                {notice.reject_reason && <div className="text-muted-foreground">เหตุผล: {notice.reject_reason}</div>}
-                <div className="mt-0.5 text-xs text-muted-foreground">ตรวจสอบแล้วแนบสลิปใหม่อีกครั้งได้เลย</div>
+                <div className="font-medium">{t('สลิปที่ส่งไม่ผ่านการตรวจสอบ', 'Your slip was not accepted')}</div>
+                {notice.reject_reason && (
+                  <div className="text-muted-foreground">
+                    {t('เหตุผล', 'Reason')}: {notice.reject_reason}
+                  </div>
+                )}
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {t('ตรวจสอบแล้วแนบสลิปใหม่อีกครั้งได้เลย', 'Please check and attach a new slip')}
+                </div>
               </div>
             </div>
           )}
           <Button className="h-12 w-full text-base" onClick={() => setStep('form')}>
-            <Upload /> {notice?.status === 'rejected' ? 'แนบสลิปใหม่' : 'แจ้งชำระ / แนบสลิป'}
+            <Upload />{' '}
+            {notice?.status === 'rejected'
+              ? t('แนบสลิปใหม่', 'Attach a new slip')
+              : t('แจ้งชำระ / แนบสลิป', 'I have paid / attach slip')}
           </Button>
         </>
       )}
       {lineLinked && (
         <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-          <LineIcon className="size-3.5" /> หรือส่งรูปสลิปในแชต LINE ได้เลย
+          <LineIcon className="size-3.5" /> {t('หรือส่งรูปสลิปในแชต LINE ได้เลย', 'Or just send the slip photo in LINE chat')}
         </p>
       )}
     </div>
@@ -112,6 +120,7 @@ function SlipForm({
   onCancel: () => void
   onDone: (r: PortalSlipResult) => void
 }) {
+  const { t } = useI18n()
   const inputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
   // เปิดฟอร์มแล้วเลื่อนลงมาให้เห็นทันที (ฟอร์มอยู่ใต้ QR ในกล่องบิล)
@@ -144,7 +153,7 @@ function SlipForm({
       onDone(r)
       await queryClient.invalidateQueries({ queryKey: ['portal', token] })
     },
-    onError: (e) => toast.error((e as Error).message || 'ส่งสลิปไม่สำเร็จ กรุณาลองใหม่'),
+    onError: (e) => toast.error((e as Error).message || t('ส่งสลิปไม่สำเร็จ กรุณาลองใหม่', 'Could not send the slip — please try again')),
   })
 
   return (
@@ -153,12 +162,15 @@ function SlipForm({
       className="grid scroll-mt-4 gap-4"
       onSubmit={(e) => {
         e.preventDefault()
-        if (!file) return toast.error('กรุณาเลือกรูปสลิป')
-        if (amountBad) return toast.error(`ยอดต้องมากกว่า 0 และไม่เกิน ${baht(amountDue)}`)
+        if (!file) return toast.error(t('กรุณาเลือกรูปสลิป', 'Please choose the slip image'))
+        if (amountBad)
+          return toast.error(
+            t(`ยอดต้องมากกว่า 0 และไม่เกิน ${baht(amountDue)}`, `Amount must be more than 0 and at most ${baht(amountDue)}`),
+          )
         submit.mutate()
       }}
     >
-      <div className="text-sm font-medium">แนบสลิปการโอน</div>
+      <div className="text-sm font-medium">{t('แนบสลิปการโอน', 'Attach transfer slip')}</div>
       <input
         ref={inputRef}
         type="file"
@@ -174,9 +186,9 @@ function SlipForm({
           type="button"
           onClick={() => inputRef.current?.click()}
           className="overflow-hidden rounded-md border bg-muted"
-          aria-label="เปลี่ยนรูปสลิป"
+          aria-label={t('เปลี่ยนรูปสลิป', 'Change slip image')}
         >
-          <img src={preview} alt="สลิปที่เลือก" className="max-h-80 w-full object-contain" />
+          <img src={preview} alt={t('สลิปที่เลือก', 'Selected slip')} className="max-h-80 w-full object-contain" />
         </button>
       ) : (
         <button
@@ -186,15 +198,21 @@ function SlipForm({
         >
           <span className="grid justify-items-center gap-2">
             <ImagePlus className="size-7" />
-            เลือกรูปสลิปจากเครื่อง
-            <span className="text-xs">ภาพสลิปเต็มใบที่เห็น QR ชัดเจน</span>
+            {t('เลือกรูปสลิปจากเครื่อง', 'Choose slip image')}
+            <span className="text-xs">{t('ภาพสลิปเต็มใบที่เห็น QR ชัดเจน', 'The whole slip with the QR code clearly visible')}</span>
           </span>
         </button>
       )}
       <Field
-        label="ยอดที่โอน (บาท)"
+        label={t('ยอดที่โอน (บาท)', 'Amount transferred (THB)')}
         htmlFor="sl-amount"
-        hint={amountBad ? <span className="text-destructive">ไม่เกิน {baht(amountDue)}</span> : `ยอดค้างชำระ ${baht(amountDue)}`}
+        hint={
+          amountBad ? (
+            <span className="text-destructive">{t(`ไม่เกิน ${baht(amountDue)}`, `At most ${baht(amountDue)}`)}</span>
+          ) : (
+            t(`ยอดค้างชำระ ${baht(amountDue)}`, `Amount due ${baht(amountDue)}`)
+          )
+        }
       >
         <Input
           id="sl-amount"
@@ -205,16 +223,16 @@ function SlipForm({
           aria-invalid={amountBad || undefined}
         />
       </Field>
-      <Field label="หมายเหตุ (ถ้ามี)" htmlFor="sl-note">
+      <Field label={t('หมายเหตุ (ถ้ามี)', 'Note (optional)')} htmlFor="sl-note">
         <Textarea id="sl-note" rows={2} className="bg-card" value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant="outline" className="h-12" onClick={onCancel} disabled={submit.isPending}>
-          ยกเลิก
+          {t('ยกเลิก', 'Cancel')}
         </Button>
         <Button type="submit" className="h-12" disabled={!file || submit.isPending}>
           {submit.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
-          ส่งสลิป
+          {t('ส่งสลิป', 'Send slip')}
         </Button>
       </div>
     </form>
@@ -222,6 +240,7 @@ function SlipForm({
 }
 
 function SlipResult({ token, r }: { token: string; r: PortalSlipResult }) {
+  const { t } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -233,13 +252,15 @@ function SlipResult({ token, r }: { token: string; r: PortalSlipResult }) {
         className="grid justify-items-center gap-3 rounded-lg border border-success/30 bg-success/5 px-4 py-5 text-center">
         <CheckCircle2 className="size-9 text-success" />
         <div>
-          <div className="font-semibold">ชำระเรียบร้อย ขอบคุณครับ/ค่ะ</div>
-          <p className="mt-0.5 text-sm text-muted-foreground">ตรวจสลิปกับธนาคารแล้ว ออกใบเสร็จให้เรียบร้อย</p>
+          <div className="font-semibold">{t('ชำระเรียบร้อย ขอบคุณครับ/ค่ะ', 'Payment complete — thank you')}</div>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {t('ตรวจสลิปกับธนาคารแล้ว ออกใบเสร็จให้เรียบร้อย', 'Slip verified with the bank and your receipt is ready')}
+          </p>
         </div>
         {r.receipt_id && (
           <Button asChild className="h-11 w-full">
             <Link to={`/p/${token}/print/receipt/${r.receipt_id}`}>
-              <Printer /> ดูใบเสร็จ
+              <Printer /> {t('ดูใบเสร็จ', 'View receipt')}
             </Link>
           </Button>
         )}
@@ -251,9 +272,12 @@ function SlipResult({ token, r }: { token: string; r: PortalSlipResult }) {
     <div ref={ref} className="grid gap-3">
       <div className="grid justify-items-center gap-2 rounded-lg border bg-muted/40 px-4 py-5 text-center">
         <Clock className="size-9 text-info" />
-        <div className="font-semibold">ได้รับสลิปแล้ว รอเจ้าหน้าที่ตรวจสอบ</div>
+        <div className="font-semibold">{t('ได้รับสลิปแล้ว รอเจ้าหน้าที่ตรวจสอบ', 'Slip received — waiting for staff to check')}</div>
         <p className="text-sm text-muted-foreground">
-          ยอด {baht(r.notice.amount)} — เมื่อยืนยันแล้วจะออกใบเสร็จให้ในหน้านี้
+          {t(
+            `ยอด ${baht(r.notice.amount)} — เมื่อยืนยันแล้วจะออกใบเสร็จให้ในหน้านี้`,
+            `Amount ${baht(r.notice.amount)} — your receipt will appear here once confirmed`,
+          )}
         </p>
       </div>
       {(warn || res === 'unreadable') && (
@@ -272,10 +296,19 @@ function SlipResult({ token, r }: { token: string; r: PortalSlipResult }) {
           />
           <span>
             {res === 'duplicate'
-              ? 'สลิปนี้เคยถูกใช้แจ้งชำระแล้ว — หากส่งผิดรูป กรุณาติดต่อเจ้าหน้าที่'
+              ? t(
+                  'สลิปนี้เคยถูกใช้แจ้งชำระแล้ว — หากส่งผิดรูป กรุณาติดต่อเจ้าหน้าที่',
+                  'This slip has already been used — if you sent the wrong image, please contact staff',
+                )
               : res === 'mismatch'
-                ? 'ยอดเงินบนสลิปไม่ตรงกับยอดที่แจ้ง — เจ้าหน้าที่จะตรวจสอบอีกครั้ง'
-                : 'ระบบอ่าน QR บนสลิปไม่ได้ — เจ้าหน้าที่จะตรวจจากรูปแทน'}
+                ? t(
+                    'ยอดเงินบนสลิปไม่ตรงกับยอดที่แจ้ง — เจ้าหน้าที่จะตรวจสอบอีกครั้ง',
+                    'The amount on the slip does not match — staff will check it',
+                  )
+                : t(
+                    'ระบบอ่าน QR บนสลิปไม่ได้ — เจ้าหน้าที่จะตรวจจากรูปแทน',
+                    'The QR code on the slip could not be read — staff will check the image',
+                  )}
           </span>
         </div>
       )}

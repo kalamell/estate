@@ -4,6 +4,7 @@
 
 import { toast } from 'sonner'
 import type { ColorThemeId } from './themes'
+import type { Lang } from './i18n'
 export type { ColorThemeId } from './themes'
 
 // ===================== Types: auth / SaaS =====================
@@ -511,6 +512,8 @@ export interface Tenant {
   arrival_date?: string | null
   visa_type?: string
   visa_expiry?: string | null
+  /** ภาษาที่ใช้ติดต่อ (LINE / พอร์ทัล) */
+  lang?: Lang
 }
 
 export type Gender = '' | 'M' | 'F'
@@ -530,6 +533,8 @@ export type TenantInput = Pick<
   arrival_date?: string
   visa_type?: string
   visa_expiry?: string
+  /** ภาษาที่ใช้ติดต่อ — ไม่ส่ง = ไม่เปลี่ยน */
+  lang?: Lang
 }
 
 // ----- PDPA -----
@@ -855,7 +860,7 @@ export interface ReportSummary {
 
 // ----- Tenant portal -----
 export interface PortalHome {
-  tenant: { full_name: string; phone: string }
+  tenant: { full_name: string; phone: string; lang?: Lang }
   org: { name: string; phone: string; theme?: ColorThemeId | string }
   line?: {
     enabled: boolean
@@ -893,6 +898,8 @@ export interface PortalHome {
   payment_notices?: PortalNotice[]
   /** พัสดุรอรับ + ที่รับแล้วใน 30 วัน */
   parcels?: PortalParcel[]
+  /** สัญญาที่ส่งให้ผู้เช่าแล้ว (ไม่รวมร่าง) */
+  contracts?: PortalContractSummary[]
 }
 
 export interface PortalNotice {
@@ -924,6 +931,90 @@ export interface PortalSlipResult {
   /** ยืนยันอัตโนมัติแล้ว (ออกใบเสร็จแล้ว) */
   paid: boolean
   receipt_id: number | null
+}
+
+// ----- สัญญาเช่าอิเล็กทรอนิกส์ -----
+export type ContractKind = 'lease' | 'short_stay' | 'other'
+export type ContractStatus = 'draft' | 'sent' | 'tenant_signed' | 'completed' | 'void'
+
+export interface ContractTemplate {
+  id: number
+  name: string
+  kind: ContractKind
+  body: string
+  is_default: boolean
+  updated_at: string
+}
+
+export type ContractTemplateInput = Pick<ContractTemplate, 'name' | 'kind' | 'body' | 'is_default'>
+
+export interface ContractPlaceholder {
+  key: string
+  label: string
+}
+
+export interface Contract {
+  id: number
+  booking_id: number
+  tenant_id: number | null
+  tenant_name: string | null
+  tenant_line_linked: boolean
+  unit_name: string
+  property_name: string
+  template_id: number | null
+  doc_no: string
+  title: string
+  body: string
+  /** SHA-256 ของชื่อ+เนื้อหา ณ เวลาที่ส่ง */
+  content_hash: string | null
+  status: ContractStatus
+  sent_at: string | null
+  tenant_signature_url: string | null
+  tenant_signed_name: string | null
+  tenant_signed_at: string | null
+  tenant_signed_ip: string | null
+  tenant_signed_ua: string | null
+  landlord_signature_url: string | null
+  landlord_signed_name: string | null
+  landlord_signed_at: string | null
+  void_reason: string | null
+  created_at: string
+}
+
+export interface PortalContractSummary {
+  id: number
+  doc_no: string
+  title: string
+  status: ContractStatus
+  sent_at: string | null
+  tenant_signed_at: string | null
+}
+
+/** สัญญาที่ผู้เช่าเห็นในพอร์ทัล (ไม่มี IP/อุปกรณ์) */
+export type PortalContract = Pick<
+  Contract,
+  | 'id'
+  | 'doc_no'
+  | 'title'
+  | 'body'
+  | 'status'
+  | 'content_hash'
+  | 'sent_at'
+  | 'unit_name'
+  | 'property_name'
+  | 'tenant_name'
+  | 'tenant_signature_url'
+  | 'tenant_signed_name'
+  | 'tenant_signed_at'
+  | 'landlord_signature_url'
+  | 'landlord_signed_name'
+  | 'landlord_signed_at'
+  | 'void_reason'
+>
+
+export interface PortalContractView {
+  contract: PortalContract
+  org: { name: string }
 }
 
 // ----- แจ้งชำระ + ตรวจสลิป -----
@@ -1338,6 +1429,8 @@ export interface StayRequestInput {
   note: string
   /** ยินยอมให้ใช้ข้อมูลเพื่อการจอง (บังคับ true) */
   consent: true
+  /** ภาษาที่แขกใช้จอง — เป็นภาษาเริ่มต้นของผู้เช่าเมื่ออนุมัติ */
+  lang?: Lang
 }
 
 export interface StayRequestStatus {
@@ -1704,6 +1797,25 @@ export const api = {
   returnParcel: (id: number, note: string) => post<Parcel>(`/api/parcels/${id}/return`, { note }),
   deleteParcel: (id: number) => del(`/api/parcels/${id}`),
 
+  // สัญญาเช่าอิเล็กทรอนิกส์
+  contractTemplates: () =>
+    get<{ templates: ContractTemplate[]; placeholders: ContractPlaceholder[] }>('/api/contract-templates'),
+  saveContractTemplate: (t: ContractTemplateInput & { id?: number }) =>
+    t.id
+      ? put<ContractTemplate>(`/api/contract-templates/${t.id}`, t)
+      : post<ContractTemplate>('/api/contract-templates', t),
+  deleteContractTemplate: (id: number) => del(`/api/contract-templates/${id}`),
+  contracts: (f: { booking_id?: number | null; tenant_id?: number | null; status?: ContractStatus | '' } = {}) =>
+    get<Contract[]>('/api/contracts', f),
+  contract: (id: number) => get<Contract>(`/api/contracts/${id}`),
+  createContract: (b: { booking_id: number; template_id?: number | null }) =>
+    post<{ contract: Contract; unknown_placeholders: string[] }>('/api/contracts', b),
+  updateContract: (id: number, b: { title: string; body: string }) => put<Contract>(`/api/contracts/${id}`, b),
+  sendContract: (id: number) => post<Contract>(`/api/contracts/${id}/send`),
+  /** multipart: signature (PNG), signed_name */
+  landlordSignContract: (id: number, fd: FormData) => form<Contract>(`/api/contracts/${id}/landlord-sign`, fd),
+  voidContract: (id: number, reason: string) => post<Contract>(`/api/contracts/${id}/void`, { reason }),
+
   // ตม.30
   tm30: (f: { status?: Tm30Status | '' } = {}) => get<Tm30List>('/api/tm30', f),
   submitTm30: (id: number, fd: FormData) => form<Tm30Report>(`/api/tm30/${id}/submit`, fd),
@@ -1738,6 +1850,12 @@ export const api = {
     /** แจ้งชำระพร้อมสลิป (multipart: photo, amount?, note?) */
     submitSlip: (token: string, invoiceId: number, fd: FormData) =>
       form<PortalSlipResult>(`/api/portal/${enc(token)}/invoices/${invoiceId}/slip`, fd, false),
+    setLang: (token: string, lang: Lang) => post<{ lang: Lang }>(`/api/portal/${enc(token)}/lang`, { lang }, false),
+    contract: (token: string, id: number) =>
+      get<PortalContractView>(`/api/portal/${enc(token)}/contracts/${id}`, undefined, false),
+    /** multipart: signature (PNG), signed_name, agree='true', content_hash (ค่าที่แสดงอยู่) */
+    signContract: (token: string, id: number, fd: FormData) =>
+      form<PortalContractView>(`/api/portal/${enc(token)}/contracts/${id}/sign`, fd, false),
   },
 
   // หน้าจองออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน ไม่ส่ง X-Org-Id)

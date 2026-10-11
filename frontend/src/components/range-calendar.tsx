@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { TH_MONTHS, TH_WEEKDAYS, addDays, addMonths, today } from '@/lib/format'
+import { addDays, addMonths, today } from '@/lib/format'
+import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -40,6 +41,7 @@ export function RangeCalendar({
   className?: string
 }) {
   const t = today()
+  const i18n = useI18n()
   const choosingEnd = !!value.start && !value.end
   // วันสุดท้ายที่เลือกเป็นเช็คเอาท์ได้ = คืนแรกที่ไม่ว่างหลังวันเช็คอิน
   const limit = useMemo(() => {
@@ -74,7 +76,7 @@ export function RangeCalendar({
           size="icon-sm"
           disabled={!canPrev}
           onClick={() => onMonthChange(addMonths(month, -1))}
-          aria-label="เดือนก่อนหน้า"
+          aria-label={i18n.t('เดือนก่อนหน้า', 'Previous month')}
         >
           <ChevronLeft />
         </Button>
@@ -83,7 +85,7 @@ export function RangeCalendar({
           variant="ghost"
           size="icon-sm"
           onClick={() => onMonthChange(addMonths(month, 1))}
-          aria-label="เดือนถัดไป"
+          aria-label={i18n.t('เดือนถัดไป', 'Next month')}
         >
           <ChevronRight />
         </Button>
@@ -123,6 +125,7 @@ function Month({
   priceFor?: (d: string) => number | null
   onPick: (d: string) => void
 }) {
+  const { months, weekdays, year } = useI18n()
   const [y, m] = ym.split('-').map(Number)
   const first = new Date(y, m - 1, 1).getDay()
   const count = new Date(y, m, 0).getDate()
@@ -133,10 +136,10 @@ function Month({
   return (
     <div>
       <div className="mb-2 h-8 text-center text-sm leading-8 font-semibold">
-        {TH_MONTHS[m - 1]} {y + 543}
+        {months[m - 1]} {year(y)}
       </div>
       <div className="grid grid-cols-7 text-center text-[11px] text-muted-foreground">
-        {TH_WEEKDAYS.map((w) => (
+        {weekdays.map((w) => (
           <div key={w} className="pb-1.5">
             {w}
           </div>

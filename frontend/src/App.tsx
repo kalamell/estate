@@ -60,6 +60,11 @@ const AuditLogsPage = lazy(() => import('@/pages/audit-logs'))
 const PaymentNoticesPage = lazy(() => import('@/pages/payment-notices'))
 const ParcelsPage = lazy(() => import('@/pages/parcels'))
 const Tm30Page = lazy(() => import('@/pages/tm30'))
+const ContractsPage = lazy(() => import('@/pages/contracts'))
+const ContractDetailPage = lazy(() => import('@/pages/contracts/detail'))
+const PortalContractPage = lazy(() => import('@/pages/portal/contract'))
+const StaffContractPrint = lazy(() => import('@/pages/print/contract').then((m) => ({ default: m.StaffContractPrint })))
+const PortalContractPrint = lazy(() => import('@/pages/print/contract').then((m) => ({ default: m.PortalContractPrint })))
 
 const page = (el: ReactNode) => <Suspense fallback={<PageSkeleton />}>{el}</Suspense>
 
@@ -82,6 +87,9 @@ export default function App() {
                   <Route path="/p/:token" element={<PortalPage />} />
                   <Route path="/p/:token/print/invoice/:id" element={<PortalInvoicePrint />} />
                   <Route path="/p/:token/print/receipt/:id" element={<PortalReceiptPrint />} />
+                  {/* ผู้เช่าอ่านและลงนามสัญญา (ลิงก์จาก LINE) */}
+                  <Route path="/p/:token/contract/:id" element={<PortalContractPage />} />
+                  <Route path="/p/:token/print/contract/:id" element={<PortalContractPrint />} />
                   {/* หน้าจองออนไลน์ — สาธารณะ ไม่ต้องล็อกอิน */}
                   <Route path="/stay/:slug" element={<StayPage />} />
                   <Route path="/stay/:slug/r/:token" element={<StayRequestPage />} />
@@ -89,6 +97,7 @@ export default function App() {
                     <Route path="/print/invoice/:id" element={<StaffInvoicePrint />} />
                     <Route path="/print/receipt/:id" element={<StaffReceiptPrint />} />
                     <Route path="/print/move-out/:id" element={<StaffMoveOutPrint />} />
+                    <Route path="/print/contract/:id" element={<StaffContractPrint />} />
                     {/* ใบแจ้งหนี้/ใบเสร็จค่าบริการแพลตฟอร์ม (?type=invoice|receipt) */}
                     <Route path="/print/subscription/:id" element={<OrgSubscriptionPrint />} />
                     <Route
@@ -113,6 +122,8 @@ export default function App() {
                       <Route path="housekeeping" element={page(<HousekeepingPage />)} />
                       <Route path="units" element={page(<UnitsPage />)} />
                       <Route path="bookings" element={page(<BookingsPage />)} />
+                      <Route path="contracts" element={page(<ContractsPage />)} />
+                      <Route path="contracts/:id" element={page(<ContractDetailPage />)} />
                       <Route path="calendar" element={page(<CalendarPage />)} />
                       <Route path="meters" element={page(<MetersPage />)} />
                       <Route path="invoices" element={page(<InvoicesPage />)} />

@@ -7,6 +7,7 @@ import {
   CalendarRange,
   CreditCard,
   DoorOpen,
+  FileSignature,
   Gauge,
   History,
   LayoutDashboard,
@@ -68,6 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'งานประจำ',
     items: [
       { to: '/bookings', label: 'การจอง & มัดจำ', icon: CalendarDays, badge: 'pending_requests' },
+      { to: '/contracts', label: 'สัญญา', icon: FileSignature },
       { to: '/calendar', label: 'ปฏิทินการจอง', icon: CalendarRange },
       { to: '/housekeeping', label: 'งานแม่บ้าน', icon: BrushCleaning, badge: 'hk_open_tasks' },
       { to: '/meters', label: 'จดมิเตอร์', icon: Gauge },

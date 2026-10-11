@@ -1,7 +1,7 @@
 // พอร์ทัลผู้เช่า (สาธารณะ ไม่ต้องล็อกอิน) — /p/:token
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowLeft,
@@ -27,7 +27,8 @@ import {
 } from 'lucide-react'
 import { ApiError, api, withUploadAccess, type PortalHome, type PrivacyRequestKind } from '@/lib/api'
 import { queryClient } from '@/lib/query'
-import { baht, num, thDate, thDateLong, thPeriod } from '@/lib/format'
+import { baht, num } from '@/lib/format'
+import { ORG_CATEGORIES_EN, PRIVACY_KINDS_EN, pick, useI18n, type I18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -41,24 +42,29 @@ import { EmptyState, Field, InvoiceStatusBadge, LogoMark, ToneBadge } from '@/co
 import { PromptPayQR } from '@/components/promptpay-qr'
 import { ORG_CATEGORIES } from '@/components/tickets/labels'
 import { MessageThread, PhotoGrid, PhotoPicker, ReplyBox, TicketStatusBadge } from '@/components/tickets/parts'
-import { timeAgo } from '@/lib/docs'
 import { addFriendUrl } from '@/lib/line'
 import { useForcedColorTheme } from '@/components/theme-provider'
 import { LineIcon } from '@/components/line'
 import { NoticeText } from '@/components/privacy'
+import { LangProvider, LangSwitch } from '@/components/lang'
 import { PRIVACY_KINDS } from '@/lib/privacy'
 import { NoticeBadge, PayWithSlip } from './slip'
 import { ParcelsHomeCard, ParcelsTab } from './parcels'
+import { portalLang, useSetPortalLang } from './lang'
+import { ContractsHomeCard, ContractsSection } from './contracts'
 
 type Tab = 'home' | 'bills' | 'parcels' | 'repair' | 'privacy'
+type TabDef = { v: Tab; label: string; short: string; icon: LucideIcon }
 /** short = ป้ายบนแถบเมนูด้านล่าง (มือถือ) */
-const BASE_TABS: { v: Tab; label: string; short: string; icon: LucideIcon }[] = [
-  { v: 'home', label: 'หน้าหลัก', short: 'หน้าหลัก', icon: Home },
-  { v: 'bills', label: 'บิล & ใบเสร็จ', short: 'บิล', icon: FileText },
-  { v: 'parcels', label: 'พัสดุ', short: 'พัสดุ', icon: Package },
-  { v: 'repair', label: 'แจ้งซ่อม', short: 'แจ้งซ่อม', icon: Wrench },
+const tabsFor = ({ t }: I18n, privacy: boolean): TabDef[] => [
+  { v: 'home', label: t('หน้าหลัก', 'Home'), short: t('หน้าหลัก', 'Home'), icon: Home },
+  { v: 'bills', label: t('บิล & ใบเสร็จ', 'Bills & receipts'), short: t('บิล', 'Bills'), icon: FileText },
+  { v: 'parcels', label: t('พัสดุ', 'Parcels'), short: t('พัสดุ', 'Parcels'), icon: Package },
+  { v: 'repair', label: t('แจ้งซ่อม', 'Repairs'), short: t('แจ้งซ่อม', 'Repairs'), icon: Wrench },
+  ...(privacy
+    ? [{ v: 'privacy' as Tab, label: t('ความเป็นส่วนตัว', 'Privacy'), short: t('ส่วนตัว', 'Privacy'), icon: ShieldCheck }]
+    : []),
 ]
-const PRIVACY_TAB = { v: 'privacy' as Tab, label: 'ความเป็นส่วนตัว', short: 'ส่วนตัว', icon: ShieldCheck }
 
 /** การแจ้งชำระล่าสุดของบิล */
 const noticeFor = (d: PortalHome, invoiceId: number) =>
@@ -76,18 +82,12 @@ const TAB_ALIAS: Record<string, Tab> = {
   repair: 'repair',
   tickets: 'repair',
   privacy: 'privacy',
+  contracts: 'home',
+  contract: 'home',
 }
 
 export default function PortalPage() {
   const { token = '' } = useParams()
-  const [params, setParams] = useSearchParams()
-  // deep link: ?invoice=<id> → แท็บบิล, ?ticket=<id> → แท็บแจ้งซ่อม
-  const tab: Tab = params.get('invoice')
-    ? 'bills'
-    : params.get('ticket')
-      ? 'repair'
-      : (TAB_ALIAS[params.get('tab') ?? ''] ?? 'home')
-  const setTab = (t: Tab) => setParams(t === 'home' ? {} : { tab: t })
   const home = useQuery({
     queryKey: ['portal', token],
     queryFn: () => api.portal.home(token),
@@ -95,6 +95,25 @@ export default function PortalPage() {
     // กลับมาจากแอป LINE หลังเชื่อมบัญชี → โหลดสถานะใหม่
     refetchOnWindowFocus: true,
   })
+  return (
+    <LangProvider lang={portalLang(home.data)}>
+      <Portal token={token} home={home} />
+    </LangProvider>
+  )
+}
+
+function Portal({ token, home }: { token: string; home: UseQueryResult<PortalHome> }) {
+  const i18n = useI18n()
+  const { t } = i18n
+  const setLang = useSetPortalLang(token)
+  const [params, setParams] = useSearchParams()
+  // deep link: ?invoice=<id> → แท็บบิล, ?ticket=<id> → แท็บแจ้งซ่อม
+  const tab: Tab = params.get('invoice')
+    ? 'bills'
+    : params.get('ticket')
+      ? 'repair'
+      : (TAB_ALIAS[params.get('tab') ?? ''] ?? 'home')
+  const setTab = (v: Tab) => setParams(v === 'home' ? {} : { tab: v })
   // พอร์ทัลใช้ธีมขององค์กรเสมอ (ไม่ใช้ค่าที่ผู้ใช้เลือกเอง)
   useForcedColorTheme(home.data ? (home.data.org.theme ?? 'ink') : undefined)
 
@@ -110,9 +129,10 @@ export default function PortalPage() {
 
   const d = home.data
   // PDPA: ต้องยอมรับประกาศความเป็นส่วนตัวก่อนเข้าใช้งานครั้งแรก
-  if (d.privacy && !d.privacy.consented) return <ConsentGate token={token} d={d} />
+  if (d.privacy && !d.privacy.consented)
+    return <ConsentGate token={token} d={d} langSwitch={<LangSwitch value={i18n.lang} onChange={(l) => setLang.mutate(l)} />} />
 
-  const TABS = d.privacy ? [...BASE_TABS, PRIVACY_TAB] : BASE_TABS
+  const TABS = tabsFor(i18n, !!d.privacy)
   const current: Tab = tab === 'privacy' && !d.privacy ? 'home' : tab
   const waitingParcels = (d.parcels ?? []).filter((p) => p.status === 'waiting').length
   return (
@@ -123,30 +143,37 @@ export default function PortalPage() {
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate font-semibold">{d.org.name}</div>
             <div className="truncate text-xs text-muted-foreground">
-              {d.unit ? `ห้อง ${d.unit.name}` : 'ผู้เช่า'}
+              {d.unit ? t(`ห้อง ${d.unit.name}`, `Room ${d.unit.name}`) : t('ผู้เช่า', 'Tenant')}
               {d.property ? ` · ${d.property.name}` : ''}
             </div>
           </div>
+          <LangSwitch value={i18n.lang} onChange={(l) => setLang.mutate(l)} />
           {d.org.phone && (
-            <Button asChild variant="outline" size="icon" className="size-10" aria-label="โทรหาผู้ดูแล">
+            <Button
+              asChild
+              variant="outline"
+              size="icon"
+              className="size-10 shrink-0"
+              aria-label={t('โทรหาผู้ดูแล', 'Call the manager')}
+            >
               <a href={`tel:${d.org.phone}`}>
                 <Phone />
               </a>
             </Button>
           )}
         </div>
-        <nav className="mx-auto hidden max-w-lg gap-0.5 overflow-x-auto px-4 sm:flex" aria-label="เมนู">
-          {TABS.map((t) => (
+        <nav className="mx-auto hidden max-w-lg gap-0.5 overflow-x-auto px-4 sm:flex" aria-label={t('เมนู', 'Menu')}>
+          {TABS.map((x) => (
             <button
-              key={t.v}
-              onClick={() => setTab(t.v)}
+              key={x.v}
+              onClick={() => setTab(x.v)}
               className={cn(
                 'flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-sm whitespace-nowrap',
-                current === t.v ? 'border-primary font-medium' : 'border-transparent text-muted-foreground',
+                current === x.v ? 'border-primary font-medium' : 'border-transparent text-muted-foreground',
               )}
             >
-              <t.icon className="size-4" /> {t.label}
-              {t.v === 'parcels' && waitingParcels > 0 && <TabCount n={waitingParcels} />}
+              <x.icon className="size-4" /> {x.label}
+              {x.v === 'parcels' && waitingParcels > 0 && <TabCount n={waitingParcels} />}
             </button>
           ))}
         </nav>
@@ -173,28 +200,28 @@ export default function PortalPage() {
           'fixed inset-x-0 bottom-0 z-20 grid border-t bg-card pb-[env(safe-area-inset-bottom)] sm:hidden',
           TABS.length === 5 ? 'grid-cols-5' : 'grid-cols-4',
         )}
-        aria-label="เมนู"
+        aria-label={t('เมนู', 'Menu')}
       >
-        {TABS.map((t) => (
+        {TABS.map((x) => (
           <button
-            key={t.v}
-            onClick={() => setTab(t.v)}
+            key={x.v}
+            onClick={() => setTab(x.v)}
             className={cn(
               'relative flex h-16 min-w-0 flex-col items-center justify-center gap-1 px-0.5 text-xs leading-tight',
-              current === t.v ? 'font-medium text-primary' : 'text-muted-foreground',
+              current === x.v ? 'font-medium text-primary' : 'text-muted-foreground',
             )}
-            aria-current={current === t.v ? 'page' : undefined}
-            aria-label={t.label}
+            aria-current={current === x.v ? 'page' : undefined}
+            aria-label={x.label}
           >
             <span className="relative">
-              <t.icon className="size-5" />
-              {t.v === 'parcels' && waitingParcels > 0 && (
+              <x.icon className="size-5" />
+              {x.v === 'parcels' && waitingParcels > 0 && (
                 <span className="absolute -top-1.5 -right-2.5">
                   <TabCount n={waitingParcels} />
                 </span>
               )}
             </span>
-            <span className="max-w-full truncate">{t.short}</span>
+            <span className="max-w-full truncate">{x.short}</span>
           </button>
         ))}
       </nav>
@@ -211,22 +238,23 @@ function TabCount({ n }: { n: number }) {
 }
 
 function PortalError({ error, retry }: { error: unknown; retry: () => void }) {
+  const { t } = useI18n()
   const notFound = error instanceof ApiError && (error.status === 404 || error.status === 401 || error.status === 403)
   return (
     <div className="grid min-h-svh place-items-center bg-background p-6">
       <div className="max-w-sm text-center">
         <LogoMark className="mx-auto size-10 text-lg" />
         <h1 className="mt-5 text-lg font-semibold">
-          {notFound ? 'ลิงก์ไม่ถูกต้องหรือหมดอายุ' : 'เชื่อมต่อไม่สำเร็จ'}
+          {notFound ? t('ลิงก์ไม่ถูกต้องหรือหมดอายุ', 'This link is invalid or has expired') : t('เชื่อมต่อไม่สำเร็จ', 'Could not connect')}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {notFound
-            ? 'กรุณาติดต่อผู้ดูแลหอพัก/อาคารเพื่อขอลิงก์ใหม่'
-            : 'ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง'}
+            ? t('กรุณาติดต่อผู้ดูแลหอพัก/อาคารเพื่อขอลิงก์ใหม่', 'Please ask your building manager for a new link')
+            : t('ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง', 'Check your internet connection and try again')}
         </p>
         {!notFound && (
           <Button className="mt-5 h-11" onClick={retry}>
-            ลองใหม่
+            {t('ลองใหม่', 'Try again')}
           </Button>
         )}
       </div>
@@ -256,6 +284,7 @@ function HomeTab({
   goParcels: () => void
   payInvoice: (id: number) => void
 }) {
+  const { t, date, dateLong, period } = useI18n()
   const unpaid = useMemo(
     () => d.invoices.filter((i) => i.status === 'unpaid').sort((a, b) => a.due_date.localeCompare(b.due_date)),
     [d.invoices],
@@ -277,9 +306,11 @@ function HomeTab({
   return (
     <>
       <div>
-        <p className="text-sm text-muted-foreground">สวัสดี</p>
-        <h1 className="text-xl font-semibold">คุณ{d.tenant.full_name}</h1>
+        <p className="text-sm text-muted-foreground">{t('สวัสดี', 'Hello')}</p>
+        <h1 className="text-xl font-semibold">{t(`คุณ${d.tenant.full_name}`, d.tenant.full_name)}</h1>
       </div>
+
+      <ContractsHomeCard token={token} d={d} />
 
       <ParcelsHomeCard d={d} onOpen={goParcels} />
 
@@ -287,57 +318,76 @@ function HomeTab({
 
       <Card className={cn('gap-0 overflow-hidden py-0', oldest && oldest.overdue_days > 0 && 'border-warning/50')}>
         <div className="p-5">
-          <div className="text-sm text-muted-foreground">ยอดค้างชำระ</div>
+          <div className="text-sm text-muted-foreground">{t('ยอดค้างชำระ', 'Amount due')}</div>
           <div className="mt-1 text-3xl font-semibold tabular-nums">{baht(due)}</div>
           {oldest ? (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              {unpaid.length} บิล · ครบกำหนดเร็วสุด {thDate(oldest.due_date)}
-              {oldest.overdue_days > 0 && <ToneBadge tone="mustard">เกินกำหนด {oldest.overdue_days} วัน</ToneBadge>}
+              {t(
+                `${unpaid.length} บิล · ครบกำหนดเร็วสุด ${date(oldest.due_date)}`,
+                `${unpaid.length} bill${unpaid.length === 1 ? '' : 's'} · next due ${date(oldest.due_date)}`,
+              )}
+              {oldest.overdue_days > 0 && (
+                <ToneBadge tone="mustard">
+                  {t(`เกินกำหนด ${oldest.overdue_days} วัน`, `${oldest.overdue_days} days overdue`)}
+                </ToneBadge>
+              )}
             </div>
           ) : (
-            <div className="mt-1 text-sm text-success">ไม่มียอดค้าง ขอบคุณที่ชำระตรงเวลา</div>
+            <div className="mt-1 text-sm text-success">
+              {t('ไม่มียอดค้าง ขอบคุณที่ชำระตรงเวลา', 'Nothing due — thank you for paying on time')}
+            </div>
           )}
         </div>
         {oldest && (
           <div className="border-t bg-muted/40 p-5">
             <div className="mb-3 text-center text-sm font-medium">
-              สแกนจ่าย {oldest.doc_no} · {thPeriod(oldest.period)}
+              {t('สแกนจ่าย', 'Scan to pay')} {oldest.doc_no} · {period(oldest.period)}
             </div>
             {detail.isLoading ? (
               <Skeleton className="mx-auto aspect-square w-56" />
             ) : detail.data?.promptpay_payload ? (
               <PromptPayQR payload={detail.data.promptpay_payload} amount={baht(oldestDue)} className="w-64" />
             ) : (
-              <p className="text-center text-sm text-muted-foreground">ติดต่อผู้ดูแลเพื่อชำระเงิน</p>
+              <p className="text-center text-sm text-muted-foreground">
+                {t('ติดต่อผู้ดูแลเพื่อชำระเงิน', 'Contact the manager to pay')}
+              </p>
             )}
             <p className="mt-3 text-center text-xs text-muted-foreground">
-              บันทึกภาพ QR แล้วเปิดในแอปธนาคาร · โอนแล้วแนบสลิปเพื่อแจ้งชำระ
+              {t(
+                'บันทึกภาพ QR แล้วเปิดในแอปธนาคาร · โอนแล้วแนบสลิปเพื่อแจ้งชำระ',
+                'Save the QR image and open it in your banking app · after paying, attach the slip',
+              )}
             </p>
             <div className="mt-4 grid gap-2">
               {oldestNotice?.status === 'pending' ? (
                 <div className="flex items-center justify-center gap-2 rounded-md border bg-card px-3 py-2.5 text-sm">
-                  <ToneBadge tone="ink">รอตรวจสลิป</ToneBadge>
-                  <span className="text-muted-foreground">แจ้งชำระแล้ว รอเจ้าหน้าที่ตรวจสอบ</span>
+                  <ToneBadge tone="ink">{t('รอตรวจสลิป', 'Slip pending')}</ToneBadge>
+                  <span className="text-muted-foreground">
+                    {t('แจ้งชำระแล้ว รอเจ้าหน้าที่ตรวจสอบ', 'Payment sent, waiting for staff to check')}
+                  </span>
                 </div>
               ) : (
                 <>
                   {oldestNotice?.status === 'rejected' && (
                     <p className="text-center text-sm text-destructive">
-                      สลิปที่ส่งไม่ผ่าน{oldestNotice.reject_reason ? `: ${oldestNotice.reject_reason}` : ''}
+                      {t('สลิปที่ส่งไม่ผ่าน', 'Your slip was not accepted')}
+                      {oldestNotice.reject_reason ? `: ${oldestNotice.reject_reason}` : ''}
                     </p>
                   )}
                   <Button className="h-12 w-full text-base" onClick={() => payInvoice(oldest.id)}>
-                    {oldestNotice?.status === 'rejected' ? 'แนบสลิปใหม่' : 'แจ้งชำระ / แนบสลิป'}
+                    {oldestNotice?.status === 'rejected'
+                      ? t('แนบสลิปใหม่', 'Attach a new slip')
+                      : t('แจ้งชำระ / แนบสลิป', 'I have paid / attach slip')}
                   </Button>
                 </>
               )}
               <Button variant="outline" className="h-11 w-full" onClick={goBills}>
-                ดูบิลทั้งหมด <ChevronRight />
+                {t('ดูบิลทั้งหมด', 'All bills')} <ChevronRight />
               </Button>
             </div>
             {d.line?.linked && oldestNotice?.status !== 'pending' && (
               <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <LineIcon className="size-3.5" /> หรือส่งรูปสลิปในแชต LINE ได้เลย
+                <LineIcon className="size-3.5" /> {t('หรือส่งรูปสลิปในแชต LINE ได้เลย', 'Or just send the slip photo in LINE chat')}
               </p>
             )}
           </div>
@@ -346,14 +396,14 @@ function HomeTab({
 
       {anns.length > 0 && (
         <>
-          <SectionHead icon={Megaphone}>ประกาศ</SectionHead>
+          <SectionHead icon={Megaphone}>{t('ประกาศ', 'Announcements')}</SectionHead>
           <div className="space-y-3">
             {anns.map((a) => (
               <Card key={a.id} className="gap-1 px-4 py-3">
                 <div className="flex items-start gap-2">
                   {a.pinned && <Pin className="mt-1 size-3.5 shrink-0 text-primary" />}
                   <h3 className="flex-1 font-medium">{a.title}</h3>
-                  <span className="shrink-0 text-xs text-muted-foreground">{thDate(a.created_at)}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{date(a.created_at)}</span>
                 </div>
                 <p className="text-sm whitespace-pre-wrap text-muted-foreground">{a.body}</p>
               </Card>
@@ -364,25 +414,35 @@ function HomeTab({
 
       {d.booking && (
         <>
-          <SectionHead icon={CalendarDays}>สัญญาเช่า</SectionHead>
+          <SectionHead icon={CalendarDays}>{t('สัญญาเช่า', 'Your lease')}</SectionHead>
           <Card className="gap-0 py-0">
             <dl className="divide-y text-sm">
-              <Row label="ห้อง" value={d.unit ? `${d.unit.name} · ชั้น ${d.unit.floor}` : '—'} />
-              <Row label="เริ่ม" value={thDateLong(d.booking.start_date)} />
-              <Row label="สิ้นสุด" value={d.booking.end_date ? thDateLong(d.booking.end_date) : 'ไม่กำหนด'} />
               <Row
-                label={d.booking.kind === 'lease' ? 'ค่าเช่า/เดือน' : 'ราคา/คืน'}
+                label={t('ห้อง', 'Room')}
+                value={d.unit ? t(`${d.unit.name} · ชั้น ${d.unit.floor}`, `${d.unit.name} · floor ${d.unit.floor}`) : '—'}
+              />
+              <Row label={t('เริ่ม', 'Start')} value={dateLong(d.booking.start_date)} />
+              <Row
+                label={t('สิ้นสุด', 'End')}
+                value={d.booking.end_date ? dateLong(d.booking.end_date) : t('ไม่กำหนด', 'Open-ended')}
+              />
+              <Row
+                label={d.booking.kind === 'lease' ? t('ค่าเช่า/เดือน', 'Rent / month') : t('ราคา/คืน', 'Rate / night')}
                 value={baht(d.booking.price)}
               />
-              <Row label="เงินประกัน" value={baht(d.booking.deposit_amount)} />
+              <Row label={t('เงินประกัน', 'Deposit')} value={baht(d.booking.deposit_amount)} />
             </dl>
           </Card>
         </>
       )}
+
+      <ContractsSection token={token} d={d} />
       {d.property?.address && <p className="px-1 text-xs text-muted-foreground">{d.property.address}</p>}
     </>
   )
 }
+
+const categoryLabel = (i: I18n, k: string) => pick(i, ORG_CATEGORIES[k] ?? k, ORG_CATEGORIES_EN, k)
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -394,6 +454,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; focusReceipts?: boolean }) {
+  const { t, date, period } = useI18n()
   const [params, setParams] = useSearchParams()
   const openId = Number(params.get('invoice')) || null
   const setOpenId = (id: number | null) =>
@@ -406,10 +467,10 @@ function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; f
   const receipts = [...d.receipts].sort((a, b) => b.issue_date.localeCompare(a.issue_date))
   return (
     <>
-      <SectionHead icon={FileText}>ใบแจ้งหนี้</SectionHead>
+      <SectionHead icon={FileText}>{t('ใบแจ้งหนี้', 'Invoices')}</SectionHead>
       {!invoices.length ? (
         <Card>
-          <EmptyState icon={FileText} title="ยังไม่มีใบแจ้งหนี้" />
+          <EmptyState icon={FileText} title={t('ยังไม่มีใบแจ้งหนี้', 'No invoices yet')} />
         </Card>
       ) : (
         <Card className="gap-0 overflow-hidden py-0">
@@ -424,10 +485,10 @@ function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; f
                   >
                     <div className="min-w-0 flex-1">
                       <div className={cn('font-medium', i.status === 'void' && 'line-through')}>
-                        {thPeriod(i.period)}
+                        {period(i.period)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {i.doc_no} · ครบ {thDate(i.due_date)}
+                        {i.doc_no} · {t('ครบ', 'due')} {date(i.due_date)}
                       </div>
                     </div>
                     <div className="grid justify-items-end gap-1 text-right">
@@ -448,7 +509,9 @@ function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; f
                         className="h-10 w-full"
                         onClick={() => setParams({ tab: 'bills', invoice: String(i.id), pay: '1' }, { replace: true })}
                       >
-                        {notice?.status === 'rejected' ? 'สลิปไม่ผ่าน — แนบสลิปใหม่' : 'แจ้งชำระ / แนบสลิป'}
+                        {notice?.status === 'rejected'
+                          ? t('สลิปไม่ผ่าน — แนบสลิปใหม่', 'Slip rejected — attach a new one')
+                          : t('แจ้งชำระ / แนบสลิป', 'I have paid / attach slip')}
                       </Button>
                     </div>
                   )}
@@ -460,11 +523,11 @@ function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; f
       )}
 
       <div ref={receiptsRef} className="scroll-mt-4">
-        <SectionHead icon={Receipt}>ใบเสร็จรับเงิน</SectionHead>
+        <SectionHead icon={Receipt}>{t('ใบเสร็จรับเงิน', 'Receipts')}</SectionHead>
       </div>
       {!receipts.length ? (
         <Card>
-          <EmptyState icon={Receipt} title="ยังไม่มีใบเสร็จ" />
+          <EmptyState icon={Receipt} title={t('ยังไม่มีใบเสร็จ', 'No receipts yet')} />
         </Card>
       ) : (
         <Card className="gap-0 overflow-hidden py-0">
@@ -477,11 +540,11 @@ function BillsTab({ token, d, focusReceipts }: { token: string; d: PortalHome; f
                 >
                   <div className="min-w-0 flex-1">
                     <div className={cn('font-mono text-sm', r.status === 'void' && 'line-through')}>{r.doc_no}</div>
-                    <div className="text-xs text-muted-foreground">{thDate(r.issue_date)}</div>
+                    <div className="text-xs text-muted-foreground">{date(r.issue_date)}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-medium tabular-nums">{baht(r.total)}</div>
-                    {r.status === 'void' && <ToneBadge tone="grey">ยกเลิก</ToneBadge>}
+                    {r.status === 'void' && <ToneBadge tone="grey">{t('ยกเลิก', 'Void')}</ToneBadge>}
                   </div>
                   <Printer className="size-4 text-muted-foreground" />
                 </Link>
@@ -515,6 +578,7 @@ function PortalInvoiceDialog({
   autoPay: boolean
   onClose: () => void
 }) {
+  const { t, dateLong, period } = useI18n()
   const q = useQuery({
     queryKey: ['portal', token, 'invoice', id],
     queryFn: () => api.portal.invoice(token, id!),
@@ -528,15 +592,21 @@ function PortalInvoiceDialog({
       <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-md">
         {!inv ? (
           <div className="space-y-3">
-            <DialogTitle className="sr-only">ใบแจ้งหนี้</DialogTitle>
-            {q.error ? <p className="text-sm text-muted-foreground">โหลดไม่สำเร็จ</p> : <Skeleton className="h-48" />}
+            <DialogTitle className="sr-only">{t('ใบแจ้งหนี้', 'Invoice')}</DialogTitle>
+            {q.error ? (
+              <p className="text-sm text-muted-foreground">{t('โหลดไม่สำเร็จ', 'Could not load')}</p>
+            ) : (
+              <Skeleton className="h-48" />
+            )}
           </div>
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>ใบแจ้งหนี้ {thPeriod(inv.period)}</DialogTitle>
+              <DialogTitle>
+                {t('ใบแจ้งหนี้', 'Invoice')} {period(inv.period)}
+              </DialogTitle>
               <DialogDescription>
-                {inv.doc_no} · ครบกำหนด {thDateLong(inv.due_date)}
+                {inv.doc_no} · {t('ครบกำหนด', 'due')} {dateLong(inv.due_date)}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-wrap gap-1.5">
@@ -559,15 +629,17 @@ function PortalInvoiceDialog({
               ))}
               {inv.vat_amount > 0 && (
                 <div className="flex px-3 py-2 text-muted-foreground">
-                  ภาษีมูลค่าเพิ่ม <span className="ml-auto tabular-nums">{baht(inv.vat_amount)}</span>
+                  {t('ภาษีมูลค่าเพิ่ม', 'VAT')} <span className="ml-auto tabular-nums">{baht(inv.vat_amount)}</span>
                 </div>
               )}
               <div className="flex px-3 py-2.5 font-semibold">
-                ยอดรวม <span className="ml-auto tabular-nums">{baht(inv.total)}</span>
+                {t('ยอดรวม', 'Total')} <span className="ml-auto tabular-nums">{baht(inv.total)}</span>
               </div>
             </div>
             {inv.status === 'unpaid' && inv.late_fee > 0 && (
-              <p className="text-sm text-warning-foreground">มีค่าปรับชำระล่าช้า {baht(inv.late_fee)}</p>
+              <p className="text-sm text-warning-foreground">
+                {t('มีค่าปรับชำระล่าช้า', 'Late fee')} {baht(inv.late_fee)}
+              </p>
             )}
             {inv.status === 'unpaid' && q.data?.promptpay_payload && (
               <PromptPayQR payload={q.data.promptpay_payload} amount={baht(remaining)} className="w-60" />
@@ -587,7 +659,7 @@ function PortalInvoiceDialog({
             )}
             <Button asChild variant="outline" className="h-11">
               <Link to={`/p/${token}/print/invoice/${inv.id}`}>
-                <Printer /> ดู / พิมพ์ใบแจ้งหนี้
+                <Printer /> {t('ดู / พิมพ์ใบแจ้งหนี้', 'View / print invoice')}
               </Link>
             </Button>
           </>
@@ -598,6 +670,8 @@ function PortalInvoiceDialog({
 }
 
 function RepairTab({ token }: { token: string }) {
+  const i18n = useI18n()
+  const { t } = i18n
   const [creating, setCreating] = useState(false)
   const [params, setParams] = useSearchParams()
   const openId = Number(params.get('ticket')) || null
@@ -616,31 +690,38 @@ function RepairTab({ token }: { token: string }) {
   return (
     <>
       <Button className="h-12 w-full text-base" onClick={() => setCreating(true)}>
-        <Plus /> แจ้งซ่อม / ติดต่อผู้ดูแล
+        <Plus /> {t('แจ้งซ่อม / ติดต่อผู้ดูแล', 'Report a problem / contact us')}
       </Button>
-      <SectionHead icon={Wrench}>รายการที่แจ้ง</SectionHead>
+      <SectionHead icon={Wrench}>{t('รายการที่แจ้ง', 'Your requests')}</SectionHead>
       {tickets.isLoading ? (
         <Skeleton className="h-32" />
       ) : !list.length ? (
         <Card>
-          <EmptyState icon={Wrench} title="ยังไม่มีรายการ" description="แจ้งปัญหาในห้องพร้อมแนบรูป ผู้ดูแลจะตอบกลับที่นี่" />
+          <EmptyState
+            icon={Wrench}
+            title={t('ยังไม่มีรายการ', 'No requests yet')}
+            description={t(
+              'แจ้งปัญหาในห้องพร้อมแนบรูป ผู้ดูแลจะตอบกลับที่นี่',
+              'Report a problem with photos — the manager will reply here',
+            )}
+          />
         </Card>
       ) : (
         <Card className="gap-0 overflow-hidden py-0">
           <ul className="divide-y">
-            {list.map((t) => (
-              <li key={t.id}>
+            {list.map((x) => (
+              <li key={x.id}>
                 <button
                   className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
-                  onClick={() => setOpenId(t.id)}
+                  onClick={() => setOpenId(x.id)}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{t.title}</div>
+                    <div className="truncate font-medium">{x.title}</div>
                     <div className="text-xs text-muted-foreground">
-                      {ORG_CATEGORIES[t.category] ?? t.category} · {timeAgo(t.updated_at)}
+                      {categoryLabel(i18n, x.category)} · {i18n.timeAgo(x.updated_at)}
                     </div>
                   </div>
-                  <TicketStatusBadge status={t.status} />
+                  <TicketStatusBadge status={x.status} />
                   <ChevronRight className="size-4 text-muted-foreground" />
                 </button>
               </li>
@@ -653,6 +734,8 @@ function RepairTab({ token }: { token: string }) {
 }
 
 function NewRequest({ token, onDone }: { token: string; onDone: () => void }) {
+  const i18n = useI18n()
+  const { t } = i18n
   const [category, setCategory] = useState('electric')
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
@@ -668,11 +751,11 @@ function NewRequest({ token, onDone }: { token: string; onDone: () => void }) {
     },
     meta: { silent: true },
     onSuccess: async () => {
-      toast.success('ส่งเรื่องแล้ว ผู้ดูแลจะติดต่อกลับ')
+      toast.success(t('ส่งเรื่องแล้ว ผู้ดูแลจะติดต่อกลับ', 'Sent — the manager will get back to you'))
       await queryClient.invalidateQueries({ queryKey: ['portal', token, 'tickets'] })
       onDone()
     },
-    onError: (e) => toast.error((e as Error).message || 'ส่งไม่สำเร็จ'),
+    onError: (e) => toast.error((e as Error).message || t('ส่งไม่สำเร็จ', 'Could not send')),
   })
   return (
     <form
@@ -683,55 +766,60 @@ function NewRequest({ token, onDone }: { token: string; onDone: () => void }) {
       }}
     >
       <button type="button" onClick={onDone} className="flex h-10 items-center gap-1 text-sm text-muted-foreground">
-        <ArrowLeft className="size-4" /> กลับ
+        <ArrowLeft className="size-4" /> {t('กลับ', 'Back')}
       </button>
-      <h1 className="text-lg font-semibold">แจ้งซ่อม / ติดต่อผู้ดูแล</h1>
-      <Field label="เรื่อง" htmlFor="pt-cat">
+      <h1 className="text-lg font-semibold">{t('แจ้งซ่อม / ติดต่อผู้ดูแล', 'Report a problem / contact us')}</h1>
+      <Field label={t('เรื่อง', 'Topic')} htmlFor="pt-cat">
         <Select value={category} onValueChange={setCategory}>
           <SelectTrigger id="pt-cat" className="h-11 w-full bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(ORG_CATEGORIES).map(([k, v]) => (
+            {Object.keys(ORG_CATEGORIES).map((k) => (
               <SelectItem key={k} value={k} className="py-2.5">
-                {v}
+                {categoryLabel(i18n, k)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </Field>
-      <Field label="หัวข้อ" htmlFor="pt-title">
+      <Field label={t('หัวข้อ', 'Subject')} htmlFor="pt-title">
         <Input
           id="pt-title"
           className="h-11 bg-card"
-          placeholder="เช่น แอร์ไม่เย็น น้ำรั่วใต้ซิงก์"
+          placeholder={t('เช่น แอร์ไม่เย็น น้ำรั่วใต้ซิงก์', 'e.g. air-con not cooling, leak under the sink')}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
         />
       </Field>
-      <Field label="รายละเอียด" htmlFor="pt-desc">
+      <Field label={t('รายละเอียด', 'Details')} htmlFor="pt-desc">
         <Textarea
           id="pt-desc"
           rows={4}
           className="bg-card"
-          placeholder="อธิบายอาการ และช่วงเวลาที่สะดวกให้เข้าซ่อม"
+          placeholder={t(
+            'อธิบายอาการ และช่วงเวลาที่สะดวกให้เข้าซ่อม',
+            'Describe the problem and when it is convenient for us to come in',
+          )}
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
         />
       </Field>
-      <Field label="รูปภาพ (ถ้ามี)">
+      <Field label={t('รูปภาพ (ถ้ามี)', 'Photos (optional)')}>
         <PhotoPicker files={files} onChange={setFiles} large />
       </Field>
       <Button type="submit" className="h-12 w-full text-base" disabled={!title.trim() || create.isPending}>
         {create.isPending && <Loader2 className="animate-spin" />}
-        ส่งเรื่อง
+        {t('ส่งเรื่อง', 'Send')}
       </Button>
     </form>
   )
 }
 
 function TicketView({ token, id, onBack }: { token: string; id: number; onBack: () => void }) {
+  const i18n = useI18n()
+  const { t } = i18n
   const q = useQuery({
     queryKey: ['portal', token, 'ticket', id],
     queryFn: () => api.portal.ticket(token, id),
@@ -743,9 +831,9 @@ function TicketView({ token, id, onBack }: { token: string; id: number; onBack: 
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['portal', token] })
     },
-    onError: (e) => toast.error((e as Error).message || 'ส่งไม่สำเร็จ'),
+    onError: (e) => toast.error((e as Error).message || t('ส่งไม่สำเร็จ', 'Could not send')),
   })
-  const t = q.data?.ticket
+  const tk = q.data?.ticket
   // ไฟล์แนบต้องแนบโทเคนพอร์ทัลจึงจะเปิดได้
   const messages = useMemo(
     () =>
@@ -755,27 +843,27 @@ function TicketView({ token, id, onBack }: { token: string; id: number; onBack: 
   return (
     <div className="space-y-4">
       <button type="button" onClick={onBack} className="flex h-10 items-center gap-1 text-sm text-muted-foreground">
-        <ArrowLeft className="size-4" /> รายการทั้งหมด
+        <ArrowLeft className="size-4" /> {t('รายการทั้งหมด', 'All requests')}
       </button>
-      {!t ? (
+      {!tk ? (
         <Skeleton className="h-48" />
       ) : (
         <>
           <div>
             <div className="text-xs text-muted-foreground">
-              {ORG_CATEGORIES[t.category] ?? t.category} · {thDate(t.created_at)}
+              {categoryLabel(i18n, tk.category)} · {i18n.date(tk.created_at)}
             </div>
             <div className="flex items-start gap-2">
-              <h1 className="flex-1 text-lg font-semibold">{t.title}</h1>
-              <TicketStatusBadge status={t.status} />
+              <h1 className="flex-1 text-lg font-semibold">{tk.title}</h1>
+              <TicketStatusBadge status={tk.status} />
             </div>
           </div>
           <Card className="gap-2 px-4 py-3 text-sm">
-            <p className="whitespace-pre-wrap">{t.description || '—'}</p>
-            <PhotoGrid photos={t.photos.map((u) => withUploadAccess(u, { t: token }))} />
+            <p className="whitespace-pre-wrap">{tk.description || '—'}</p>
+            <PhotoGrid photos={tk.photos.map((u) => withUploadAccess(u, { t: token }))} />
           </Card>
           <MessageThread messages={messages} self="tenant" />
-          {t.status !== 'closed' && (
+          {tk.status !== 'closed' && (
             <ReplyBox onSend={(fd) => reply.mutateAsync(fd)} pending={reply.isPending} large />
           )}
         </>
@@ -786,13 +874,14 @@ function TicketView({ token, id, onBack }: { token: string; id: number; onBack: 
 
 /** การ์ดชวนเชื่อม LINE (แสดงเมื่อองค์กรเปิดใช้ LINE OA) */
 function PortalLineCard({ token, line }: { token: string; line: PortalHome['line'] }) {
+  const { t } = useI18n()
   const link = useMutation({
     mutationFn: () => api.portal.lineLink(token),
     meta: { silent: true },
     onSuccess: (r) => {
       window.location.href = r.link_url
     },
-    onError: (e) => toast.error((e as Error).message || 'สร้างลิงก์เชื่อมบัญชีไม่สำเร็จ'),
+    onError: (e) => toast.error((e as Error).message || t('สร้างลิงก์เชื่อมบัญชีไม่สำเร็จ', 'Could not create the link')),
   })
   if (!line?.enabled) return null
   if (line.linked)
@@ -800,7 +889,8 @@ function PortalLineCard({ token, line }: { token: string; line: PortalHome['line
       <div className="flex items-center gap-2.5 rounded-lg border bg-card px-4 py-3 text-sm">
         <LineIcon className="size-5" />
         <span className="min-w-0 flex-1 truncate">
-          เชื่อม LINE แล้ว{line.display_name ? ` (${line.display_name})` : ''}
+          {t('เชื่อม LINE แล้ว', 'LINE connected')}
+          {line.display_name ? ` (${line.display_name})` : ''}
         </span>
         <CheckCircle2 className="size-4 shrink-0 text-success" />
       </div>
@@ -811,9 +901,12 @@ function PortalLineCard({ token, line }: { token: string; line: PortalHome['line
       <div className="flex items-start gap-3">
         <LineIcon className="size-9" />
         <div className="min-w-0">
-          <h2 className="font-semibold">รับบิลและแจ้งเตือนทาง LINE</h2>
+          <h2 className="font-semibold">{t('รับบิลและแจ้งเตือนทาง LINE', 'Get bills and alerts on LINE')}</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            ไม่พลาดบิลใหม่ ใบเสร็จ และการตอบเรื่องแจ้งซ่อม — ส่งตรงถึงแชทของคุณ
+            {t(
+              'ไม่พลาดบิลใหม่ ใบเสร็จ และการตอบเรื่องแจ้งซ่อม — ส่งตรงถึงแชทของคุณ',
+              'New bills, receipts and replies to your requests — straight to your chat',
+            )}
           </p>
         </div>
       </div>
@@ -821,13 +914,15 @@ function PortalLineCard({ token, line }: { token: string; line: PortalHome['line
         <li className="flex gap-2.5">
           <span className="grid size-5 shrink-0 place-items-center rounded-full border text-[11px] font-semibold">1</span>
           <span>
-            กด <b>แอดเพื่อน</b> แล้วเพิ่ม {line.basic_id || 'LINE OA'} เป็นเพื่อน
+            {t('กด', 'Tap')} <b>{t('แอดเพื่อน', 'Add friend')}</b>{' '}
+            {t(`แล้วเพิ่ม ${line.basic_id || 'LINE OA'} เป็นเพื่อน`, `and add ${line.basic_id || 'our LINE OA'}`)}
           </span>
         </li>
         <li className="flex gap-2.5">
           <span className="grid size-5 shrink-0 place-items-center rounded-full border text-[11px] font-semibold">2</span>
           <span>
-            กลับมาที่หน้านี้ กด <b>เชื่อมบัญชี</b> แล้วกด “ส่ง” ข้อความในแชท
+            {t('กลับมาที่หน้านี้ กด', 'Come back here, tap')} <b>{t('เชื่อมบัญชี', 'Connect')}</b>{' '}
+            {t('แล้วกด “ส่ง” ข้อความในแชท', 'then tap “Send” in the chat')}
           </span>
         </li>
       </ol>
@@ -835,17 +930,17 @@ function PortalLineCard({ token, line }: { token: string; line: PortalHome['line
         {friend ? (
           <Button asChild variant="outline" className="h-12">
             <a href={friend} target="_blank" rel="noreferrer">
-              1. แอดเพื่อน
+              1. {t('แอดเพื่อน', 'Add friend')}
             </a>
           </Button>
         ) : (
           <Button variant="outline" className="h-12" disabled>
-            1. แอดเพื่อน
+            1. {t('แอดเพื่อน', 'Add friend')}
           </Button>
         )}
         <Button className="h-12" disabled={link.isPending} onClick={() => link.mutate()}>
           {link.isPending && <Loader2 className="animate-spin" />}
-          2. เชื่อมบัญชี
+          2. {t('เชื่อมบัญชี', 'Connect')}
         </Button>
       </div>
     </Card>
@@ -855,7 +950,8 @@ function PortalLineCard({ token, line }: { token: string; line: PortalHome['line
 // ===================== PDPA =====================
 
 /** หน้ายอมรับประกาศความเป็นส่วนตัว (เข้าใช้งานครั้งแรก) */
-function ConsentGate({ token, d }: { token: string; d: PortalHome }) {
+function ConsentGate({ token, d, langSwitch }: { token: string; d: PortalHome; langSwitch?: React.ReactNode }) {
+  const { t } = useI18n()
   const privacy = d.privacy!
   const [checked, setChecked] = useState(false)
   const accept = useMutation({
@@ -867,7 +963,7 @@ function ConsentGate({ token, d }: { token: string; d: PortalHome }) {
       )
       window.scrollTo({ top: 0 })
     },
-    onError: (e) => toast.error((e as Error).message || 'บันทึกไม่สำเร็จ กรุณาลองใหม่'),
+    onError: (e) => toast.error((e as Error).message || t('บันทึกไม่สำเร็จ กรุณาลองใหม่', 'Could not save — please try again')),
   })
   return (
     <div className="flex min-h-svh flex-col bg-background">
@@ -876,8 +972,9 @@ function ConsentGate({ token, d }: { token: string; d: PortalHome }) {
           <LogoMark />
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate font-semibold">{d.org.name}</div>
-            <div className="truncate text-xs text-muted-foreground">พอร์ทัลผู้เช่า</div>
+            <div className="truncate text-xs text-muted-foreground">{t('พอร์ทัลผู้เช่า', 'Tenant portal')}</div>
           </div>
+          {langSwitch}
         </div>
       </header>
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col p-4">
@@ -885,21 +982,24 @@ function ConsentGate({ token, d }: { token: string; d: PortalHome }) {
           <div className="space-y-1 border-b px-5 py-4">
             <div className="flex items-center gap-2">
               <ShieldCheck className="size-5 text-primary" />
-              <h1 className="text-lg font-semibold">ประกาศความเป็นส่วนตัว</h1>
+              <h1 className="text-lg font-semibold">{t('ประกาศความเป็นส่วนตัว', 'Privacy notice')}</h1>
             </div>
             <p className="text-sm text-muted-foreground">
-              สวัสดีคุณ {d.tenant.full_name} กรุณาอ่านและยอมรับก่อนเข้าใช้งานพอร์ทัล
+              {t(
+                `สวัสดีคุณ ${d.tenant.full_name} กรุณาอ่านและยอมรับก่อนเข้าใช้งานพอร์ทัล`,
+                `Hello ${d.tenant.full_name}, please read and accept before using the portal`,
+              )}
             </p>
           </div>
           <div
             className="max-h-[48svh] min-h-40 flex-1 overflow-y-auto overscroll-contain px-5 py-4"
             tabIndex={0}
-            aria-label="เนื้อหาประกาศความเป็นส่วนตัว"
+            aria-label={t('เนื้อหาประกาศความเป็นส่วนตัว', 'Privacy notice text')}
           >
             <NoticeText text={privacy.notice} />
             {privacy.dpo_contact && (
               <p className="mt-4 rounded-md bg-muted/60 px-3 py-2 text-sm">
-                <span className="text-muted-foreground">ผู้ติดต่อเรื่องข้อมูลส่วนบุคคล: </span>
+                <span className="text-muted-foreground">{t('ผู้ติดต่อเรื่องข้อมูลส่วนบุคคล', 'Data protection contact')}: </span>
                 {privacy.dpo_contact}
               </p>
             )}
@@ -912,8 +1012,10 @@ function ConsentGate({ token, d }: { token: string; d: PortalHome }) {
                 className="mt-0.5 size-5"
               />
               <span>
-                ข้าพเจ้าได้อ่านและเข้าใจประกาศความเป็นส่วนตัว และยินยอมให้ {d.org.name}{' '}
-                เก็บและใช้ข้อมูลส่วนบุคคลของข้าพเจ้าตามที่ระบุไว้
+                {t(
+                  `ข้าพเจ้าได้อ่านและเข้าใจประกาศความเป็นส่วนตัว และยินยอมให้ ${d.org.name} เก็บและใช้ข้อมูลส่วนบุคคลของข้าพเจ้าตามที่ระบุไว้`,
+                  `I have read and understood the privacy notice and allow ${d.org.name} to collect and use my personal data as described`,
+                )}
               </span>
             </label>
             <Button
@@ -922,10 +1024,13 @@ function ConsentGate({ token, d }: { token: string; d: PortalHome }) {
               onClick={() => accept.mutate()}
             >
               {accept.isPending && <Loader2 className="animate-spin" />}
-              ยอมรับและเข้าใช้งาน
+              {t('ยอมรับและเข้าใช้งาน', 'Accept and continue')}
             </Button>
             <p className="text-center text-xs text-muted-foreground">
-              หากมีข้อสงสัยหรือไม่ประสงค์ให้ความยินยอม กรุณาติดต่อผู้ดูแล
+              {t(
+                'หากมีข้อสงสัยหรือไม่ประสงค์ให้ความยินยอม กรุณาติดต่อผู้ดูแล',
+                'If you have questions or do not wish to consent, please contact the manager',
+              )}
               {d.org.phone && (
                 <>
                   {' '}
@@ -953,26 +1058,36 @@ function PrivacyTab({
   d: PortalHome
   privacy: NonNullable<PortalHome['privacy']>
 }) {
+  const { t, dateLong } = useI18n()
   const [showNotice, setShowNotice] = useState(false)
   const download = useMutation({
     mutationFn: () => api.portal.exportData(token),
     meta: { silent: true },
-    onSuccess: () => toast.success('ดาวน์โหลดข้อมูลแล้ว'),
-    onError: (e) => toast.error((e as Error).message || 'ดาวน์โหลดไม่สำเร็จ'),
+    onSuccess: () => toast.success(t('ดาวน์โหลดข้อมูลแล้ว', 'Downloaded')),
+    onError: (e) => toast.error((e as Error).message || t('ดาวน์โหลดไม่สำเร็จ', 'Download failed')),
   })
   return (
     <>
       <div>
-        <h1 className="text-xl font-semibold">ความเป็นส่วนตัว</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">ข้อมูลส่วนบุคคลของคุณและสิทธิตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล</p>
+        <h1 className="text-xl font-semibold">{t('ความเป็นส่วนตัว', 'Privacy')}</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {t(
+            'ข้อมูลส่วนบุคคลของคุณและสิทธิตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล',
+            'Your personal data and your rights under the Thai Personal Data Protection Act (PDPA)',
+          )}
+        </p>
       </div>
 
       <Card className="gap-0 overflow-hidden py-0">
         <div className="flex items-center gap-3 px-4 py-3">
           <CheckCircle2 className="size-5 shrink-0 text-success" />
           <div className="min-w-0 flex-1 text-sm">
-            <div className="font-medium">ให้ความยินยอมแล้ว</div>
-            {privacy.consent_at && <div className="text-xs text-muted-foreground">เมื่อ {thDateLong(privacy.consent_at)}</div>}
+            <div className="font-medium">{t('ให้ความยินยอมแล้ว', 'Consent given')}</div>
+            {privacy.consent_at && (
+              <div className="text-xs text-muted-foreground">
+                {t('เมื่อ', 'on')} {dateLong(privacy.consent_at)}
+              </div>
+            )}
           </div>
         </div>
         <div className="border-t">
@@ -983,7 +1098,7 @@ function PrivacyTab({
             onClick={() => setShowNotice((v) => !v)}
           >
             <FileText className="size-4 text-muted-foreground" />
-            ประกาศความเป็นส่วนตัว
+            {t('ประกาศความเป็นส่วนตัว', 'Privacy notice')}
             <ChevronRight className={cn('ml-auto size-4 text-muted-foreground transition-transform', showNotice && 'rotate-90')} />
           </button>
           {showNotice && (
@@ -994,7 +1109,7 @@ function PrivacyTab({
         </div>
       </Card>
 
-      <SectionHead icon={UserRound}>ผู้ติดต่อเรื่องข้อมูลส่วนบุคคล</SectionHead>
+      <SectionHead icon={UserRound}>{t('ผู้ติดต่อเรื่องข้อมูลส่วนบุคคล', 'Data protection contact')}</SectionHead>
       <Card className="gap-1 px-4 py-3 text-sm">
         <p className="whitespace-pre-wrap">{privacy.dpo_contact || d.org.name}</p>
         {d.org.phone && (
@@ -1004,24 +1119,30 @@ function PrivacyTab({
         )}
       </Card>
 
-      <SectionHead icon={Download}>ข้อมูลของฉัน</SectionHead>
+      <SectionHead icon={Download}>{t('ข้อมูลของฉัน', 'My data')}</SectionHead>
       <Card className="gap-3 px-4 py-4">
         <p className="text-sm text-muted-foreground">
-          ดาวน์โหลดข้อมูลส่วนบุคคล สัญญา บิล และใบเสร็จของคุณเป็นไฟล์ JSON
+          {t(
+            'ดาวน์โหลดข้อมูลส่วนบุคคล สัญญา บิล และใบเสร็จของคุณเป็นไฟล์ JSON',
+            'Download your personal data, lease, bills and receipts as a JSON file',
+          )}
         </p>
         <Button variant="outline" className="h-11" onClick={() => download.mutate()} disabled={download.isPending}>
           {download.isPending ? <Loader2 className="animate-spin" /> : <Download />}
-          ดาวน์โหลดข้อมูลของฉัน
+          {t('ดาวน์โหลดข้อมูลของฉัน', 'Download my data')}
         </Button>
       </Card>
 
-      <SectionHead icon={Send}>ยื่นคำขอใช้สิทธิ์</SectionHead>
+      <SectionHead icon={Send}>{t('ยื่นคำขอใช้สิทธิ์', 'Make a request')}</SectionHead>
       <PrivacyRequestForm token={token} />
     </>
   )
 }
 
 function PrivacyRequestForm({ token }: { token: string }) {
+  const i18n = useI18n()
+  const { t } = i18n
+  const kindOf = (k: PrivacyRequestKind) => (i18n.en ? PRIVACY_KINDS_EN[k] : PRIVACY_KINDS[k])
   const [kind, setKind] = useState<PrivacyRequestKind>('access')
   const [note, setNote] = useState('')
   const [sent, setSent] = useState<PrivacyRequestKind | null>(null)
@@ -1032,7 +1153,7 @@ function PrivacyRequestForm({ token }: { token: string }) {
       setSent(kind)
       setNote('')
     },
-    onError: (e) => toast.error((e as Error).message || 'ส่งคำขอไม่สำเร็จ'),
+    onError: (e) => toast.error((e as Error).message || t('ส่งคำขอไม่สำเร็จ', 'Could not send the request')),
   })
 
   if (sent)
@@ -1040,13 +1161,14 @@ function PrivacyRequestForm({ token }: { token: string }) {
       <Card className="items-center gap-3 px-5 py-6 text-center">
         <CheckCircle2 className="size-8 text-success" />
         <div>
-          <div className="font-semibold">ส่งคำขอแล้ว</div>
+          <div className="font-semibold">{t('ส่งคำขอแล้ว', 'Request sent')}</div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {PRIVACY_KINDS[sent].label} — ผู้ดูแลจะพิจารณาและแจ้งผลภายใน 30 วัน
+            {kindOf(sent).label} —{' '}
+            {t('ผู้ดูแลจะพิจารณาและแจ้งผลภายใน 30 วัน', 'the manager will respond within 30 days')}
           </p>
         </div>
         <Button variant="outline" className="h-11" onClick={() => setSent(null)}>
-          ส่งคำขออื่น
+          {t('ส่งคำขออื่น', 'Send another request')}
         </Button>
       </Card>
     )
@@ -1059,40 +1181,46 @@ function PrivacyRequestForm({ token }: { token: string }) {
         submit.mutate()
       }}
     >
-      <Field label="ประเภทคำขอ" htmlFor="pv-kind" hint={PRIVACY_KINDS[kind].hint}>
+      <Field label={t('ประเภทคำขอ', 'Request type')} htmlFor="pv-kind" hint={kindOf(kind).hint}>
         <Select value={kind} onValueChange={(v) => setKind(v as PrivacyRequestKind)}>
           <SelectTrigger id="pv-kind" className="h-11 w-full bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {KIND_OPTIONS.map(([k, v]) => (
+            {KIND_OPTIONS.map(([k]) => (
               <SelectItem key={k} value={k} className="py-2.5">
-                {v.label}
+                {kindOf(k).label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </Field>
-      <Field label="รายละเอียด" htmlFor="pv-note">
+      <Field label={t('รายละเอียด', 'Details')} htmlFor="pv-note">
         <Textarea
           id="pv-note"
           rows={3}
           className="bg-card"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder={kind === 'correction' ? 'ระบุข้อมูลที่ต้องการแก้ไข และข้อมูลที่ถูกต้อง' : 'รายละเอียดเพิ่มเติม (ถ้ามี)'}
+          placeholder={
+            kind === 'correction'
+              ? t('ระบุข้อมูลที่ต้องการแก้ไข และข้อมูลที่ถูกต้อง', 'What should be corrected, and the correct details')
+              : t('รายละเอียดเพิ่มเติม (ถ้ามี)', 'More details (optional)')
+          }
           required={kind === 'correction'}
         />
       </Field>
       {kind === 'deletion' && (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          ผู้ให้เช่าอาจต้องเก็บใบแจ้งหนี้และใบเสร็จไว้ตามกฎหมายภาษีและบัญชี แม้ข้อมูลส่วนบุคคลอื่นจะถูกลบแล้ว
-          และจะลบไม่ได้ระหว่างที่ยังมีสัญญาเช่าอยู่
+          {t(
+            'ผู้ให้เช่าอาจต้องเก็บใบแจ้งหนี้และใบเสร็จไว้ตามกฎหมายภาษีและบัญชี แม้ข้อมูลส่วนบุคคลอื่นจะถูกลบแล้ว และจะลบไม่ได้ระหว่างที่ยังมีสัญญาเช่าอยู่',
+            'The landlord may need to keep invoices and receipts under tax and accounting law even after other personal data is deleted, and data cannot be deleted while a lease is active.',
+          )}
         </p>
       )}
       <Button type="submit" className="h-12 w-full text-base" disabled={submit.isPending}>
         {submit.isPending ? <Loader2 className="animate-spin" /> : <Send />}
-        ส่งคำขอ
+        {t('ส่งคำขอ', 'Send request')}
       </Button>
     </form>
   )
