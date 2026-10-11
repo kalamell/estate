@@ -8,6 +8,7 @@ mod expenses;
 mod files;
 mod housekeeping;
 mod imports;
+mod integrations;
 mod invoices;
 mod line;
 mod meters;
@@ -20,6 +21,7 @@ mod privacy;
 mod properties;
 mod receipts;
 mod reports;
+mod site;
 mod slips;
 mod stay;
 mod subscription;
@@ -240,6 +242,14 @@ pub fn api_router() -> Router<AppState> {
             axum::routing::put(expenses::update_recurring).delete(expenses::delete_recurring),
         )
         .route("/api/reports/profit", get(expenses::profit))
+        .route("/api/public/site", get(site::site))
+        .route("/api/public/contact", post(site::contact))
+        .route("/api/admin/leads", get(site::leads))
+        .route(
+            "/api/admin/leads/:id",
+            axum::routing::patch(site::update_lead),
+        )
+        .route("/api/integrations", get(integrations::status))
         .route("/api/tm30", get(tm30::list))
         .route("/api/tm30/export.csv", get(tm30::export))
         .route(
