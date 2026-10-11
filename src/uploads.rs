@@ -1,0 +1,79 @@
+//! รับฟอร์ม multipart ที่มีรูปภาพแนบ (แจ้งซ่อม ข้อความ)
+
+use std::{collections::HashMap, path::Path};
+
+use axum::extract::Multipart;
+
+use crate::error::{AppError, AppResult};
+
+pub const MAX_PHOTOS: usize = 6;
+
+pub struct Form {
+    pub fields: HashMap<String, String>,
+    pub photos: Vec<String>,
+}
+
+impl Form {
+    pub fn text(&self, key: &str) -> Option<&str> {
+        self.fields
+            .get(key)
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+    }
+
+    pub fn required(&self, key: &str, label: &str) -> AppResult<String> {
+        self.text(key)
+            .map(str::to_string)
+            .ok_or_else(|| AppError::BadRequest(format!("กรุณาระบุ{label}")))
+    }
+
+    pub fn id(&self, key: &str) -> AppResult<Option<i64>> {
+        self.text(key)
+            .map(|v| {
+                v.parse()
+                    .map_err(|_| AppError::BadRequest(format!("{key} ไม่ถูกต้อง")))
+            })
+            .transpose()
+    }
+}
+
+fn bad(e: impl std::fmt::Display) -> AppError {
+    AppError::BadRequest(e.to_string())
+}
+
+/// อ่านทุกฟิลด์ เก็บรูป (field `photos`) ลงโฟลเดอร์อัปโหลด และคืน URL `/uploads/...`
+pub async fn parse(mut form: Multipart, upload_dir: &Path, prefix: &str) -> AppResult<Form> {
+    let mut fields = HashMap::new();
+    let mut photos = Vec::new();
+    while let Some(field) = form.next_field().await.map_err(bad)? {
+        let name = field.name().unwrap_or_default().to_string();
+        if name == "photos" || name == "photo" {
+            let ext = match field.content_type() {
+                Some("image/png") => "png",
+                Some("image/webp") => "webp",
+                Some("image/jpeg") | Some("image/jpg") => "jpg",
+                Some("application/octet-stream") | None => continue,
+                _ => {
+                    return Err(AppError::BadRequest(
+                        "รองรับเฉพาะรูป JPG, PNG หรือ WEBP".into(),
+                    ))
+                }
+            };
+            let bytes = field.bytes().await.map_err(bad)?;
+            if bytes.is_empty() {
+                continue;
+            }
+            if photos.len() >= MAX_PHOTOS {
+                return Err(AppError::BadRequest(format!("แนบรูปได้สูงสุด {MAX_PHOTOS} รูป")));
+            }
+            let file = format!("{prefix}-{}.{ext}", uuid::Uuid::new_v4());
+            tokio::fs::write(upload_dir.join(&file), &bytes)
+                .await
+                .map_err(|e| AppError::Internal(e.into()))?;
+            photos.push(format!("/uploads/{file}"));
+            continue;
+        }
+        fields.insert(name, field.text().await.map_err(bad)?);
+    }
+    Ok(Form { fields, photos })
+}

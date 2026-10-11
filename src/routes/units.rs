@@ -70,8 +70,8 @@ pub async fn create(
     }
     let row = sqlx::query_as(
         "INSERT INTO units (property_id, name, floor, rent_monthly, rate_daily, deposit, status,
-                            width, length, height, layout, note)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *",
+                            width, length, height, layout, extra_charges, note)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *",
     )
     .bind(u.property_id)
     .bind(&u.name)
@@ -84,6 +84,7 @@ pub async fn create(
     .bind(u.length.unwrap_or(6.0))
     .bind(u.height.unwrap_or(2.7))
     .bind(sqlx::types::Json(u.layout.unwrap_or_default()))
+    .bind(sqlx::types::Json(u.extra_charges.unwrap_or_default()))
     .bind(u.note.unwrap_or_default())
     .fetch_one(&s.db)
     .await?;
@@ -104,7 +105,7 @@ pub async fn update(
         "UPDATE units SET name=?, floor=COALESCE(?, floor), rent_monthly=COALESCE(?, rent_monthly),
             rate_daily=COALESCE(?, rate_daily), deposit=COALESCE(?, deposit), status=COALESCE(?, status),
             width=COALESCE(?, width), length=COALESCE(?, length), height=COALESCE(?, height),
-            layout=COALESCE(?, layout), note=COALESCE(?, note)
+            layout=COALESCE(?, layout), extra_charges=COALESCE(?, extra_charges), note=COALESCE(?, note)
          WHERE id=? RETURNING *",
     )
     .bind(&u.name)
@@ -117,6 +118,7 @@ pub async fn update(
     .bind(u.length)
     .bind(u.height)
     .bind(u.layout.map(sqlx::types::Json))
+    .bind(u.extra_charges.map(sqlx::types::Json))
     .bind(&u.note)
     .bind(id)
     .fetch_one(&s.db)

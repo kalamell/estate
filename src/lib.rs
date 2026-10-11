@@ -4,10 +4,13 @@
 pub mod auth;
 pub mod billing;
 pub mod db;
+pub mod docs;
 pub mod error;
 pub mod models;
 pub mod promptpay;
 pub mod routes;
+pub mod thai;
+pub mod uploads;
 
 use std::{net::SocketAddr, path::PathBuf};
 

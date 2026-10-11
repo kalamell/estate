@@ -15,6 +15,9 @@ pub struct Property {
     pub electric_rate: f64,
     pub water_rate: f64,
     pub promptpay_id: Option<String>,
+    pub late_fee_type: String,
+    pub late_fee_amount: f64,
+    pub late_fee_grace_days: i64,
     pub created_at: String,
 }
 
@@ -29,6 +32,9 @@ pub struct PropertyInput {
     pub electric_rate: Option<f64>,
     pub water_rate: Option<f64>,
     pub promptpay_id: Option<String>,
+    pub late_fee_type: Option<String>,
+    pub late_fee_amount: Option<f64>,
+    pub late_fee_grace_days: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -41,6 +47,15 @@ pub struct Furniture {
     pub h: f64,
     #[serde(default)]
     pub color: Option<String>,
+}
+
+/// ค่าบริการรายเดือนเพิ่มเติมของห้อง เช่น อินเทอร์เน็ต ที่จอดรถ
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExtraCharge {
+    pub label: String,
+    pub amount: f64,
+    #[serde(default)]
+    pub vatable: bool,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -58,6 +73,8 @@ pub struct Unit {
     pub height: f64,
     #[sqlx(json)]
     pub layout: Vec<Furniture>,
+    #[sqlx(json)]
+    pub extra_charges: Vec<ExtraCharge>,
     pub note: String,
 }
 
@@ -74,6 +91,7 @@ pub struct UnitInput {
     pub length: Option<f64>,
     pub height: Option<f64>,
     pub layout: Option<Vec<Furniture>>,
+    pub extra_charges: Option<Vec<ExtraCharge>>,
     pub note: Option<String>,
 }
 
@@ -85,6 +103,10 @@ pub struct Tenant {
     pub email: String,
     pub id_card: String,
     pub note: String,
+    pub tax_id: String,
+    pub address: String,
+    pub branch_code: String,
+    pub portal_token: Option<String>,
     pub created_at: String,
 }
 
@@ -99,6 +121,12 @@ pub struct TenantInput {
     pub id_card: String,
     #[serde(default)]
     pub note: String,
+    #[serde(default)]
+    pub tax_id: String,
+    #[serde(default)]
+    pub address: String,
+    #[serde(default)]
+    pub branch_code: String,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -154,6 +182,8 @@ pub struct MeterReading {
 #[derive(Debug, Serialize, FromRow)]
 pub struct Invoice {
     pub id: i64,
+    pub doc_no: Option<String>,
+    pub kind: String,
     pub unit_id: i64,
     pub booking_id: Option<i64>,
     pub period: String,
@@ -161,19 +191,102 @@ pub struct Invoice {
     pub due_date: NaiveDate,
     #[sqlx(json)]
     pub items: Vec<LineItem>,
+    pub subtotal: f64,
+    pub vat_amount: f64,
     pub total: f64,
     pub status: String,
+    pub void_reason: Option<String>,
     pub paid_at: Option<String>,
     pub created_at: String,
-    // joined
+    // joined / computed
     pub unit_name: String,
     pub property_id: i64,
     pub property_name: String,
+    pub tenant_id: Option<i64>,
     pub tenant_name: Option<String>,
+    pub paid_amount: f64,
+    pub overdue_days: i64,
+    #[serde(skip)]
+    pub late_fee_type: String,
+    #[serde(skip)]
+    pub late_fee_amount: f64,
+    #[serde(skip)]
+    pub late_fee_grace_days: i64,
+    #[sqlx(default)]
+    pub late_fee: f64,
 }
 
-pub const PROPERTY_KINDS: &[&str] = &["dormitory", "apartment", "condo", "house", "short_stay"];
-pub const UNIT_STATUSES: &[&str] = &["vacant", "reserved", "occupied", "maintenance"];
+impl Invoice {
+    pub fn with_late_fee(mut self) -> Self {
+        self.late_fee = if self.status == "unpaid" {
+            crate::billing::late_fee(
+                &self.late_fee_type,
+                self.late_fee_amount,
+                self.late_fee_grace_days,
+                self.overdue_days,
+            )
+        } else {
+            0.0
+        };
+        self
+    }
+
+    pub fn remaining(&self) -> f64 {
+        crate::billing::round2(self.total - self.paid_amount)
+    }
+}
+
+/// ข้อมูลผู้ออกเอกสาร (สำเนาไว้ในใบเสร็จ ณ วันที่ออก)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Issuer {
+    pub legal_name: String,
+    pub tax_id: String,
+    pub branch_code: String,
+    pub address: String,
+    pub phone: String,
+    pub vat_registered: bool,
+    pub vat_rate: f64,
+    #[serde(default)]
+    pub receipt_note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Payer {
+    pub name: String,
+    pub address: String,
+    pub tax_id: String,
+    pub branch_code: String,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Receipt {
+    pub id: i64,
+    pub doc_no: String,
+    pub is_tax_invoice: bool,
+    pub invoice_id: Option<i64>,
+    pub invoice_doc_no: Option<String>,
+    pub tenant_id: Option<i64>,
+    pub issue_date: NaiveDate,
+    #[sqlx(json)]
+    pub issuer: Issuer,
+    #[sqlx(json)]
+    pub payer: Payer,
+    pub unit_name: String,
+    pub property_name: String,
+    #[sqlx(json)]
+    pub items: Vec<LineItem>,
+    pub subtotal: f64,
+    pub vat_amount: f64,
+    pub total: f64,
+    pub wht_amount: f64,
+    pub net_received: f64,
+    pub method: String,
+    pub status: String,
+    pub void_reason: Option<String>,
+    pub created_at: String,
+    #[sqlx(default)]
+    pub amount_text: String,
+}
 
 // ===== SaaS =====
 
@@ -187,6 +300,10 @@ pub struct PackageFeatures {
     pub short_stay: bool,
     #[serde(default)]
     pub invoices: bool,
+    #[serde(default)]
+    pub portal: bool,
+    #[serde(default)]
+    pub reports: bool,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -238,4 +355,7 @@ pub struct OrgSummary {
     pub package_name: String,
 }
 
+pub const PROPERTY_KINDS: &[&str] = &["dormitory", "apartment", "condo", "house", "short_stay"];
+pub const UNIT_STATUSES: &[&str] = &["vacant", "reserved", "occupied", "maintenance"];
 pub const ORG_STATUSES: &[&str] = &["trial", "active", "suspended", "cancelled"];
+pub const LATE_FEE_TYPES: &[&str] = &["none", "flat", "per_day"];

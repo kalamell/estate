@@ -8,6 +8,9 @@ pub struct LineItem {
     pub qty: f64,
     pub unit_price: f64,
     pub amount: f64,
+    /// คิดภาษีมูลค่าเพิ่มหรือไม่ (ค่าเช่าที่อยู่อาศัยโดยทั่วไปได้รับยกเว้น)
+    #[serde(default)]
+    pub vatable: bool,
 }
 
 impl LineItem {
@@ -17,7 +20,49 @@ impl LineItem {
             qty,
             unit_price,
             amount: round2(qty * unit_price),
+            vatable: false,
         }
+    }
+
+    pub fn vatable(mut self, vatable: bool) -> Self {
+        self.vatable = vatable;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Totals {
+    pub subtotal: f64,
+    pub vat_amount: f64,
+    pub total: f64,
+}
+
+/// รวมยอด: VAT คิดแบบแยกนอกเฉพาะรายการที่ `vatable` และเมื่อผู้ออกจดทะเบียน VAT
+pub fn totals(items: &[LineItem], vat_registered: bool, vat_rate: f64) -> Totals {
+    let subtotal = round2(items.iter().map(|i| i.amount).sum());
+    let vatable: f64 = items.iter().filter(|i| i.vatable).map(|i| i.amount).sum();
+    let vat_amount = if vat_registered {
+        round2(vatable * vat_rate / 100.0)
+    } else {
+        0.0
+    };
+    Totals {
+        subtotal,
+        vat_amount,
+        total: round2(subtotal + vat_amount),
+    }
+}
+
+/// ค่าปรับชำระล่าช้าตามกติกาของโครงการ
+pub fn late_fee(kind: &str, amount: f64, grace_days: i64, overdue_days: i64) -> f64 {
+    let days = overdue_days - grace_days.max(0);
+    if days <= 0 {
+        return 0.0;
+    }
+    match kind {
+        "flat" => round2(amount),
+        "per_day" => round2(amount * days as f64),
+        _ => 0.0,
     }
 }
 
@@ -105,6 +150,25 @@ mod tests {
         assert_eq!(items[1].amount, 1000.0);
         assert_eq!(items[2].amount, 144.0);
         assert_eq!(total(&items), 4644.0);
+    }
+
+    #[test]
+    fn vat_only_on_vatable_lines() {
+        let items = vec![
+            LineItem::new("ค่าเช่า", 1.0, 3500.0),
+            LineItem::new("ค่าอินเทอร์เน็ต", 1.0, 300.0).vatable(true),
+        ];
+        let t = totals(&items, true, 7.0);
+        assert_eq!((t.subtotal, t.vat_amount, t.total), (3800.0, 21.0, 3821.0));
+        assert_eq!(totals(&items, false, 7.0).vat_amount, 0.0);
+    }
+
+    #[test]
+    fn late_fee_rules() {
+        assert_eq!(late_fee("none", 50.0, 0, 10), 0.0);
+        assert_eq!(late_fee("flat", 200.0, 3, 2), 0.0);
+        assert_eq!(late_fee("flat", 200.0, 3, 4), 200.0);
+        assert_eq!(late_fee("per_day", 50.0, 3, 10), 350.0);
     }
 
     #[test]

@@ -54,7 +54,7 @@ async fn fetch(conn: &mut SqliteConnection, id: i64) -> AppResult<Booking> {
 }
 
 /// ปรับสถานะห้องให้สอดคล้องกับการจองที่ยังมีผลอยู่
-async fn sync_unit_status(conn: &mut SqliteConnection, unit_id: i64) -> AppResult<()> {
+pub(crate) async fn sync_unit_status(conn: &mut SqliteConnection, unit_id: i64) -> AppResult<()> {
     sqlx::query(
         "UPDATE units SET status = CASE
             WHEN EXISTS (SELECT 1 FROM bookings WHERE unit_id = ?1 AND status = 'active') THEN 'occupied'

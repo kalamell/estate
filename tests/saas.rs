@@ -1,96 +1,10 @@
 //! ทดสอบการแยกข้อมูลระหว่างองค์กร สิทธิ์ผู้ใช้ และขีดจำกัดแพ็กเกจ
 
-use axum::{
-    body::Body,
-    http::{header, Method, Request, StatusCode},
-    Router,
-};
-use estate::{build_app, db, AppState};
-use http_body_util::BodyExt;
+mod common;
+
+use axum::http::{Method, StatusCode};
+use common::*;
 use serde_json::{json, Value};
-use tower::ServiceExt;
-
-struct Client {
-    app: Router,
-    cookie: Option<String>,
-    org: Option<i64>,
-}
-
-impl Client {
-    async fn call(
-        &mut self,
-        method: Method,
-        path: &str,
-        body: Option<Value>,
-    ) -> (StatusCode, Value) {
-        let mut req = Request::builder().method(method).uri(path);
-        if let Some(c) = &self.cookie {
-            req = req.header(header::COOKIE, c);
-        }
-        if let Some(o) = self.org {
-            req = req.header("x-org-id", o.to_string());
-        }
-        let req = match body {
-            Some(b) => req
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(b.to_string())),
-            None => req.body(Body::empty()),
-        }
-        .unwrap();
-        let res = self.app.clone().oneshot(req).await.unwrap();
-        if let Some(sc) = res.headers().get(header::SET_COOKIE) {
-            self.cookie = Some(sc.to_str().unwrap().split(';').next().unwrap().to_string());
-        }
-        let status = res.status();
-        let bytes = res.into_body().collect().await.unwrap().to_bytes();
-        (
-            status,
-            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
-        )
-    }
-
-    fn other(&self) -> Client {
-        Client {
-            app: self.app.clone(),
-            cookie: None,
-            org: None,
-        }
-    }
-
-    async fn register(&mut self, email: &str, org: &str) -> Value {
-        let (st, body) = self
-            .call(
-                Method::POST,
-                "/api/auth/register",
-                Some(json!({"name": email, "email": email, "password": "password123", "org_name": org})),
-            )
-            .await;
-        assert_eq!(st, StatusCode::OK, "{body}");
-        self.org = body["orgs"][0]["id"].as_i64();
-        body
-    }
-}
-
-async fn setup() -> Client {
-    let path = std::env::temp_dir().join(format!("estate-test-{}.db", uuid::Uuid::new_v4()));
-    let pool = db::connect(&format!("sqlite://{}?mode=rwc", path.display()))
-        .await
-        .unwrap();
-    db::seed_packages(&pool).await.unwrap();
-    db::ensure_super_admin(&pool, "root@test.local", "password123")
-        .await
-        .unwrap();
-    let state = AppState {
-        db: pool,
-        upload_dir: std::env::temp_dir(),
-        secure_cookies: false,
-    };
-    Client {
-        app: build_app(state, std::path::Path::new("frontend/dist")),
-        cookie: None,
-        org: None,
-    }
-}
 
 fn property(name: &str, kind: &str) -> Value {
     json!({"name": name, "kind": kind, "address": "", "lat": 13.7, "lng": 100.5})

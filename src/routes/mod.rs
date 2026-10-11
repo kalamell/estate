@@ -4,9 +4,14 @@ mod bookings;
 mod dashboard;
 mod invoices;
 mod meters;
+mod move_outs;
 mod org;
+mod portal;
 mod properties;
+mod receipts;
+mod reports;
 mod tenants;
+mod tickets;
 mod units;
 
 use axum::{
@@ -67,6 +72,10 @@ pub fn api_router() -> Router<AppState> {
             "/api/tenants/:id",
             axum::routing::put(tenants::update).delete(tenants::delete),
         )
+        .route(
+            "/api/tenants/:id/portal-token",
+            post(tenants::regenerate_portal),
+        )
         .route("/api/bookings", get(bookings::list).post(bookings::create))
         .route("/api/bookings/:id", axum::routing::patch(bookings::patch))
         .route(
@@ -79,7 +88,75 @@ pub fn api_router() -> Router<AppState> {
             "/api/meter-readings/:id",
             axum::routing::delete(meters::delete),
         )
-        .route("/api/invoices", get(invoices::list))
+        .route("/api/invoices", get(invoices::list).post(invoices::create))
+        .route("/api/invoices/:id/void", post(invoices::void))
+        .route("/api/receipts", get(receipts::list))
+        .route("/api/receipts/:id", get(receipts::get))
+        .route("/api/receipts/:id/void", post(receipts::void))
+        .route(
+            "/api/move-outs",
+            get(move_outs::list).post(move_outs::create),
+        )
+        .route(
+            "/api/move-outs/:id",
+            get(move_outs::get).put(move_outs::update),
+        )
+        .route("/api/move-outs/:id/settle", post(move_outs::settle))
+        .route("/api/reports/summary", get(reports::summary))
+        .route("/api/reports/export", get(reports::export))
+        .route(
+            "/api/announcements",
+            get(tickets::announcements).post(tickets::create_announcement),
+        )
+        .route(
+            "/api/announcements/:id",
+            axum::routing::delete(tickets::delete_announcement),
+        )
+        .route(
+            "/api/tickets",
+            get(tickets::list)
+                .post(tickets::create)
+                .layer(DefaultBodyLimit::max(40 * 1024 * 1024)),
+        )
+        .route("/api/tickets/:id", get(tickets::get).patch(tickets::patch))
+        .route(
+            "/api/tickets/:id/messages",
+            post(tickets::message).layer(DefaultBodyLimit::max(40 * 1024 * 1024)),
+        )
+        .route(
+            "/api/support",
+            get(tickets::support_list)
+                .post(tickets::support_create)
+                .layer(DefaultBodyLimit::max(40 * 1024 * 1024)),
+        )
+        .route("/api/support/:id", get(tickets::support_get))
+        .route(
+            "/api/support/:id/messages",
+            post(tickets::support_message).layer(DefaultBodyLimit::max(40 * 1024 * 1024)),
+        )
+        .route("/api/admin/support", get(tickets::admin_list))
+        .route(
+            "/api/admin/support/:id",
+            get(tickets::admin_get).patch(tickets::admin_patch),
+        )
+        .route(
+            "/api/admin/support/:id/messages",
+            post(tickets::admin_message).layer(DefaultBodyLimit::max(40 * 1024 * 1024)),
+        )
+        .route("/api/portal/:token", get(portal::home))
+        .route("/api/portal/:token/invoices/:id", get(portal::invoice))
+        .route("/api/portal/:token/receipts/:id", get(portal::receipt))
+        .route(
+            "/api/portal/:token/tickets",
+            get(portal::ticket_list)
+                .post(portal::ticket_create)
+                .layer(DefaultBodyLimit::max(40 * 1024 * 1024)),
+        )
+        .route("/api/portal/:token/tickets/:id", get(portal::ticket_get))
+        .route(
+            "/api/portal/:token/tickets/:id/messages",
+            post(portal::ticket_message).layer(DefaultBodyLimit::max(40 * 1024 * 1024)),
+        )
         .route("/api/invoices/generate", post(invoices::generate))
         .route("/api/invoices/:id", get(invoices::get))
         .route("/api/invoices/:id/pay", post(invoices::pay))

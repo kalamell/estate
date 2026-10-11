@@ -233,6 +233,15 @@ where
             .get("x-org-id")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse().ok())
+            // ลิงก์ดาวน์โหลด (เช่น CSV) ส่ง header ไม่ได้: รับ ?org_id= เฉพาะคำขอแบบอ่านอย่างเดียว
+            .or_else(|| {
+                parts.method.is_safe().then_some(())?;
+                parts
+                    .uri
+                    .query()?
+                    .split('&')
+                    .find_map(|kv| kv.strip_prefix("org_id=")?.parse().ok())
+            })
             .ok_or_else(|| AppError::BadRequest("ต้องระบุองค์กร (X-Org-Id)".into()))?;
 
         let row: OrgRow = sqlx::query_as(

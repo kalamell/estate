@@ -6,15 +6,28 @@ use sqlx::{
 };
 
 pub async fn connect(url: &str) -> anyhow::Result<SqlitePool> {
+    use sqlx::Connection;
     let opts = SqliteConnectOptions::from_str(url)?
         .create_if_missing(true)
-        .foreign_keys(true)
         .journal_mode(SqliteJournalMode::Wal);
+
+    // migration ที่สร้างตารางใหม่ (ALTER แบบ 12 ขั้นของ SQLite) ต้องปิด foreign_keys
+    // ไม่เช่นนั้น DROP TABLE จะลบข้อมูลลูกตาม ON DELETE CASCADE — และ PRAGMA นี้เปลี่ยนใน transaction ไม่ได้
+    // จึงรัน migration บน connection แยกที่ปิดไว้ตั้งแต่ต้น แล้วตรวจความถูกต้องของการอ้างอิง
+    let mut conn = sqlx::SqliteConnection::connect_with(&opts.clone().foreign_keys(false)).await?;
+    sqlx::migrate!("./migrations").run(&mut conn).await?;
+    let broken: Vec<(String,)> = sqlx::query_as(r#"SELECT "table" FROM pragma_foreign_key_check"#)
+        .fetch_all(&mut conn)
+        .await?;
+    if !broken.is_empty() {
+        anyhow::bail!("ข้อมูลอ้างอิงไม่ถูกต้องหลัง migration: {broken:?}");
+    }
+    conn.close().await?;
+
     let pool = SqlitePoolOptions::new()
         .max_connections(8)
-        .connect_with(opts)
+        .connect_with(opts.foreign_keys(true))
         .await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
     Ok(pool)
 }
 
@@ -34,7 +47,7 @@ pub async fn seed_packages(db: &SqlitePool) -> anyhow::Result<()> {
             1,
             20,
             1,
-            r#"{"ocr":false,"view3d":false,"short_stay":false,"invoices":true}"#,
+            r#"{"ocr":false,"view3d":false,"short_stay":false,"invoices":true,"portal":false,"reports":false}"#,
             true,
         ),
         (
@@ -44,7 +57,7 @@ pub async fn seed_packages(db: &SqlitePool) -> anyhow::Result<()> {
             5,
             200,
             5,
-            r#"{"ocr":true,"view3d":true,"short_stay":true,"invoices":true}"#,
+            r#"{"ocr":true,"view3d":true,"short_stay":true,"invoices":true,"portal":true,"reports":true}"#,
             false,
         ),
         (
@@ -54,7 +67,7 @@ pub async fn seed_packages(db: &SqlitePool) -> anyhow::Result<()> {
             100,
             10000,
             50,
-            r#"{"ocr":true,"view3d":true,"short_stay":true,"invoices":true}"#,
+            r#"{"ocr":true,"view3d":true,"short_stay":true,"invoices":true,"portal":true,"reports":true}"#,
             false,
         ),
     ];
@@ -128,7 +141,10 @@ pub async fn seed_demo(db: &SqlitePool) -> anyhow::Result<()> {
     .fetch_one(db)
     .await?;
     let org_id: i64 = sqlx::query_scalar(
-        "INSERT INTO organizations (name, package_id, status) VALUES ('สุขใจ พร็อพเพอร์ตี้', (SELECT id FROM packages WHERE name = 'Pro'), 'active') RETURNING id",
+        "INSERT INTO organizations (name, package_id, status, legal_name, tax_id, address, phone)
+         VALUES ('สุขใจ พร็อพเพอร์ตี้', (SELECT id FROM packages WHERE name = 'Pro'), 'active',
+                 'บริษัท สุขใจ พร็อพเพอร์ตี้ จำกัด', '0105560000000',
+                 '99/1 ซ.พหลโยธิน 24 แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900', '02-000-0000') RETURNING id",
     )
     .fetch_one(db)
     .await?;
@@ -214,12 +230,15 @@ pub async fn seed_demo(db: &SqlitePool) -> anyhow::Result<()> {
         ("สุดา รักเรียน", "0822222222"),
         ("John Smith", "0833333333"),
     ] {
-        sqlx::query("INSERT INTO tenants (org_id, full_name, phone) VALUES (?,?,?)")
-            .bind(org_id)
-            .bind(name)
-            .bind(phone)
-            .execute(db)
-            .await?;
+        sqlx::query(
+            "INSERT INTO tenants (org_id, full_name, phone, portal_token) VALUES (?,?,?,?)",
+        )
+        .bind(org_id)
+        .bind(name)
+        .bind(phone)
+        .bind(demo_token())
+        .execute(db)
+        .await?;
     }
 
     // สัญญาเช่าตัวอย่าง + ค่ามิเตอร์ 2 เดือน
@@ -265,5 +284,41 @@ pub async fn seed_demo(db: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query("UPDATE units SET status='reserved' WHERE id=25")
         .execute(db)
         .await?;
+
+    // ค่าบริการเสริม ค่าปรับ ประกาศ และงานแจ้งซ่อมตัวอย่าง
+    sqlx::query(r#"UPDATE units SET extra_charges = '[{"label":"ค่าอินเทอร์เน็ต","amount":300,"vatable":false}]' WHERE id IN (1, 2)"#)
+        .execute(db)
+        .await?;
+    sqlx::query("UPDATE properties SET late_fee_type = 'per_day', late_fee_amount = 50, late_fee_grace_days = 3 WHERE id = 1")
+        .execute(db)
+        .await?;
+    sqlx::query(
+        "INSERT INTO announcements (org_id, property_id, title, body, pinned) VALUES
+         (?, 1, 'ปิดน้ำประปาชั่วคราว', 'วันเสาร์นี้ 09:00–12:00 จะปิดน้ำเพื่อล้างถังเก็บน้ำ ขออภัยในความไม่สะดวก', 1)",
+    )
+    .bind(org_id)
+    .execute(db)
+    .await?;
+    let ticket_id: i64 = sqlx::query_scalar(
+        "INSERT INTO tickets (org_id, scope, property_id, unit_id, tenant_id, source, reporter_name, category, priority, title, description)
+         VALUES (?, 'org', 1, 1, 1, 'tenant', 'สมชาย ใจดี', 'aircon', 'high', 'แอร์ไม่เย็น มีน้ำหยด', 'เปิดแล้วมีแต่ลม น้ำหยดจากตัวเครื่องตั้งแต่เมื่อวาน')
+         RETURNING id",
+    )
+    .bind(org_id)
+    .fetch_one(db)
+    .await?;
+    sqlx::query(
+        "INSERT INTO ticket_messages (ticket_id, author_type, author_name, body) VALUES (?, 'staff', 'คุณสมศรี เจ้าของหอ', 'รับเรื่องแล้วครับ ช่างจะเข้าไปดูพรุ่งนี้ช่วงบ่าย')",
+    )
+    .bind(ticket_id)
+    .execute(db)
+    .await?;
     Ok(())
+}
+
+fn demo_token() -> String {
+    use rand::RngCore;
+    let mut bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    hex::encode(bytes)
 }

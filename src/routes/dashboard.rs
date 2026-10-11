@@ -54,6 +54,21 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
     .fetch_all(&s.db)
     .await?;
 
+    let open_tickets: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tickets WHERE org_id = ? AND scope = 'org' AND status IN ('open','in_progress','waiting')",
+    )
+    .bind(ctx.org_id)
+    .fetch_one(&s.db)
+    .await?;
+    let (overdue_count, overdue_amount): (i64, f64) = sqlx::query_as(
+        "SELECT COUNT(*), COALESCE(SUM(i.total), 0.0) FROM invoices i JOIN units u ON u.id = i.unit_id
+         JOIN properties p ON p.id = u.property_id
+         WHERE p.org_id = ? AND i.status = 'unpaid' AND i.due_date < date('now', 'localtime')",
+    )
+    .bind(ctx.org_id)
+    .fetch_one(&s.db)
+    .await?;
+
     let total_units: i64 = units_by_status.iter().map(|(_, c)| c).sum();
     let occupied: i64 = units_by_status
         .iter()
@@ -68,6 +83,9 @@ pub async fn summary(State(s): State<AppState>, ctx: OrgCtx) -> AppResult<Json<V
         "outstanding": outstanding,
         "outstanding_count": outstanding_count,
         "deposits_held": deposits_held,
+        "open_tickets": open_tickets,
+        "overdue_count": overdue_count,
+        "overdue_amount": overdue_amount,
         "properties": properties.into_iter().map(|(id, name, kind, units, occupied)| json!({
             "id": id, "name": name, "kind": kind, "units": units, "occupied": occupied
         })).collect::<Vec<_>>(),

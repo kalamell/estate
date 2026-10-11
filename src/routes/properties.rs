@@ -7,7 +7,7 @@ use super::validate_in;
 use crate::{
     auth::OrgCtx,
     error::{AppError, AppResult},
-    models::{Property, PropertyInput, PROPERTY_KINDS},
+    models::{Property, PropertyInput, LATE_FEE_TYPES, PROPERTY_KINDS},
     AppState,
 };
 
@@ -41,6 +41,12 @@ fn check_input(ctx: &OrgCtx, p: &PropertyInput) -> AppResult<()> {
     if p.name.trim().is_empty() {
         return Err(AppError::BadRequest("กรุณาระบุชื่อโครงการ".into()));
     }
+    if let Some(t) = &p.late_fee_type {
+        validate_in("late_fee_type", t, LATE_FEE_TYPES)?;
+    }
+    if p.late_fee_amount.unwrap_or(0.0) < 0.0 || p.late_fee_grace_days.unwrap_or(0) < 0 {
+        return Err(AppError::BadRequest("ค่าปรับและจำนวนวันผ่อนผันต้องไม่ติดลบ".into()));
+    }
     Ok(())
 }
 
@@ -58,8 +64,9 @@ pub async fn create(
         return Err(OrgCtx::limit_reached("จำนวนโครงการ", ctx.max_properties));
     }
     let row = sqlx::query_as(
-        "INSERT INTO properties (org_id, name, kind, address, lat, lng, electric_rate, water_rate, promptpay_id)
-         VALUES (?,?,?,?,?,?,?,?,?) RETURNING *",
+        "INSERT INTO properties (org_id, name, kind, address, lat, lng, electric_rate, water_rate, promptpay_id,
+            late_fee_type, late_fee_amount, late_fee_grace_days)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *",
     )
     .bind(ctx.org_id)
     .bind(p.name.trim())
@@ -70,6 +77,9 @@ pub async fn create(
     .bind(p.electric_rate.unwrap_or(8.0))
     .bind(p.water_rate.unwrap_or(18.0))
     .bind(&p.promptpay_id)
+    .bind(p.late_fee_type.as_deref().unwrap_or("none"))
+    .bind(p.late_fee_amount.unwrap_or(0.0))
+    .bind(p.late_fee_grace_days.unwrap_or(0))
     .fetch_one(&s.db)
     .await?;
     Ok(Json(row))
@@ -84,7 +94,9 @@ pub async fn update(
     check_input(&ctx, &p)?;
     let row = sqlx::query_as(
         "UPDATE properties SET name=?, kind=?, address=?, lat=?, lng=?,
-            electric_rate=COALESCE(?, electric_rate), water_rate=COALESCE(?, water_rate), promptpay_id=?
+            electric_rate=COALESCE(?, electric_rate), water_rate=COALESCE(?, water_rate), promptpay_id=?,
+            late_fee_type=COALESCE(?, late_fee_type), late_fee_amount=COALESCE(?, late_fee_amount),
+            late_fee_grace_days=COALESCE(?, late_fee_grace_days)
          WHERE id=? AND org_id=? RETURNING *",
     )
     .bind(p.name.trim())
@@ -95,6 +107,9 @@ pub async fn update(
     .bind(p.electric_rate)
     .bind(p.water_rate)
     .bind(&p.promptpay_id)
+    .bind(&p.late_fee_type)
+    .bind(p.late_fee_amount)
+    .bind(p.late_fee_grace_days)
     .bind(id)
     .bind(ctx.org_id)
     .fetch_one(&s.db)
