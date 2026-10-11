@@ -1,6 +1,16 @@
 # Estate — ระบบบริหารห้องเช่า
 
-ระบบบริหารอสังหาริมทรัพย์ให้เช่า ทั้งหอพัก อพาร์ทเมนต์ คอนโด บ้านเช่า และห้องพักรายวัน/Airbnb เขียนด้วย **Rust (Axum + SQLite)** พร้อม UI บนเว็บที่ใช้ได้ทั้ง PC และมือถือ
+ระบบบริหารอสังหาริมทรัพย์ให้เช่าแบบ **SaaS** ทั้งหอพัก อพาร์ทเมนต์ คอนโด บ้านเช่า และห้องพักรายวัน/Airbnb
+Backend เขียนด้วย **Rust (Axum + SQLite)** หน้าเว็บใช้ **React + shadcn/ui** ใช้ได้ทั้ง PC และมือถือ
+
+### SaaS
+- 👤 สมัครสมาชิก / เข้าสู่ระบบ — 1 บัญชีสร้างได้หลายองค์กร และ 1 องค์กรมีได้หลายโครงการ
+- 🔒 ข้อมูลแต่ละองค์กรแยกขาดจากกัน มีบทบาทเจ้าของ / แอดมิน / พนักงาน
+- 📦 แพ็กเกจกำหนดจำนวนโครงการ ห้อง ผู้ใช้ และฟีเจอร์ (OCR, 3D, ห้องรายวัน, ออกบิล)
+- 🛡️ หลังบ้าน **Super Admin** สำหรับเจ้าของแพลตฟอร์ม: สร้าง/แก้แพ็กเกจ, กำหนดแพ็กเกจ/สถานะ/วันหมดอายุให้องค์กร, จัดการผู้ใช้, ดู MRR
+- ⏳ สมัครใหม่ได้ทดลองใช้ 14 วัน (แพ็กเกจที่ตั้งเป็นค่าเริ่มต้น) บัญชีที่ถูกระงับ/หมดอายุจะอ่านได้อย่างเดียว
+
+### บริหารห้องเช่า
 
 - 🗺️ ดูโครงการทั้งหมดบนแผนที่ ปักหมุดหรือใช้ GPS เพื่อตั้งพิกัด
 - 🏢 ผังห้องรายชั้น และ **มุมมอง 3D ทั้งอาคาร** (สีบอกสถานะ คลิกเพื่อเปิดห้อง)
@@ -15,32 +25,44 @@
 ## เริ่มใช้งาน
 
 ```bash
-cargo run --release
-# เปิด http://localhost:3000
+cd frontend && npm install && npm run build && cd ..   # สร้างหน้าเว็บ (frontend/dist)
+cargo run --release                                     # เปิด http://localhost:3000
 ```
 
-ครั้งแรกระบบจะสร้างข้อมูลตัวอย่างให้ (3 โครงการ, ผู้เช่า, สัญญา, ค่ามิเตอร์) — ปิดได้ด้วย `SEED_DEMO=0`
+ระหว่างพัฒนาหน้าเว็บ: รัน `cargo run` ไว้ แล้ว `cd frontend && npm run dev` (Vite proxy `/api` ไปที่ :3000)
+
+ครั้งแรกระบบจะสร้างข้อมูลตัวอย่างให้ — **ปิดด้วย `SEED_DEMO=0` ก่อนใช้งานจริง**
+
+| บัญชีตัวอย่าง | รหัสผ่าน | สิทธิ์ |
+|---|---|---|
+| `admin@estate.local` | `admin1234` | Super Admin (หลังบ้านแพลตฟอร์ม) |
+| `demo@estate.local` | `demo1234` | เจ้าขององค์กร "สุขใจ พร็อพเพอร์ตี้" (แพ็กเกจ Pro) |
+
+ใช้งานจริงให้ตั้ง Super Admin ของคุณเองผ่าน `SUPER_ADMIN_EMAIL` และ `SUPER_ADMIN_PASSWORD`
 
 | ตัวแปร | ค่าเริ่มต้น | ความหมาย |
 |---|---|---|
 | `DATABASE_URL` | `sqlite://estate.db?mode=rwc` | ไฟล์ฐานข้อมูล |
 | `BIND` | `0.0.0.0:3000` | address ที่รับการเชื่อมต่อ |
 | `UPLOAD_DIR` | `uploads` | โฟลเดอร์เก็บรูปมิเตอร์ |
-| `STATIC_DIR` | `static` | โฟลเดอร์หน้าเว็บ |
+| `STATIC_DIR` | `frontend/dist` | โฟลเดอร์หน้าเว็บที่ build แล้ว |
 | `SEED_DEMO` | `1` | สร้างข้อมูลตัวอย่างเมื่อ DB ว่าง |
+| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | – | สร้างหรือเลื่อนสิทธิ์บัญชีนี้เป็น Super Admin ตอนเริ่มระบบ |
+| `COOKIE_SECURE` | `0` | ตั้งเป็น `1` เมื่อให้บริการผ่าน HTTPS |
 
 > การใช้กล้องมือถือจดมิเตอร์ต้องเปิดผ่าน HTTPS (หรือ localhost) — ตอนติดตั้งจริงให้วางหลัง reverse proxy เช่น Caddy
 
 ## ทดสอบ
 
 ```bash
-cargo test
+cargo test   # unit test (บิล, PromptPay) + integration test (แยกข้อมูลองค์กร, สิทธิ์, แพ็กเกจ, การระงับบัญชี)
 ```
 
 ## โครงสร้าง
 
 ```
 src/
+  auth.rs         # session cookie, บทบาท, บริบทองค์กร (OrgCtx), ตรวจขีดจำกัดแพ็กเกจ
   lib.rs          # estate::serve() — ใช้ได้ทั้งเว็บเซิร์ฟเวอร์และฝังในแอป Tauri
   main.rs         # ไบนารีเว็บเซิร์ฟเวอร์
   db.rs           # เชื่อมต่อ SQLite, migration, ข้อมูลตัวอย่าง
@@ -48,14 +70,26 @@ src/
   promptpay.rs    # สร้าง payload PromptPay QR (EMVCo + CRC16, มี unit test)
   routes/         # REST API แยกตามโมดูล
 migrations/       # โครงสร้างฐานข้อมูล
-static/           # UI: index.html, app.js (Alpine), three-view.js (3D), style.css
+frontend/         # React + Vite + TypeScript + Tailwind + shadcn/ui
+tests/saas.rs     # integration test ระบบ SaaS
 docs/RESEARCH.md  # การวิเคราะห์และ roadmap
 ```
 
 ## REST API
 
+ทุก endpoint ของข้อมูลธุรกิจต้องล็อกอิน (cookie) และส่ง header `X-Org-Id` — ข้อผิดพลาดจากแพ็กเกจตอบ `402` พร้อม `code`: `limit_reached`, `feature_unavailable`, `subscription_inactive`
+
 | Method | Path | คำอธิบาย |
 |---|---|---|
+| POST | `/api/auth/register` · `/api/auth/login` · `/api/auth/logout` | สมัคร / เข้าสู่ระบบ / ออก |
+| GET | `/api/auth/me` | ผู้ใช้ปัจจุบัน + องค์กรที่เป็นสมาชิก |
+| POST | `/api/orgs` | สร้างองค์กรใหม่ |
+| GET/PUT | `/api/org` | ข้อมูลองค์กร แพ็กเกจ และการใช้งานเทียบขีดจำกัด |
+| GET/POST | `/api/org/members` · PUT/DELETE `/api/org/members/:user_id` | สมาชิกในองค์กร |
+| GET | `/api/admin/stats` | (Super Admin) ภาพรวมแพลตฟอร์ม |
+| GET/POST | `/api/admin/packages` · PUT/DELETE `/api/admin/packages/:id` | (Super Admin) แพ็กเกจ |
+| GET | `/api/admin/orgs` · PUT `/api/admin/orgs/:id` | (Super Admin) กำหนดแพ็กเกจ / สถานะ / วันหมดอายุ |
+| GET | `/api/admin/users` · PUT `/api/admin/users/:id` | (Super Admin) ผู้ใช้ |
 | GET | `/api/dashboard` | สรุปภาพรวม |
 | GET/POST | `/api/properties` | โครงการ |
 | GET/PUT/DELETE | `/api/properties/:id` | |
