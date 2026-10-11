@@ -6,6 +6,7 @@ mod contracts;
 mod dashboard;
 mod files;
 mod housekeeping;
+mod imports;
 mod invoices;
 mod line;
 mod meters;
@@ -193,6 +194,19 @@ pub fn api_router() -> Router<AppState> {
         .route(
             "/api/portal/:token/contracts/:id/sign",
             post(contracts::portal_sign).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
+        .route(
+            "/api/imports",
+            post(imports::upload).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route("/api/imports/template.csv", get(imports::template))
+        .route("/api/imports/:id/inspect", post(imports::inspect))
+        .route("/api/imports/:id/preview", post(imports::preview))
+        .route("/api/imports/:id/commit", post(imports::commit))
+        .route("/api/import-mappings", get(imports::mappings))
+        .route(
+            "/api/import-mappings/:id",
+            axum::routing::delete(imports::delete_mapping),
         )
         .route("/api/tm30", get(tm30::list))
         .route("/api/tm30/export.csv", get(tm30::export))

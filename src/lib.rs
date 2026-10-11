@@ -10,6 +10,7 @@ pub mod docs;
 pub mod error;
 pub mod i18n;
 pub mod ical;
+pub mod import;
 pub mod line;
 pub mod mail;
 pub mod models;
