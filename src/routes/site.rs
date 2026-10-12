@@ -30,6 +30,83 @@ struct PublicPackage {
     is_default: bool,
 }
 
+/// คลิปจากลิงก์ YouTube / Vimeo → (ผู้ให้บริการ, id) — ลิงก์อื่นไม่รับ (กันฝังเว็บแปลกปลอม)
+pub fn parse_video(url: &str) -> Option<(&'static str, String)> {
+    let url = url.trim();
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let rest = rest.strip_prefix("www.").unwrap_or(rest);
+    let rest = rest.strip_prefix("m.").unwrap_or(rest);
+    let valid = |id: &str, len: std::ops::RangeInclusive<usize>, digits_only: bool| {
+        len.contains(&id.len())
+            && id.chars().all(|c| {
+                if digits_only {
+                    c.is_ascii_digit()
+                } else {
+                    c.is_ascii_alphanumeric() || c == '-' || c == '_'
+                }
+            })
+    };
+    let take = |s: &str| {
+        s.split(['?', '&', '#', '/'])
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    };
+    let yt = if let Some(r) = rest.strip_prefix("youtu.be/") {
+        Some(take(r))
+    } else if let Some(r) = rest.strip_prefix("youtube.com/watch") {
+        r.split(['?', '&'])
+            .find_map(|kv| kv.strip_prefix("v="))
+            .map(take)
+    } else {
+        [
+            "youtube.com/shorts/",
+            "youtube.com/embed/",
+            "youtube.com/live/",
+            "youtube-nocookie.com/embed/",
+        ]
+        .iter()
+        .find_map(|p| rest.strip_prefix(p))
+        .map(take)
+    };
+    if let Some(id) = yt.filter(|id| valid(id, 11..=11, false)) {
+        return Some(("youtube", id));
+    }
+    if let Some(r) = rest.strip_prefix("vimeo.com/") {
+        let id = take(r);
+        if valid(&id, 6..=12, true) {
+            return Some(("vimeo", id));
+        }
+    }
+    None
+}
+
+fn video_json(url: &str) -> Value {
+    match parse_video(url) {
+        Some(("youtube", id)) => json!({
+            "provider": "youtube", "id": id, "url": url,
+            "embed_url": format!("https://www.youtube-nocookie.com/embed/{id}?autoplay=1&rel=0"),
+            "thumbnail": format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg"),
+        }),
+        Some((_, id)) => json!({
+            "provider": "vimeo", "id": id, "url": url,
+            "embed_url": format!("https://player.vimeo.com/video/{id}?autoplay=1"),
+            "thumbnail": null,
+        }),
+        None => Value::Null,
+    }
+}
+
+async fn promo_url(db: &sqlx::SqlitePool) -> AppResult<String> {
+    Ok(
+        sqlx::query_scalar("SELECT promo_video_url FROM platform_settings WHERE id = 1")
+            .fetch_one(db)
+            .await?,
+    )
+}
+
 /// แพ็กเกจที่เปิดขาย + ข้อมูลติดต่อผู้ให้บริการ
 pub async fn site(State(s): State<AppState>) -> AppResult<Json<Value>> {
     let plat = super::subscription::load_platform(&s.db).await?;
@@ -43,6 +120,7 @@ pub async fn site(State(s): State<AppState>) -> AppResult<Json<Value>> {
     Ok(Json(json!({
         "company": { "name": plat.company_name, "phone": plat.phone, "email": plat.email },
         "yearly_months": plat.yearly_months,
+        "promo_video": video_json(&promo_url(&s.db).await?),
         "packages": packages.iter().map(|p| json!({
             "id": p.id, "name": p.name, "description": p.description,
             "price_monthly": p.price_monthly,
@@ -212,4 +290,71 @@ pub async fn update_lead(
     .await?
     .map(Json)
     .ok_or(AppError::NotFound)
+}
+
+// ---------- ตั้งค่าหน้า landing ----------
+
+pub async fn admin_site(State(s): State<AppState>, _: SuperAdmin) -> AppResult<Json<Value>> {
+    let url = promo_url(&s.db).await?;
+    Ok(Json(
+        json!({ "promo_video_url": url, "promo_video": video_json(&url) }),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct SiteInput {
+    #[serde(default)]
+    promo_video_url: String,
+}
+
+pub async fn update_site(
+    State(s): State<AppState>,
+    admin: SuperAdmin,
+    Json(i): Json<SiteInput>,
+) -> AppResult<Json<Value>> {
+    let url = i.promo_video_url.trim();
+    if !url.is_empty() && parse_video(url).is_none() {
+        return Err(AppError::BadRequest(
+            "ใส่ลิงก์ YouTube (youtube.com/watch?v=…, youtu.be/…, shorts) หรือ Vimeo".into(),
+        ));
+    }
+    sqlx::query("UPDATE platform_settings SET promo_video_url = ? WHERE id = 1")
+        .bind(url)
+        .execute(&s.db)
+        .await?;
+    admin_site(State(s), admin).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_video;
+
+    #[test]
+    fn parses_video_links() {
+        let id = Some(("youtube", "dQw4w9WgXcQ".to_string()));
+        assert_eq!(
+            parse_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            id
+        );
+        assert_eq!(
+            parse_video("https://youtube.com/watch?feature=share&v=dQw4w9WgXcQ&t=10"),
+            id
+        );
+        assert_eq!(parse_video("https://youtu.be/dQw4w9WgXcQ?si=abc"), id);
+        assert_eq!(
+            parse_video("https://www.youtube.com/shorts/dQw4w9WgXcQ"),
+            id
+        );
+        assert_eq!(parse_video("https://m.youtube.com/watch?v=dQw4w9WgXcQ"), id);
+        assert_eq!(
+            parse_video("https://vimeo.com/123456789"),
+            Some(("vimeo", "123456789".into()))
+        );
+        assert_eq!(
+            parse_video("https://evil.example/watch?v=dQw4w9WgXcQ"),
+            None
+        );
+        assert_eq!(parse_video("javascript:alert(1)"), None);
+        assert_eq!(parse_video("https://youtu.be/short"), None);
+    }
 }

@@ -93,3 +93,40 @@ async fn integrations_overview() {
     assert_eq!(i["email"]["platform_smtp"], false);
     assert!(i["channels"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn promo_video_on_landing() {
+    let mut root = setup().await;
+    root.login("root@test.local", "password123").await;
+    let (st, _) = root
+        .call(
+            Method::PUT,
+            "/api/admin/site",
+            Some(json!({"promo_video_url": "https://evil.example/x.mp4"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    let (st, v) = root
+        .call(
+            Method::PUT,
+            "/api/admin/site",
+            Some(json!({"promo_video_url": "https://youtu.be/dQw4w9WgXcQ"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let mut guest = root.other();
+    let (_, site) = guest.call(Method::GET, "/api/public/site", None).await;
+    assert_eq!(site["promo_video"]["provider"], "youtube");
+    assert!(site["promo_video"]["embed_url"]
+        .as_str()
+        .unwrap()
+        .starts_with("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"));
+    root.call(
+        Method::PUT,
+        "/api/admin/site",
+        Some(json!({"promo_video_url": ""})),
+    )
+    .await;
+    let (_, site) = guest.call(Method::GET, "/api/public/site", None).await;
+    assert!(site["promo_video"].is_null());
+}

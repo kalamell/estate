@@ -246,6 +246,10 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/public/contact", post(site::contact))
         .route("/api/admin/leads", get(site::leads))
         .route(
+            "/api/admin/site",
+            get(site::admin_site).put(site::update_site),
+        )
+        .route(
             "/api/admin/leads/:id",
             axum::routing::patch(site::update_lead),
         )
