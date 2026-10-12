@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { ContactSection } from './contact'
 import { PricingSection } from './pricing'
 import { ProductPreview } from './product-preview'
+import { PromoVideoSection } from './video'
 
 const YEAR = new Date().getFullYear()
 
@@ -342,6 +343,9 @@ export default function LandingPage({ section }: { section?: 'pricing' }) {
             </ul>
           </div>
         </section>
+
+        {/* ---------- คลิปแนะนำ (แสดงเมื่อ Super Admin ตั้งลิงก์ไว้) ---------- */}
+        <PromoVideoSection video={site.data?.promo_video} />
 
         {/* ---------- ฟีเจอร์ ---------- */}
         <section id="features" aria-labelledby="features-title" className="scroll-mt-20">

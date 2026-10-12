@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/common'
+import { LandingSettingsCard } from './site-settings'
 
 const LEAD_STATUS: Record<LeadStatus, { label: string; tone: Tone }> = {
   new: { label: 'ใหม่', tone: 'mustard' },
@@ -89,6 +90,8 @@ export default function AdminLeads() {
           ))}
         </div>
       )}
+
+      <LandingSettingsCard />
     </div>
   )
 }

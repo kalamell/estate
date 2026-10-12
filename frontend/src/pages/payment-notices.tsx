@@ -84,7 +84,7 @@ export default function PaymentNoticesPage() {
             </button>
           ))}
         </div>
-        <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        <p className="min-w-60 flex-1 text-xs text-muted-foreground">
           ผู้เช่าแนบสลิปผ่านพอร์ทัล หรือส่งรูปสลิปในแชต LINE — ระบบตรวจ QR และสลิปซ้ำให้ก่อน
         </p>
         {canManage && (

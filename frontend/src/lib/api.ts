@@ -1724,7 +1724,25 @@ export interface PublicSite {
   company: { name: string; phone: string; email: string }
   /** จำนวนเดือนที่จ่ายเมื่อชำระรายปี (ค่าเริ่มต้น 10) */
   yearly_months: number
+  /** คลิปแนะนำระบบที่ Super Admin ตั้งไว้ (null = ไม่แสดง) */
+  promo_video: PromoVideo | null
   packages: PublicPackage[]
+}
+
+/** คลิป YouTube / Vimeo ที่ backend แยก id ไว้แล้ว — ใช้ embed_url ตามที่ได้ ไม่ต่อ URL เอง */
+export interface PromoVideo {
+  provider: 'youtube' | 'vimeo'
+  id: string
+  url: string
+  embed_url: string
+  /** รูปปกจาก YouTube (Vimeo ไม่มี → null) */
+  thumbnail: string | null
+}
+
+/** GET/PUT /api/admin/site — ตั้งค่าหน้าแนะนำระบบ */
+export interface AdminSite {
+  promo_video_url: string
+  promo_video: PromoVideo | null
 }
 
 export interface ContactInput {
@@ -2299,5 +2317,7 @@ export const api = {
       get<{ leads: Lead[]; new: number }>('/api/admin/leads', f, false),
     updateLead: (id: number, b: { status?: LeadStatus; note?: string }) =>
       patch<Lead>(`/api/admin/leads/${id}`, b, false),
+    site: () => get<AdminSite>('/api/admin/site', undefined, false),
+    updateSite: (b: { promo_video_url: string }) => put<AdminSite>('/api/admin/site', b, false),
   },
 }
